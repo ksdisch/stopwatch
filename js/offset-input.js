@@ -13,6 +13,33 @@ const OffsetInput = (() => {
     toggleBtn.addEventListener('click', show);
     setBtn.addEventListener('click', applyOffset);
     cancelBtn.addEventListener('click', hide);
+
+    const fields = [
+      { el: hoursEl, min: 0, max: 99 },
+      { el: minutesEl, min: 0, max: 59 },
+      { el: secondsEl, min: 0, max: 59 },
+    ];
+
+    fields.forEach(({ el, min, max }) => {
+      el.addEventListener('input', () => {
+        const val = parseInt(el.value, 10);
+        if (!isNaN(val) && val > max) {
+          el.value = max;
+          flashBorder(el);
+        }
+      });
+
+      el.addEventListener('blur', () => {
+        const val = parseInt(el.value, 10);
+        if (isNaN(val) || val < min) el.value = min;
+        else if (val > max) { el.value = max; flashBorder(el); }
+      });
+
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); applyOffset(); }
+        else if (e.key === 'Escape') { e.preventDefault(); hide(); }
+      });
+    });
   }
 
   function show() {
@@ -31,9 +58,9 @@ const OffsetInput = (() => {
   }
 
   function applyOffset() {
-    const h = Math.max(0, parseInt(hoursEl.value, 10) || 0);
-    const m = Math.max(0, parseInt(minutesEl.value, 10) || 0);
-    const s = Math.max(0, parseInt(secondsEl.value, 10) || 0);
+    const h = Math.min(99, Math.max(0, parseInt(hoursEl.value, 10) || 0));
+    const m = Math.min(59, Math.max(0, parseInt(minutesEl.value, 10) || 0));
+    const s = Math.min(59, Math.max(0, parseInt(secondsEl.value, 10) || 0));
     const ms = (h * 3600 + m * 60 + s) * 1000;
 
     if (ms > 0) {
@@ -52,6 +79,11 @@ const OffsetInput = (() => {
       area.classList.add('hidden');
       hide();
     }
+  }
+
+  function flashBorder(el) {
+    el.style.borderColor = 'var(--red)';
+    setTimeout(() => { el.style.borderColor = ''; }, 400);
   }
 
   return { init, hide, setVisible };

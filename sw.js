@@ -1,14 +1,17 @@
-const CACHE_NAME = 'stopwatch-v1';
+const CACHE_NAME = 'stopwatch-v2';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
+  './js/utils.js',
   './js/app.js',
   './js/stopwatch.js',
   './js/ui.js',
   './js/persistence.js',
   './js/offset-input.js',
   './manifest.json',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

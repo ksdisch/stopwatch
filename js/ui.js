@@ -1,11 +1,13 @@
 const UI = (() => {
-  let timeEl, btnLeft, btnRight, lapList, rafId = null;
+  let timeEl, btnLeft, btnRight, lapList, timerDisplay, appEl, rafId = null;
 
   function init() {
     timeEl = document.getElementById('time');
     btnLeft = document.getElementById('btn-left');
     btnRight = document.getElementById('btn-right');
     lapList = document.getElementById('lap-list');
+    timerDisplay = document.getElementById('timer-display');
+    appEl = document.getElementById('app');
 
     btnLeft.addEventListener('click', onLeftClick);
     btnRight.addEventListener('click', onRightClick);
@@ -13,6 +15,25 @@ const UI = (() => {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && Stopwatch.getStatus() === 'running') {
         startRenderLoop();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          onRightClick();
+          break;
+        case 'KeyL':
+          if (Stopwatch.getStatus() === 'running') onLeftClick();
+          break;
+        case 'KeyR':
+          if (Stopwatch.getStatus() === 'paused') onLeftClick();
+          break;
+        case 'Escape':
+          OffsetInput.hide();
+          break;
       }
     });
 
@@ -24,7 +45,7 @@ const UI = (() => {
     if (status === 'running') {
       Stopwatch.lap();
       Persistence.save();
-      renderLaps();
+      renderLaps(true);
     } else if (status === 'paused') {
       Stopwatch.reset();
       Persistence.save();
@@ -61,22 +82,11 @@ const UI = (() => {
   }
 
   function updateDisplay(ms) {
-    const totalCs = Math.floor(ms / 10);
-    const cs = totalCs % 100;
-    const totalSeconds = Math.floor(totalCs / 100);
-    const seconds = totalSeconds % 60;
-    const totalMinutes = Math.floor(totalSeconds / 60);
-    const minutes = totalMinutes % 60;
-    const hours = Math.floor(totalMinutes / 60);
-
-    const csStr = String(cs).padStart(2, '0');
-    const secStr = String(seconds).padStart(2, '0');
-    const minStr = String(minutes).padStart(2, '0');
-
-    if (hours > 0) {
-      timeEl.innerHTML = `${hours}:${minStr}:${secStr}<span class="centiseconds">.${csStr}</span>`;
+    const t = Utils.formatMs(ms);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
     } else {
-      timeEl.innerHTML = `${minStr}:${secStr}<span class="centiseconds">.${csStr}</span>`;
+      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
     }
   }
 
@@ -90,6 +100,8 @@ const UI = (() => {
         btnRight.innerHTML = '<span class="btn-inner">Start</span>';
         btnRight.className = 'control-btn btn-start';
         btnRight.setAttribute('aria-label', 'Start');
+        timerDisplay.classList.remove('is-running');
+        appEl.classList.remove('is-running');
         break;
       case 'running':
         btnLeft.innerHTML = '<span class="btn-inner">Lap</span>';
@@ -99,6 +111,8 @@ const UI = (() => {
         btnRight.innerHTML = '<span class="btn-inner">Stop</span>';
         btnRight.className = 'control-btn btn-stop';
         btnRight.setAttribute('aria-label', 'Stop');
+        timerDisplay.classList.add('is-running');
+        appEl.classList.add('is-running');
         break;
       case 'paused':
         btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
@@ -108,11 +122,13 @@ const UI = (() => {
         btnRight.innerHTML = '<span class="btn-inner">Start</span>';
         btnRight.className = 'control-btn btn-start';
         btnRight.setAttribute('aria-label', 'Start');
+        timerDisplay.classList.remove('is-running');
+        appEl.classList.remove('is-running');
         break;
     }
   }
 
-  function renderLaps() {
+  function renderLaps(scrollToTop) {
     const laps = Stopwatch.getLaps();
     const status = Stopwatch.getStatus();
 
@@ -156,25 +172,17 @@ const UI = (() => {
     }
 
     lapList.innerHTML = html;
+    if (scrollToTop) {
+      lapList.scrollTop = 0;
+    }
   }
 
   function formatTime(ms) {
-    const totalCs = Math.floor(ms / 10);
-    const cs = totalCs % 100;
-    const totalSeconds = Math.floor(totalCs / 100);
-    const seconds = totalSeconds % 60;
-    const totalMinutes = Math.floor(totalSeconds / 60);
-    const minutes = totalMinutes % 60;
-    const hours = Math.floor(totalMinutes / 60);
-
-    const csStr = String(cs).padStart(2, '0');
-    const secStr = String(seconds).padStart(2, '0');
-    const minStr = String(minutes).padStart(2, '0');
-
-    if (hours > 0) {
-      return `${hours}:${minStr}:${secStr}.${csStr}`;
+    const t = Utils.formatMs(ms);
+    if (t.hours > 0) {
+      return `${t.hours}:${t.minStr}:${t.secStr}.${t.csStr}`;
     }
-    return `${minStr}:${secStr}.${csStr}`;
+    return `${t.minStr}:${t.secStr}.${t.csStr}`;
   }
 
   function startRenderLoop() {
