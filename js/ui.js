@@ -52,12 +52,14 @@ const UI = (() => {
       Stopwatch.lap();
       Persistence.save();
       haptic(10);
+      SFX.playLap();
       renderLaps(true);
     } else if (status === 'paused') {
       lastResetState = Stopwatch.getState();
       Stopwatch.reset();
       Persistence.save();
       haptic(25);
+      SFX.playReset();
       syncUI();
       showUndoToast();
     }
@@ -69,6 +71,7 @@ const UI = (() => {
       Stopwatch.pause();
       Persistence.save();
       haptic(25);
+      SFX.playStop();
       stopRenderLoop();
       syncUI();
     } else {
@@ -76,6 +79,7 @@ const UI = (() => {
       Stopwatch.start();
       Persistence.save();
       haptic(10);
+      SFX.playStart();
       startRenderLoop();
       syncUI();
     }

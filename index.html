@@ -13,17 +13,35 @@
 </head>
 <body>
   <div id="app">
+    <!-- Top bar: mode selector + settings -->
+    <div class="top-bar">
+      <div class="mode-selector">
+        <button class="mode-tab mode-tab-active" data-app-mode="stopwatch">Stopwatch</button>
+        <button class="mode-tab" data-app-mode="timer">Timer</button>
+      </div>
+      <div class="top-actions">
+        <button id="sound-toggle" class="icon-btn" aria-label="Toggle sound">
+          <span id="sound-icon">&#x1F50A;</span>
+        </button>
+        <button id="theme-toggle" class="icon-btn" aria-label="Theme settings">
+          <span>&#x2699;</span>
+        </button>
+        <button id="history-toggle" class="icon-btn" aria-label="Session history">
+          <span>&#x1F4CB;</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Theme picker (hidden by default) -->
+    <div id="theme-picker" class="theme-picker hidden"></div>
+
     <div id="timer-display" role="timer" aria-live="off">
       <span id="time">00:00<span class="centiseconds">.00</span></span>
       <div id="analog-display" class="hidden">
         <svg viewBox="0 0 200 200" class="analog-svg">
-          <!-- Tick marks -->
           <g class="tick-marks"></g>
-          <!-- Minute hand -->
           <line id="analog-minute" x1="100" y1="100" x2="100" y2="40" class="analog-hand analog-hand-minute" />
-          <!-- Second hand -->
           <line id="analog-second" x1="100" y1="100" x2="100" y2="25" class="analog-hand analog-hand-second" />
-          <!-- Center dot -->
           <circle cx="100" cy="100" r="4" class="analog-center" />
         </svg>
         <div id="digital-small" class="digital-small">00:00.00</div>
@@ -31,6 +49,13 @@
       <div class="mode-toggle">
         <button class="mode-dot mode-dot-active" data-mode="digital" aria-label="Digital mode"></button>
         <button class="mode-dot" data-mode="analog" aria-label="Analog mode"></button>
+      </div>
+    </div>
+
+    <!-- Timer countdown display (hidden when in stopwatch mode) -->
+    <div id="timer-progress" class="timer-progress hidden">
+      <div class="timer-progress-bar">
+        <div id="timer-progress-fill" class="timer-progress-fill"></div>
       </div>
     </div>
 
@@ -58,6 +83,31 @@
       </div>
     </div>
 
+    <!-- Timer duration input (hidden when in stopwatch mode) -->
+    <div id="timer-set-area" class="hidden">
+      <button id="timer-set-toggle" class="offset-link">Set countdown duration</button>
+      <div id="timer-set-input" class="offset-input hidden">
+        <div class="offset-fields">
+          <div class="offset-field">
+            <input type="number" id="timer-hours" min="0" max="99" value="0" inputmode="numeric">
+            <label for="timer-hours">h</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="timer-minutes" min="0" max="59" value="0" inputmode="numeric">
+            <label for="timer-minutes">m</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="timer-seconds" min="0" max="59" value="0" inputmode="numeric">
+            <label for="timer-seconds">s</label>
+          </div>
+        </div>
+        <div class="offset-buttons">
+          <button id="timer-set-btn" class="offset-btn">Set</button>
+          <button id="timer-cancel-btn" class="offset-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div id="controls">
       <button id="btn-left" class="control-btn" aria-label="Lap" disabled>
         <span class="btn-inner">Lap</span>
@@ -67,16 +117,35 @@
       </button>
     </div>
 
+    <!-- Export button -->
+    <div id="export-area" class="export-area hidden">
+      <button id="export-btn" class="offset-link">Export Laps</button>
+    </div>
+
     <div id="lap-stats" class="lap-stats hidden"></div>
 
     <div id="lap-section">
       <div id="lap-list"></div>
     </div>
+
+    <!-- History panel (slide-up overlay) -->
+    <div id="history-panel" class="history-panel hidden">
+      <div class="history-header">
+        <h3>History</h3>
+        <button id="history-close" class="icon-btn">&times;</button>
+      </div>
+      <div id="history-list" class="history-list"></div>
+    </div>
   </div>
 
   <script src="js/utils.js"></script>
   <script src="js/stopwatch.js"></script>
+  <script src="js/timer.js"></script>
   <script src="js/persistence.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/themes.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/export.js"></script>
   <script src="js/analog.js"></script>
   <script src="js/offset-input.js"></script>
   <script src="js/ui.js"></script>
