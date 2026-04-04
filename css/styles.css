@@ -1,0 +1,314 @@
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #000000;
+  --text: #ffffff;
+  --text-secondary: #8e8e93;
+  --green: #30d158;
+  --green-dark: #0a3d1a;
+  --red: #ff453a;
+  --red-dark: #3d0f0c;
+  --btn-bg: #1c1c1e;
+  --btn-border: #38383a;
+  --separator: #38383a;
+  --lap-best: #30d158;
+  --lap-worst: #ff453a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f2f2f7;
+    --text: #000000;
+    --text-secondary: #8e8e93;
+    --green: #34c759;
+    --green-dark: #d4f5dc;
+    --red: #ff3b30;
+    --red-dark: #fdd;
+    --btn-bg: #e5e5ea;
+    --btn-border: #c7c7cc;
+    --separator: #c7c7cc;
+    --lap-best: #34c759;
+    --lap-worst: #ff3b30;
+  }
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+#app {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+/* Timer Display */
+#timer-display {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0 20px;
+}
+
+#time {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Mono', monospace;
+  font-size: clamp(3.2rem, 14vw, 5.5rem);
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.centiseconds {
+  font-size: 0.6em;
+  opacity: 0.8;
+}
+
+/* Offset Area */
+#offset-area {
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.offset-link {
+  background: none;
+  border: none;
+  color: var(--green);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 8px 16px;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.offset-link:active {
+  opacity: 0.6;
+}
+
+.offset-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.offset-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.offset-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.offset-field input {
+  width: 52px;
+  height: 44px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.2rem;
+  text-align: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+
+.offset-field input::-webkit-inner-spin-button,
+.offset-field input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.offset-field label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.offset-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.offset-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  padding: 8px 24px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.offset-btn:active {
+  opacity: 0.6;
+}
+
+/* Controls */
+#controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 10px;
+}
+
+.control-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: opacity 0.1s;
+}
+
+.control-btn:active {
+  opacity: 0.7;
+}
+
+.control-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn-inner {
+  position: relative;
+  z-index: 1;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Button ring effect - outer ring via box-shadow */
+.control-btn::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.btn-start {
+  border-color: var(--green);
+  background: var(--green-dark);
+  color: var(--green);
+}
+
+.btn-start::after {
+  border-color: var(--green);
+}
+
+.btn-stop {
+  border-color: var(--red);
+  background: var(--red-dark);
+  color: var(--red);
+}
+
+.btn-stop::after {
+  border-color: var(--red);
+}
+
+.btn-lap {
+  border-color: var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+}
+
+.btn-reset {
+  border-color: var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+}
+
+/* Lap Section */
+#lap-section {
+  flex: 1 1 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-top: 0.5px solid var(--separator);
+}
+
+#lap-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lap-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 4px;
+  border-bottom: 0.5px solid var(--separator);
+  font-size: 1rem;
+}
+
+.lap-label {
+  color: var(--text);
+}
+
+.lap-time {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.lap-best .lap-label,
+.lap-best .lap-time {
+  color: var(--lap-best);
+}
+
+.lap-worst .lap-label,
+.lap-worst .lap-time {
+  color: var(--lap-worst);
+}
+
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
+/* Safe area for notched devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  #timer-display {
+    padding-top: calc(60px + env(safe-area-inset-top));
+  }
+  #app {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

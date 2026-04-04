@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/styles.css">
+  <title>Stopwatch</title>
+</head>
+<body>
+  <div id="app">
+    <div id="timer-display" role="timer" aria-live="off">
+      <span id="time">00:00<span class="centiseconds">.00</span></span>
+    </div>
+
+    <div id="offset-area">
+      <button id="offset-toggle" class="offset-link">Start with time already elapsed</button>
+      <div id="offset-input" class="offset-input hidden">
+        <div class="offset-fields">
+          <div class="offset-field">
+            <input type="number" id="offset-hours" min="0" max="99" value="0" inputmode="numeric">
+            <label for="offset-hours">h</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="offset-minutes" min="0" max="59" value="0" inputmode="numeric">
+            <label for="offset-minutes">m</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="offset-seconds" min="0" max="59" value="0" inputmode="numeric">
+            <label for="offset-seconds">s</label>
+          </div>
+        </div>
+        <div class="offset-buttons">
+          <button id="offset-set" class="offset-btn">Set</button>
+          <button id="offset-cancel" class="offset-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="btn-left" class="control-btn" aria-label="Lap" disabled>
+        <span class="btn-inner">Lap</span>
+      </button>
+      <button id="btn-right" class="control-btn btn-start" aria-label="Start">
+        <span class="btn-inner">Start</span>
+      </button>
+    </div>
+
+    <div id="lap-section">
+      <div id="lap-list"></div>
+    </div>
+  </div>
+
+  <script src="js/stopwatch.js"></script>
+  <script src="js/persistence.js"></script>
+  <script src="js/offset-input.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
