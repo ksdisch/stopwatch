@@ -15,17 +15,22 @@ const OffsetInput = (() => {
     cancelBtn.addEventListener('click', hide);
 
     const fields = [
-      { el: hoursEl, min: 0, max: 99 },
-      { el: minutesEl, min: 0, max: 59 },
-      { el: secondsEl, min: 0, max: 59 },
+      { el: hoursEl, min: 0, max: 99, next: minutesEl },
+      { el: minutesEl, min: 0, max: 59, next: secondsEl },
+      { el: secondsEl, min: 0, max: 59, next: setBtn },
     ];
 
-    fields.forEach(({ el, min, max }) => {
+    fields.forEach(({ el, min, max, next }) => {
       el.addEventListener('input', () => {
         const val = parseInt(el.value, 10);
         if (!isNaN(val) && val > max) {
           el.value = max;
           flashBorder(el);
+        }
+        // Auto-advance: if user typed 2 digits, move to next field
+        if (el.value.length >= 2 && next) {
+          next.focus();
+          if (next.select) next.select();
         }
       });
 

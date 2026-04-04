@@ -15,6 +15,23 @@
   <div id="app">
     <div id="timer-display" role="timer" aria-live="off">
       <span id="time">00:00<span class="centiseconds">.00</span></span>
+      <div id="analog-display" class="hidden">
+        <svg viewBox="0 0 200 200" class="analog-svg">
+          <!-- Tick marks -->
+          <g class="tick-marks"></g>
+          <!-- Minute hand -->
+          <line id="analog-minute" x1="100" y1="100" x2="100" y2="40" class="analog-hand analog-hand-minute" />
+          <!-- Second hand -->
+          <line id="analog-second" x1="100" y1="100" x2="100" y2="25" class="analog-hand analog-hand-second" />
+          <!-- Center dot -->
+          <circle cx="100" cy="100" r="4" class="analog-center" />
+        </svg>
+        <div id="digital-small" class="digital-small">00:00.00</div>
+      </div>
+      <div class="mode-toggle">
+        <button class="mode-dot mode-dot-active" data-mode="digital" aria-label="Digital mode"></button>
+        <button class="mode-dot" data-mode="analog" aria-label="Analog mode"></button>
+      </div>
     </div>
 
     <div id="offset-area">
@@ -50,6 +67,8 @@
       </button>
     </div>
 
+    <div id="lap-stats" class="lap-stats hidden"></div>
+
     <div id="lap-section">
       <div id="lap-list"></div>
     </div>
@@ -58,6 +77,7 @@
   <script src="js/utils.js"></script>
   <script src="js/stopwatch.js"></script>
   <script src="js/persistence.js"></script>
+  <script src="js/analog.js"></script>
   <script src="js/offset-input.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/app.js"></script>

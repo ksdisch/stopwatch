@@ -114,6 +114,83 @@ html, body {
   letter-spacing: 0.02em;
 }
 
+/* Analog Display */
+#analog-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.analog-svg {
+  width: 200px;
+  height: 200px;
+}
+
+.analog-hand {
+  stroke: var(--text);
+  stroke-linecap: round;
+}
+
+.analog-hand-second {
+  stroke: var(--green);
+  stroke-width: 1.5;
+}
+
+.analog-hand-minute {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+
+.analog-center {
+  fill: var(--green);
+}
+
+.analog-tick {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+}
+
+.analog-tick-major {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.digital-small {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+#timer-display.mode-analog #time {
+  display: none;
+}
+
+/* Mode Toggle */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: var(--btn-border);
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s;
+}
+
+.mode-dot-active {
+  background: var(--text);
+}
+
 /* Offset Area */
 #offset-area {
   text-align: center;
@@ -145,6 +222,18 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  overflow: hidden;
+  max-height: 200px;
+  opacity: 1;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+}
+
+.offset-input.hidden {
+  display: flex !important;
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
 }
 
 .offset-fields {
@@ -246,6 +335,12 @@ html, body {
   z-index: 1;
   font-weight: 500;
   letter-spacing: 0.01em;
+  transition: opacity 0.08s ease, transform 0.08s ease;
+}
+
+.btn-transitioning .btn-inner {
+  opacity: 0.4;
+  transform: scale(0.85);
 }
 
 /* Button ring effect - outer ring via box-shadow */
@@ -297,6 +392,18 @@ html, body {
   color: var(--text);
 }
 
+/* Lap Stats */
+.lap-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 0.5px solid var(--separator);
+}
+
 /* Lap Section */
 #lap-section {
   flex: 1 1 auto;
@@ -331,6 +438,15 @@ html, body {
   color: var(--text);
 }
 
+.lap-entering {
+  animation: lap-enter 0.25s ease-out;
+}
+
+@keyframes lap-enter {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .lap-best .lap-label,
 .lap-best .lap-time {
   color: var(--lap-best);
@@ -339,6 +455,89 @@ html, body {
 .lap-worst .lap-label,
 .lap-worst .lap-time {
   color: var(--lap-worst);
+}
+
+/* Undo Toast */
+.undo-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 200;
+}
+
+.undo-toast.undo-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.undo-btn {
+  background: none;
+  border: none;
+  color: var(--green);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Install Banner */
+.install-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.install-banner.install-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.install-btn {
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.install-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  font-family: inherit;
 }
 
 /* Utility */

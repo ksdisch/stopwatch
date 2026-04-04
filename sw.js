@@ -1,9 +1,10 @@
-const CACHE_NAME = 'stopwatch-v2';
+const CACHE_NAME = 'stopwatch-v3';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/utils.js',
+  './js/analog.js',
   './js/app.js',
   './js/stopwatch.js',
   './js/ui.js',

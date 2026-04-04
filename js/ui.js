@@ -1,5 +1,7 @@
 const UI = (() => {
   let timeEl, btnLeft, btnRight, lapList, timerDisplay, appEl, rafId = null;
+  let lastResetState = null;
+  let undoTimeout = null;
 
   function init() {
     timeEl = document.getElementById('time');
@@ -40,16 +42,24 @@ const UI = (() => {
     syncUI();
   }
 
+  function haptic(ms) {
+    if (navigator.vibrate) navigator.vibrate(ms);
+  }
+
   function onLeftClick() {
     const status = Stopwatch.getStatus();
     if (status === 'running') {
       Stopwatch.lap();
       Persistence.save();
+      haptic(10);
       renderLaps(true);
     } else if (status === 'paused') {
+      lastResetState = Stopwatch.getState();
       Stopwatch.reset();
       Persistence.save();
+      haptic(25);
       syncUI();
+      showUndoToast();
     }
   }
 
@@ -58,12 +68,14 @@ const UI = (() => {
     if (status === 'running') {
       Stopwatch.pause();
       Persistence.save();
+      haptic(25);
       stopRenderLoop();
       syncUI();
     } else {
       // idle or paused -> start
       Stopwatch.start();
       Persistence.save();
+      haptic(10);
       startRenderLoop();
       syncUI();
     }
@@ -88,44 +100,41 @@ const UI = (() => {
     } else {
       timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
     }
+    Analog.update(ms);
   }
 
   function updateButtons(status) {
-    switch (status) {
-      case 'idle':
-        btnLeft.innerHTML = '<span class="btn-inner">Lap</span>';
-        btnLeft.className = 'control-btn btn-lap';
-        btnLeft.disabled = true;
-        btnLeft.setAttribute('aria-label', 'Lap');
-        btnRight.innerHTML = '<span class="btn-inner">Start</span>';
-        btnRight.className = 'control-btn btn-start';
-        btnRight.setAttribute('aria-label', 'Start');
-        timerDisplay.classList.remove('is-running');
-        appEl.classList.remove('is-running');
-        break;
-      case 'running':
-        btnLeft.innerHTML = '<span class="btn-inner">Lap</span>';
-        btnLeft.className = 'control-btn btn-lap';
-        btnLeft.disabled = false;
-        btnLeft.setAttribute('aria-label', 'Lap');
-        btnRight.innerHTML = '<span class="btn-inner">Stop</span>';
-        btnRight.className = 'control-btn btn-stop';
-        btnRight.setAttribute('aria-label', 'Stop');
-        timerDisplay.classList.add('is-running');
-        appEl.classList.add('is-running');
-        break;
-      case 'paused':
-        btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
-        btnLeft.className = 'control-btn btn-reset';
-        btnLeft.disabled = false;
-        btnLeft.setAttribute('aria-label', 'Reset');
-        btnRight.innerHTML = '<span class="btn-inner">Start</span>';
-        btnRight.className = 'control-btn btn-start';
-        btnRight.setAttribute('aria-label', 'Start');
-        timerDisplay.classList.remove('is-running');
-        appEl.classList.remove('is-running');
-        break;
+    const leftText = status === 'paused' ? 'Reset' : 'Lap';
+    const rightText = status === 'running' ? 'Stop' : 'Start';
+    const leftClass = status === 'paused' ? 'control-btn btn-reset' : 'control-btn btn-lap';
+    const rightClass = status === 'running' ? 'control-btn btn-stop' : 'control-btn btn-start';
+    const isRunning = status === 'running';
+
+    // Animate button text swap
+    animateBtn(btnLeft, leftText, leftClass, status === 'idle', leftText === 'Lap' ? 'Lap' : 'Reset');
+    animateBtn(btnRight, rightText, rightClass, false, rightText === 'Start' ? 'Start' : 'Stop');
+
+    timerDisplay.classList.toggle('is-running', isRunning);
+    appEl.classList.toggle('is-running', isRunning);
+  }
+
+  function animateBtn(btn, text, cls, disabled, label) {
+    const currentText = btn.querySelector('.btn-inner');
+    if (currentText && currentText.textContent === text) {
+      // No text change — just update class/disabled
+      btn.className = cls;
+      btn.disabled = disabled;
+      btn.setAttribute('aria-label', label);
+      return;
     }
+
+    btn.classList.add('btn-transitioning');
+    setTimeout(() => {
+      btn.innerHTML = `<span class="btn-inner">${text}</span>`;
+      btn.className = cls;
+      btn.disabled = disabled;
+      btn.setAttribute('aria-label', label);
+    }, 80);
   }
 
   function renderLaps(scrollToTop) {
@@ -152,9 +161,9 @@ const UI = (() => {
     // Current (in-progress) lap at top
     if (status === 'running') {
       const currentLapMs = Stopwatch.getCurrentLapMs();
-      html += `<div class="lap-row">
+      html += `<div class="lap-row" id="current-lap">
         <span class="lap-label">Lap ${laps.length + 1}</span>
-        <span class="lap-time">${formatTime(currentLapMs)}</span>
+        <span class="lap-time" id="current-lap-time">${formatTime(currentLapMs)}</span>
       </div>`;
     }
 
@@ -165,7 +174,8 @@ const UI = (() => {
       if (i === bestIdx) cls = 'lap-best';
       else if (i === worstIdx) cls = 'lap-worst';
 
-      html += `<div class="lap-row ${cls}">
+      const animCls = scrollToTop && i === laps.length - 1 ? ' lap-entering' : '';
+      html += `<div class="lap-row ${cls}${animCls}">
         <span class="lap-label">Lap ${i + 1}</span>
         <span class="lap-time">${formatTime(lap.lapMs)}</span>
       </div>`;
@@ -174,6 +184,29 @@ const UI = (() => {
     lapList.innerHTML = html;
     if (scrollToTop) {
       lapList.scrollTop = 0;
+    }
+    renderLapStats();
+  }
+
+  function renderLapStats() {
+    const statsEl = document.getElementById('lap-stats');
+    const laps = Stopwatch.getLaps();
+    if (laps.length < 2) {
+      statsEl.classList.add('hidden');
+      return;
+    }
+    const times = laps.map(l => l.lapMs);
+    const best = Math.min(...times);
+    const worst = Math.max(...times);
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    statsEl.innerHTML = `<span>Avg ${formatTime(avg)}</span><span>Best ${formatTime(best)}</span><span>Worst ${formatTime(worst)}</span>`;
+    statsEl.classList.remove('hidden');
+  }
+
+  function updateCurrentLap() {
+    const el = document.getElementById('current-lap-time');
+    if (el) {
+      el.textContent = formatTime(Stopwatch.getCurrentLapMs());
     }
   }
 
@@ -190,7 +223,7 @@ const UI = (() => {
     function tick() {
       if (Stopwatch.getStatus() === 'running') {
         updateDisplay(Stopwatch.getElapsedMs());
-        renderLaps();
+        updateCurrentLap();
         rafId = requestAnimationFrame(tick);
       } else {
         rafId = null;
@@ -204,6 +237,35 @@ const UI = (() => {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+  }
+
+  function showUndoToast() {
+    hideUndoToast();
+    const toast = document.createElement('div');
+    toast.id = 'undo-toast';
+    toast.className = 'undo-toast';
+    toast.innerHTML = 'Timer reset <button id="undo-btn" class="undo-btn">Undo</button>';
+    document.getElementById('app').appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('undo-visible'));
+
+    document.getElementById('undo-btn').addEventListener('click', () => {
+      if (lastResetState) {
+        Stopwatch.loadState(lastResetState);
+        lastResetState = null;
+        Persistence.save();
+        syncUI();
+      }
+      hideUndoToast();
+    });
+
+    undoTimeout = setTimeout(hideUndoToast, 5000);
+  }
+
+  function hideUndoToast() {
+    clearTimeout(undoTimeout);
+    const toast = document.getElementById('undo-toast');
+    if (toast) toast.remove();
+    lastResetState = null;
   }
 
   return { init, updateDisplay, syncUI };
