@@ -61,6 +61,10 @@ function initPomodoroUI() {
   document.getElementById('btn-left').addEventListener('click', onPomodoroLeft);
   document.getElementById('btn-right').addEventListener('click', onPomodoroRight);
 
+  // Init checklist
+  renderChecklist();
+  initChecklistInput();
+
   // Restore render loop if needed
   if (Pomodoro.getStatus() === 'running' && appMode === 'pomodoro') {
     startPomodoroRenderLoop();
@@ -85,6 +89,8 @@ function onPomodoroLeft() {
     }
     Pomodoro.reset();
     savePomodoroState();
+    clearChecklist();
+    renderChecklist();
     SFX.playReset();
     updatePomodoroUI();
   } else if (status === 'phaseComplete') {
@@ -131,6 +137,8 @@ function onPomodoroRight() {
   } else if (status === 'done') {
     Pomodoro.reset();
     savePomodoroState();
+    clearChecklist();
+    renderChecklist();
     updatePomodoroUI();
   }
 }
@@ -295,4 +303,86 @@ function stopPomodoroRenderLoop() {
 
 function savePomodoroState() {
   localStorage.setItem('pomodoro_state', JSON.stringify(Pomodoro.getState()));
+}
+
+// ── Pomodoro Checklist ──
+const CHECKLIST_KEY = 'pomodoro_checklist';
+
+function loadChecklist() {
+  try {
+    return JSON.parse(localStorage.getItem(CHECKLIST_KEY)) || [];
+  } catch (e) { return []; }
+}
+
+function saveChecklist(items) {
+  localStorage.setItem(CHECKLIST_KEY, JSON.stringify(items));
+}
+
+function clearChecklist() {
+  localStorage.removeItem(CHECKLIST_KEY);
+}
+
+function renderChecklist() {
+  const container = document.getElementById('pomo-checklist-items');
+  if (!container) return;
+  const items = loadChecklist();
+
+  if (items.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = items.map((item, i) =>
+    `<div class="pomo-checklist-item ${item.done ? 'pomo-checklist-item-done' : ''}" data-idx="${i}">
+      <input type="checkbox" ${item.done ? 'checked' : ''} data-check-idx="${i}">
+      <span class="pomo-checklist-item-text">${escapeChecklistHtml(item.text)}</span>
+      <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
+    </div>`
+  ).join('');
+
+  container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const idx = parseInt(cb.dataset.checkIdx, 10);
+      const items = loadChecklist();
+      if (items[idx]) {
+        items[idx].done = cb.checked;
+        saveChecklist(items);
+        renderChecklist();
+      }
+    });
+  });
+
+  container.querySelectorAll('.pomo-checklist-item-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.delIdx, 10);
+      const items = loadChecklist();
+      items.splice(idx, 1);
+      saveChecklist(items);
+      renderChecklist();
+    });
+  });
+}
+
+function initChecklistInput() {
+  const input = document.getElementById('pomo-checklist-input');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const items = loadChecklist();
+      items.push({ text, done: false });
+      saveChecklist(items);
+      input.value = '';
+      renderChecklist();
+    }
+  });
+}
+
+function escapeChecklistHtml(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
 }

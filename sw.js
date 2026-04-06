@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v12';
+const CACHE_NAME = 'stopwatch-v13';
 const ASSETS = [
   './',
   './index.html',
