@@ -1,10 +1,11 @@
-const Stopwatch = (() => {
+function createStopwatch(id) {
   let status = 'idle'; // 'idle' | 'running' | 'paused'
   let offsetMs = 0;
   let startedAt = null;
   let accumulatedMs = 0;
   let laps = [];
   let lapStartMs = 0;
+  let name = 'Stopwatch';
 
   function getElapsedMs() {
     let elapsed = offsetMs + accumulatedMs;
@@ -62,8 +63,14 @@ const Stopwatch = (() => {
     return getElapsedMs() - lapStartMs;
   }
 
+  function getId() { return id; }
+  function getName() { return name; }
+  function setName(n) { name = n || 'Stopwatch'; }
+
   function getState() {
     return {
+      id,
+      name,
       status,
       offsetMs,
       startedAt,
@@ -75,6 +82,7 @@ const Stopwatch = (() => {
 
   function loadState(state) {
     if (!state) return;
+    name = state.name || 'Stopwatch';
     status = state.status || 'idle';
     offsetMs = state.offsetMs || 0;
     startedAt = state.startedAt || null;
@@ -84,7 +92,7 @@ const Stopwatch = (() => {
 
     // Guard against clock skew
     if (status === 'running' && startedAt && startedAt > Date.now()) {
-      accumulatedMs += 0; // keep what we had
+      accumulatedMs += 0;
       startedAt = null;
       status = 'paused';
     }
@@ -100,7 +108,13 @@ const Stopwatch = (() => {
     getStatus,
     getLaps,
     getCurrentLapMs,
+    getId,
+    getName,
+    setName,
     getState,
     loadState,
   };
-})();
+}
+
+// Default instance — backward compatible global
+let Stopwatch = createStopwatch('sw-default');

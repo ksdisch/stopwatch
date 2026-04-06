@@ -15,13 +15,19 @@ const UI = (() => {
     btnRight.addEventListener('click', onRightClick);
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && Stopwatch.getStatus() === 'running') {
-        startRenderLoop();
+      if (document.visibilityState === 'visible') {
+        if ((typeof appMode === 'undefined' || appMode === 'stopwatch') && Stopwatch.getStatus() === 'running') {
+          startRenderLoop();
+        }
+        if (typeof appMode !== 'undefined' && appMode === 'pomodoro' && typeof Pomodoro !== 'undefined' && Pomodoro.getStatus() === 'running' && typeof startPomodoroRenderLoop === 'function') {
+          startPomodoroRenderLoop();
+        }
       }
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
+      if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
       switch (e.code) {
         case 'Space':
           e.preventDefault();
@@ -47,6 +53,7 @@ const UI = (() => {
   }
 
   function onLeftClick() {
+    if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
     const status = Stopwatch.getStatus();
     if (status === 'running') {
       Stopwatch.lap();
@@ -66,6 +73,7 @@ const UI = (() => {
   }
 
   function onRightClick() {
+    if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
     const status = Stopwatch.getStatus();
     if (status === 'running') {
       Stopwatch.pause();
@@ -225,6 +233,10 @@ const UI = (() => {
   function startRenderLoop() {
     if (rafId !== null) return;
     function tick() {
+      if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') {
+        rafId = null;
+        return;
+      }
       if (Stopwatch.getStatus() === 'running') {
         updateDisplay(Stopwatch.getElapsedMs());
         updateCurrentLap();
@@ -272,5 +284,5 @@ const UI = (() => {
     lastResetState = null;
   }
 
-  return { init, updateDisplay, syncUI };
+  return { init, updateDisplay, syncUI, stopRenderLoop };
 })();

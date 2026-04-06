@@ -1,9 +1,10 @@
-const Timer = (() => {
+function createTimer(id) {
   let status = 'idle'; // 'idle' | 'running' | 'paused' | 'finished'
   let durationMs = 0;
   let startedAt = null;
   let accumulatedMs = 0;
   let alarmCallback = null;
+  let name = 'Timer';
 
   function setDuration(ms) {
     if (status !== 'idle') return;
@@ -69,13 +70,17 @@ const Timer = (() => {
 
   function getStatus() { return status; }
   function getDurationMs() { return durationMs; }
+  function getId() { return id; }
+  function getName() { return name; }
+  function setName(n) { name = n || 'Timer'; }
 
   function getState() {
-    return { status, durationMs, startedAt, accumulatedMs };
+    return { id, name, status, durationMs, startedAt, accumulatedMs };
   }
 
   function loadState(state) {
     if (!state) return;
+    name = state.name || 'Timer';
     status = state.status || 'idle';
     durationMs = state.durationMs || 0;
     startedAt = state.startedAt || null;
@@ -96,6 +101,10 @@ const Timer = (() => {
   return {
     setDuration, start, pause, reset, checkFinished,
     getRemainingMs, getElapsedMs, getProgress,
-    getStatus, getDurationMs, getState, loadState, onAlarm,
+    getStatus, getDurationMs, getId, getName, setName,
+    getState, loadState, onAlarm,
   };
-})();
+}
+
+// Default instance — backward compatible global
+let Timer = createTimer('tm-default');

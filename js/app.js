@@ -3,16 +3,20 @@ let appMode = localStorage.getItem('app_mode') || 'stopwatch';
 
 // ── Restore persisted state ──
 Persistence.load();
-const timerState = JSON.parse(localStorage.getItem('timer_state') || 'null');
-if (timerState) Timer.loadState(timerState);
+const pomodoroState = JSON.parse(localStorage.getItem('pomodoro_state') || 'null');
+if (pomodoroState) Pomodoro.loadState(pomodoroState);
+const pomodoroConfig = JSON.parse(localStorage.getItem('pomodoro_config') || 'null');
+if (pomodoroConfig) Pomodoro.configure(pomodoroConfig);
 
 // ── Initialize modules ──
 Themes.init();
 OffsetInput.init();
 Analog.init();
 UI.init();
+CardsUI.init();
 initAppMode();
 initTimerUI();
+initPomodoroUI();
 initSoundToggle();
 initThemePicker();
 initHistoryPanel();
@@ -70,6 +74,10 @@ function initAppMode() {
 }
 
 function switchAppMode(mode) {
+  // Stop all render loops before switching
+  UI.stopRenderLoop();
+  stopTimerRenderLoop();
+  stopPomodoroRenderLoop();
   appMode = mode;
   localStorage.setItem('app_mode', mode);
   applyAppMode();
@@ -80,18 +88,30 @@ function applyAppMode() {
   tabs.forEach(t => t.classList.toggle('mode-tab-active', t.dataset.appMode === appMode));
 
   const isTimer = appMode === 'timer';
+  const isPomodoro = appMode === 'pomodoro';
+  const isStopwatch = appMode === 'stopwatch';
 
-  document.getElementById('offset-area').classList.toggle('hidden', isTimer);
+  document.getElementById('offset-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer);
-  document.getElementById('timer-progress').classList.toggle('hidden', !isTimer || Timer.getStatus() === 'idle');
-  document.querySelector('.mode-toggle').classList.toggle('hidden', isTimer);
+  document.getElementById('pomodoro-area').classList.toggle('hidden', !isPomodoro);
+  document.getElementById('timer-progress').classList.toggle('hidden',
+    isStopwatch || (isTimer && Timer.getStatus() === 'idle') || (isPomodoro && Pomodoro.getStatus() === 'idle'));
+  document.querySelector('.mode-toggle').classList.toggle('hidden', !isStopwatch);
+  document.getElementById('export-area').classList.toggle('hidden', !isStopwatch);
+  document.getElementById('lap-stats').classList.toggle('hidden', !isStopwatch);
+  document.getElementById('lap-section').classList.toggle('hidden', !isStopwatch);
 
-  // Update button labels for timer mode
+  document.getElementById('instance-cards').classList.toggle('hidden', isPomodoro);
+
   if (isTimer) {
     updateTimerUI();
+  } else if (isPomodoro) {
+    updatePomodoroUI();
   } else {
     UI.syncUI();
   }
+
+  CardsUI.render();
 }
 
 // ── Timer UI ──
@@ -129,19 +149,7 @@ function initTimerUI() {
     setToggle.classList.remove('hidden');
   });
 
-  // Timer alarm callback
-  Timer.onAlarm(() => {
-    SFX.playAlarm();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    // Try notification
-    if (Notification.permission === 'granted') {
-      new Notification('Timer Complete', { body: 'Your countdown has finished!' });
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-    saveTimerState();
-    updateTimerUI();
-  });
+  initTimerAlarm();
 
   // Wire buttons for timer mode
   document.getElementById('btn-left').addEventListener('click', onTimerLeft);
@@ -291,7 +299,309 @@ function stopTimerRenderLoop() {
 }
 
 function saveTimerState() {
-  localStorage.setItem('timer_state', JSON.stringify(Timer.getState()));
+  Persistence.save();
+}
+
+function initTimerAlarm() {
+  Timer.onAlarm(() => {
+    SFX.playAlarm();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    if (Notification.permission === 'granted') {
+      new Notification('Timer Complete', { body: 'Your countdown has finished!' });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+    saveTimerState();
+    updateTimerUI();
+  });
+}
+
+// ── Pomodoro UI ──
+let pomodoroRafId = null;
+
+function initPomodoroUI() {
+  const settingsToggle = document.getElementById('pomodoro-settings-toggle');
+  const settingsPanel = document.getElementById('pomodoro-settings');
+  const saveBtn = document.getElementById('pomo-settings-save');
+  const cancelBtn = document.getElementById('pomo-settings-cancel');
+
+  settingsToggle.addEventListener('click', () => {
+    // Populate inputs with current config
+    const cfg = Pomodoro.getConfig();
+    document.getElementById('pomo-work-min').value = cfg.workMs / 60000;
+    document.getElementById('pomo-short-min').value = cfg.shortBreakMs / 60000;
+    document.getElementById('pomo-long-min').value = cfg.longBreakMs / 60000;
+    document.getElementById('pomo-cycles').value = cfg.totalCycles;
+    settingsPanel.classList.remove('hidden');
+    settingsToggle.classList.add('hidden');
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    settingsPanel.classList.add('hidden');
+    settingsToggle.classList.remove('hidden');
+  });
+
+  saveBtn.addEventListener('click', () => {
+    const workMin = Math.max(1, Math.min(99, parseInt(document.getElementById('pomo-work-min').value, 10) || 25));
+    const shortMin = Math.max(1, Math.min(30, parseInt(document.getElementById('pomo-short-min').value, 10) || 5));
+    const longMin = Math.max(1, Math.min(60, parseInt(document.getElementById('pomo-long-min').value, 10) || 15));
+    const cycles = Math.max(1, Math.min(10, parseInt(document.getElementById('pomo-cycles').value, 10) || 4));
+
+    const config = {
+      workMs: workMin * 60000,
+      shortBreakMs: shortMin * 60000,
+      longBreakMs: longMin * 60000,
+      totalCycles: cycles,
+    };
+    Pomodoro.configure(config);
+    localStorage.setItem('pomodoro_config', JSON.stringify(config));
+    savePomodoroState();
+    updatePomodoroUI();
+    settingsPanel.classList.add('hidden');
+    settingsToggle.classList.remove('hidden');
+  });
+
+  // Phase complete callback
+  Pomodoro.onPhaseComplete((completedPhase) => {
+    SFX.playAlarm();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    if (Notification.permission === 'granted') {
+      const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
+      new Notification('Pomodoro', { body: label });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+    savePomodoroState();
+    updatePomodoroUI();
+  });
+
+  // Wire buttons
+  document.getElementById('btn-left').addEventListener('click', onPomodoroLeft);
+  document.getElementById('btn-right').addEventListener('click', onPomodoroRight);
+
+  // Restore render loop if needed
+  if (Pomodoro.getStatus() === 'running' && appMode === 'pomodoro') {
+    startPomodoroRenderLoop();
+  }
+  if ((Pomodoro.getStatus() === 'phaseComplete' || Pomodoro.getStatus() === 'done') && appMode === 'pomodoro') {
+    updatePomodoroUI();
+  }
+}
+
+function onPomodoroLeft() {
+  if (appMode !== 'pomodoro') return;
+  const status = Pomodoro.getStatus();
+  if (status === 'paused') {
+    // Save session before reset
+    const elapsed = Pomodoro.getElapsedMs();
+    if (elapsed > 1000) {
+      History.addSession({ type: 'pomodoro', duration: elapsed, laps: [] });
+    }
+    Pomodoro.reset();
+    savePomodoroState();
+    SFX.playReset();
+    updatePomodoroUI();
+  } else if (status === 'phaseComplete') {
+    // Skip — advance to next phase
+    Pomodoro.nextPhase();
+    savePomodoroState();
+    updatePomodoroUI();
+  }
+}
+
+function onPomodoroRight() {
+  if (appMode !== 'pomodoro') return;
+  const status = Pomodoro.getStatus();
+  if (status === 'running') {
+    Pomodoro.pause();
+    savePomodoroState();
+    stopPomodoroRenderLoop();
+    SFX.playStop();
+    updatePomodoroUI();
+  } else if (status === 'idle' || status === 'paused') {
+    Pomodoro.start();
+    savePomodoroState();
+    SFX.playStart();
+    startPomodoroRenderLoop();
+    updatePomodoroUI();
+  } else if (status === 'phaseComplete') {
+    // Start next phase
+    Pomodoro.nextPhase();
+    if (Pomodoro.getStatus() === 'done') {
+      savePomodoroState();
+      updatePomodoroUI();
+      return;
+    }
+    Pomodoro.start();
+    savePomodoroState();
+    SFX.playStart();
+    startPomodoroRenderLoop();
+    updatePomodoroUI();
+  } else if (status === 'done') {
+    Pomodoro.reset();
+    savePomodoroState();
+    updatePomodoroUI();
+  }
+}
+
+function updatePomodoroUI() {
+  if (appMode !== 'pomodoro') return;
+
+  const status = Pomodoro.getStatus();
+  const phase = Pomodoro.getPhase();
+  const remaining = Pomodoro.getRemainingMs();
+  const timeEl = document.getElementById('time');
+  const btnLeft = document.getElementById('btn-left');
+  const btnRight = document.getElementById('btn-right');
+  const timerDisplay = document.getElementById('timer-display');
+  const appEl = document.getElementById('app');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const phaseLabel = document.getElementById('pomodoro-phase');
+  const cycleLabel = document.getElementById('pomodoro-cycle');
+  const settingsToggle = document.getElementById('pomodoro-settings-toggle');
+
+  // Phase label
+  const cycleIdx = Pomodoro.getCycleIndex();
+  const totalCycles = Pomodoro.getTotalCycles();
+  if (phase === 'work') {
+    const displayCycle = Math.min(cycleIdx + 1, totalCycles);
+    phaseLabel.textContent = 'Work';
+    cycleLabel.textContent = `${displayCycle}/${totalCycles}`;
+  } else if (phase === 'shortBreak') {
+    phaseLabel.textContent = 'Short Break';
+    cycleLabel.textContent = `${cycleIdx}/${totalCycles}`;
+  } else {
+    phaseLabel.textContent = 'Long Break';
+    cycleLabel.textContent = '';
+  }
+
+  // Cycle dots
+  renderPomodoroDots();
+
+  // Format remaining time
+  const t = Utils.formatMs(remaining);
+  if (t.hours > 0) {
+    timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  // Progress bar
+  if (status !== 'idle' && status !== 'done') {
+    progressBar.classList.remove('hidden');
+    progressFill.style.width = `${Pomodoro.getProgress() * 100}%`;
+  } else {
+    progressBar.classList.add('hidden');
+  }
+
+  // Break color + phase complete flash
+  timerDisplay.classList.toggle('pomodoro-break', phase !== 'work' && status === 'running');
+  timerDisplay.classList.toggle('pomodoro-phase-complete', status === 'phaseComplete');
+  timerDisplay.classList.remove('timer-finished');
+
+  // Running indicator
+  timerDisplay.classList.toggle('is-running', status === 'running');
+  appEl.classList.toggle('is-running', status === 'running');
+
+  // Settings visibility
+  settingsToggle.classList.toggle('hidden', status !== 'idle');
+
+  // Buttons
+  switch (status) {
+    case 'idle':
+      btnLeft.innerHTML = '<span class="btn-inner">--</span>';
+      btnLeft.className = 'control-btn btn-lap';
+      btnLeft.disabled = true;
+      btnRight.innerHTML = '<span class="btn-inner">Start</span>';
+      btnRight.className = 'control-btn btn-start';
+      break;
+    case 'running':
+      btnLeft.innerHTML = '<span class="btn-inner">--</span>';
+      btnLeft.className = 'control-btn btn-lap';
+      btnLeft.disabled = true;
+      btnRight.innerHTML = '<span class="btn-inner">Pause</span>';
+      btnRight.className = 'control-btn btn-stop';
+      break;
+    case 'paused':
+      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
+      btnLeft.className = 'control-btn btn-reset';
+      btnLeft.disabled = false;
+      btnRight.innerHTML = '<span class="btn-inner">Resume</span>';
+      btnRight.className = 'control-btn btn-start';
+      break;
+    case 'phaseComplete':
+      if (phase === 'work') {
+        btnLeft.innerHTML = '<span class="btn-inner">Skip</span>';
+        btnLeft.className = 'control-btn btn-reset';
+        btnLeft.disabled = false;
+        btnRight.innerHTML = '<span class="btn-inner">Break</span>';
+        btnRight.className = 'control-btn btn-start';
+      } else {
+        btnLeft.innerHTML = '<span class="btn-inner">Skip</span>';
+        btnLeft.className = 'control-btn btn-reset';
+        btnLeft.disabled = false;
+        btnRight.innerHTML = '<span class="btn-inner">Work</span>';
+        btnRight.className = 'control-btn btn-start';
+      }
+      break;
+    case 'done':
+      btnLeft.innerHTML = '<span class="btn-inner">--</span>';
+      btnLeft.className = 'control-btn btn-lap';
+      btnLeft.disabled = true;
+      btnRight.innerHTML = '<span class="btn-inner">Reset</span>';
+      btnRight.className = 'control-btn btn-start';
+      break;
+  }
+}
+
+function renderPomodoroDots() {
+  const dotsEl = document.getElementById('pomodoro-dots');
+  const total = Pomodoro.getTotalCycles();
+  const cycleIdx = Pomodoro.getCycleIndex();
+  const phase = Pomodoro.getPhase();
+  const status = Pomodoro.getStatus();
+
+  let html = '';
+  for (let i = 0; i < total; i++) {
+    let cls = 'pomodoro-dot';
+    if (i < cycleIdx) {
+      cls += ' pomodoro-dot-done';
+    } else if (i === cycleIdx && phase === 'work' && status !== 'idle' && status !== 'done') {
+      cls += ' pomodoro-dot-active';
+    }
+    html += `<div class="${cls}"></div>`;
+  }
+  dotsEl.innerHTML = html;
+}
+
+function startPomodoroRenderLoop() {
+  if (pomodoroRafId !== null) return;
+  function tick() {
+    if (Pomodoro.getStatus() === 'running') {
+      Pomodoro.checkFinished();
+      updatePomodoroUI();
+      if (Pomodoro.getStatus() === 'running') {
+        pomodoroRafId = requestAnimationFrame(tick);
+      } else {
+        pomodoroRafId = null;
+      }
+    } else {
+      pomodoroRafId = null;
+    }
+  }
+  pomodoroRafId = requestAnimationFrame(tick);
+}
+
+function stopPomodoroRenderLoop() {
+  if (pomodoroRafId !== null) {
+    cancelAnimationFrame(pomodoroRafId);
+    pomodoroRafId = null;
+  }
+}
+
+function savePomodoroState() {
+  localStorage.setItem('pomodoro_state', JSON.stringify(Pomodoro.getState()));
 }
 
 // ── Sound Toggle ──
@@ -350,15 +660,49 @@ function initHistoryPanel() {
     if (!panel.classList.contains('hidden')) renderHistory();
   });
 
-  closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+  closeBtn.addEventListener('click', () => {
+    panel.classList.add('hidden');
+    activeTagFilter = null;
+  });
 }
+
+let activeTagFilter = null;
 
 function renderHistory() {
   const list = document.getElementById('history-list');
-  const sessions = History.getSessions().reverse();
+  const filterEl = document.getElementById('history-filter');
+  let sessions = History.getSessions().reverse();
+
+  // Render filter bar
+  const allTags = History.getAllTags();
+  if (allTags.length > 0) {
+    filterEl.innerHTML = `<button class="filter-chip ${activeTagFilter === null ? 'filter-chip-active' : ''}" data-filter-tag="">All</button>` +
+      allTags.map(tag =>
+        `<button class="filter-chip ${activeTagFilter === tag ? 'filter-chip-active' : ''}" data-filter-tag="${escapeHistoryHtml(tag)}">${escapeHistoryHtml(tag)}</button>`
+      ).join('');
+
+    filterEl.querySelectorAll('.filter-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tag = btn.dataset.filterTag;
+        activeTagFilter = tag || null;
+        renderHistory();
+      });
+    });
+  } else {
+    filterEl.innerHTML = '';
+  }
+
+  // Apply filter
+  if (activeTagFilter) {
+    sessions = sessions.filter(s =>
+      Array.isArray(s.tags) && s.tags.includes(activeTagFilter)
+    );
+  }
 
   if (sessions.length === 0) {
-    list.innerHTML = '<div class="history-empty">No sessions yet</div>';
+    list.innerHTML = activeTagFilter
+      ? '<div class="history-empty">No sessions with this tag</div>'
+      : '<div class="history-empty">No sessions yet</div>';
     return;
   }
 
@@ -367,9 +711,16 @@ function renderHistory() {
     const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const t = Utils.formatMs(s.duration);
     const dur = t.hours > 0 ? `${t.hours}:${t.minStr}:${t.secStr}` : `${t.minStr}:${t.secStr}`;
-    const type = s.type === 'timer' ? 'Timer' : 'Stopwatch';
+    const type = s.type === 'pomodoro' ? 'Pomodoro' : s.type === 'timer' ? 'Timer' : 'Stopwatch';
     const laps = s.laps.length > 0 ? `${s.laps.length} laps` : '';
     const note = s.note ? `<div class="history-note">${s.note}</div>` : '';
+
+    const tags = Array.isArray(s.tags) ? s.tags : [];
+    const tagsHtml = `<div class="history-tags">` +
+      tags.map(tag =>
+        `<span class="tag-chip">${escapeHistoryHtml(tag)}<button class="tag-chip-delete" data-session-id="${s.id}" data-tag="${escapeHistoryHtml(tag)}">&times;</button></span>`
+      ).join('') +
+      `<button class="tag-add-btn" data-session-id="${s.id}">+ tag</button></div>`;
 
     return `<div class="history-row" data-id="${s.id}">
       <div class="history-row-top">
@@ -381,8 +732,52 @@ function renderHistory() {
         <span class="history-laps">${laps}</span>
         ${note}
       </div>
+      ${tagsHtml}
     </div>`;
   }).join('');
+
+  // Attach tag handlers
+  list.querySelectorAll('.tag-chip-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      History.removeTag(Number(btn.dataset.sessionId), btn.dataset.tag);
+      renderHistory();
+    });
+  });
+
+  list.querySelectorAll('.tag-add-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sessionId = Number(btn.dataset.sessionId);
+      // Replace button with input
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'tag-input';
+      input.placeholder = 'tag name';
+      input.maxLength = 20;
+      btn.replaceWith(input);
+      input.focus();
+
+      function commitTag() {
+        const tag = input.value.trim().toLowerCase();
+        if (tag) {
+          History.addTag(sessionId, tag);
+        }
+        renderHistory();
+      }
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitTag(); }
+        else if (e.key === 'Escape') { e.preventDefault(); renderHistory(); }
+      });
+      input.addEventListener('blur', commitTag);
+    });
+  });
+}
+
+function escapeHistoryHtml(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
 }
 
 // ── Export Button ──
@@ -428,25 +823,30 @@ document.getElementById('btn-left').addEventListener('click', () => {
   // This is handled by checking after the fact
 });
 
-// Save stopwatch sessions on reset - patch via MutationObserver on status
-let lastKnownStatus = Stopwatch.getStatus();
-let lastKnownElapsed = 0;
-let lastKnownLaps = [];
+// Save stopwatch sessions on reset — track per-instance status
+const lastKnownStates = new Map();
 
 setInterval(() => {
-  const status = Stopwatch.getStatus();
-  if (status !== 'idle') {
-    lastKnownElapsed = Stopwatch.getElapsedMs();
-    lastKnownLaps = Stopwatch.getLaps();
-  }
-  if (lastKnownStatus !== 'idle' && status === 'idle' && lastKnownElapsed > 1000) {
-    History.addSession({
-      type: 'stopwatch',
-      duration: lastKnownElapsed,
-      laps: lastKnownLaps,
-    });
-    lastKnownElapsed = 0;
-    lastKnownLaps = [];
-  }
-  lastKnownStatus = status;
+  // Track all stopwatch instances
+  InstanceManager.getStopwatches().forEach(sw => {
+    const id = sw.getId();
+    const status = sw.getStatus();
+    const prev = lastKnownStates.get(id) || { status: 'idle', elapsed: 0, laps: [] };
+
+    if (status !== 'idle') {
+      prev.elapsed = sw.getElapsedMs();
+      prev.laps = sw.getLaps();
+    }
+    if (prev.status !== 'idle' && status === 'idle' && prev.elapsed > 1000) {
+      History.addSession({
+        type: 'stopwatch',
+        duration: prev.elapsed,
+        laps: prev.laps,
+      });
+      prev.elapsed = 0;
+      prev.laps = [];
+    }
+    prev.status = status;
+    lastKnownStates.set(id, prev);
+  });
 }, 500);

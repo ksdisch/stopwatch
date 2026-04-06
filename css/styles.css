@@ -305,7 +305,7 @@ html, body {
   align-items: center;
   gap: 12px;
   overflow: hidden;
-  max-height: 200px;
+  max-height: 500px;
   opacity: 1;
   transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
 }
@@ -373,6 +373,90 @@ html, body {
 }
 
 .offset-btn:active {
+  opacity: 0.6;
+}
+
+/* Presets */
+.preset-list {
+  width: 100%;
+  max-width: 280px;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.preset-row:active {
+  background: var(--btn-bg);
+}
+
+.preset-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-duration {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.preset-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.preset-delete:hover,
+.preset-delete:active {
+  opacity: 1;
+  color: var(--red);
+}
+
+.preset-name-input {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.preset-name-input input[type="text"] {
+  width: 200px;
+  height: 40px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.95rem;
+  text-align: center;
+  padding: 0 12px;
+  font-family: inherit;
+}
+
+.preset-name-input input[type="text"]::placeholder {
+  color: var(--text-secondary);
   opacity: 0.6;
 }
 
@@ -472,6 +556,124 @@ html, body {
   border-color: var(--btn-border);
   background: var(--btn-bg);
   color: var(--text);
+}
+
+/* Instance Cards */
+.instance-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.instance-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.instance-card:active {
+  transform: scale(0.98);
+}
+
+.card-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-running {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(48, 209, 88, 0.5);
+}
+
+.status-paused {
+  background: #ff9f0a;
+}
+
+.status-finished {
+  background: var(--red);
+}
+
+.status-idle {
+  background: var(--btn-border);
+}
+
+.card-name {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  outline: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+  transition: background 0.15s;
+}
+
+.card-name:focus {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.card-time {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.card-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-delete:hover,
+.card-delete:active {
+  opacity: 1;
+  color: var(--red);
+}
+
+.instance-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: none;
+  border: 1px dashed var(--btn-border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.instance-add-btn:active {
+  border-color: var(--green);
+  color: var(--green);
 }
 
 /* Lap Stats */
@@ -605,6 +807,107 @@ html, body {
   to { color: var(--red); }
 }
 
+/* Pomodoro Area */
+.pomodoro-area {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pomodoro-phase-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pomodoro-cycle {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.pomodoro-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.pomodoro-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--btn-border);
+  transition: background 0.2s;
+}
+
+.pomodoro-dot-done {
+  background: var(--green);
+}
+
+.pomodoro-dot-active {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(48, 209, 88, 0.5);
+}
+
+.pomodoro-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.pomodoro-setting-row label {
+  width: 80px;
+  text-align: right;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.pomodoro-setting-row input {
+  width: 52px;
+  height: 40px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1.1rem;
+  text-align: center;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+}
+
+.pomodoro-setting-row input::-webkit-inner-spin-button,
+.pomodoro-setting-row input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.pomodoro-setting-row span {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  width: 24px;
+}
+
+#pomodoro-settings {
+  max-height: 350px;
+}
+
+#timer-display.pomodoro-break #time {
+  color: var(--green);
+}
+
+#timer-display.pomodoro-phase-complete #time {
+  animation: flash-red 0.5s ease-in-out 6 alternate;
+}
+
 /* Export Area */
 .export-area {
   text-align: center;
@@ -690,6 +993,107 @@ html, body {
   font-size: 0.8rem;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+/* History Filter Bar */
+.history-filter {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+}
+
+.history-filter:empty {
+  display: none;
+}
+
+.filter-chip {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.filter-chip-active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* History Tags */
+.history-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.tag-chip-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tag-chip-delete:active {
+  opacity: 1;
+  color: var(--red);
+}
+
+.tag-add-btn {
+  background: none;
+  border: 1px dashed var(--btn-border);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tag-add-btn:active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.tag-input {
+  width: 80px;
+  height: 22px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.7rem;
+  padding: 0 8px;
+  font-family: inherit;
+  outline: none;
+}
+
+.tag-input:focus {
+  border-color: var(--green);
 }
 
 .history-empty {

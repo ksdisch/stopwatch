@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v4';
+const CACHE_NAME = 'stopwatch-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,8 @@ const ASSETS = [
   './js/utils.js',
   './js/stopwatch.js',
   './js/timer.js',
+  './js/instance-manager.js',
+  './js/pomodoro.js',
   './js/persistence.js',
   './js/audio.js',
   './js/themes.js',
@@ -14,6 +16,7 @@ const ASSETS = [
   './js/analog.js',
   './js/offset-input.js',
   './js/ui.js',
+  './js/cards-ui.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',
