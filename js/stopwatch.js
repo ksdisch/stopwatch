@@ -47,6 +47,17 @@ function createStopwatch(id) {
     lapStartMs = currentElapsed;
   }
 
+  function deleteLap(index) {
+    if (index < 0 || index >= laps.length) return;
+    laps.splice(index, 1);
+    // Recalculate lapStartMs from remaining laps
+    if (laps.length === 0) {
+      lapStartMs = offsetMs;
+    } else {
+      lapStartMs = laps[laps.length - 1].totalMs;
+    }
+  }
+
   function setOffset(ms) {
     if (status !== 'idle') return;
     offsetMs = Math.max(0, ms);
@@ -135,6 +146,7 @@ function createStopwatch(id) {
     pause,
     reset,
     lap,
+    deleteLap,
     setOffset,
     getElapsedMs,
     getStatus,

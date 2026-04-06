@@ -23,7 +23,7 @@
   :root {
     --bg: #f2f2f7;
     --text: #000000;
-    --text-secondary: #8e8e93;
+    --text-secondary: #636366;
     --green: #34c759;
     --green-dark: #d4f5dc;
     --red: #ff3b30;
@@ -79,6 +79,30 @@ html, body {
 @keyframes gradient-scroll {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Top Bar */
@@ -172,6 +196,21 @@ html, body {
   padding: 60px 0 20px;
 }
 
+#timer-display.mode-fade-out {
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+#timer-display.mode-fade-in {
+  animation: mode-fade-in 0.15s ease;
+}
+
+@keyframes mode-fade-in {
+  from { opacity: 0; transform: scale(1.02); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 #timer-display.is-running #time {
   animation: pulse-glow 2s ease-in-out infinite;
 }
@@ -205,8 +244,15 @@ html, body {
 }
 
 .analog-svg {
-  width: 200px;
-  height: 200px;
+  width: 220px;
+  height: 220px;
+}
+
+@media (min-width: 500px) {
+  .analog-svg {
+    width: 280px;
+    height: 280px;
+  }
 }
 
 .analog-hand {
@@ -217,11 +263,19 @@ html, body {
 .analog-hand-second {
   stroke: var(--green);
   stroke-width: 1.5;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 .analog-hand-minute {
   stroke: var(--text);
   stroke-width: 2.5;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+}
+
+.analog-number {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
 }
 
 .analog-center {
@@ -704,12 +758,46 @@ html, body {
 }
 
 .lap-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 0.5px solid var(--separator);
+  font-size: 1rem;
+}
+
+.lap-row-inner {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 4px;
-  border-bottom: 0.5px solid var(--separator);
-  font-size: 1rem;
+  background: var(--bg);
+  position: relative;
+  z-index: 1;
+  transition: transform 0.2s ease;
+}
+
+.lap-row-swiping .lap-row-inner {
+  transition: none;
+}
+
+.lap-row-delete-bg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 20px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.lap-row-removing .lap-row-inner {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
 }
 
 .lap-label {
@@ -1059,6 +1147,47 @@ html, body {
   font-size: 0.8rem;
   color: var(--text-secondary);
   font-style: italic;
+  cursor: pointer;
+}
+
+.history-note:active {
+  opacity: 0.6;
+}
+
+.history-add-note {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  opacity: 0.5;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.history-add-note:active {
+  opacity: 1;
+  color: var(--green);
+}
+
+.note-input {
+  width: 100%;
+  max-width: 200px;
+  height: 24px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 0 8px;
+  font-family: inherit;
+  font-style: italic;
+  outline: none;
+}
+
+.note-input:focus {
+  border-color: var(--green);
 }
 
 /* History Filter Bar */
@@ -1218,6 +1347,29 @@ html, body {
 /* Utility */
 .hidden {
   display: none !important;
+}
+
+/* Desktop layout — wider container, side-by-side timer + laps */
+@media (min-width: 768px) {
+  #app {
+    max-width: 720px;
+  }
+
+  .top-bar {
+    padding: 16px 0 8px;
+  }
+
+  #timer-display {
+    padding: 40px 0 16px;
+  }
+
+  #controls {
+    padding: 16px 40px;
+  }
+
+  #lap-section {
+    max-height: 400px;
+  }
 }
 
 /* Safe area for notched devices */

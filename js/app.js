@@ -75,13 +75,23 @@ function initAppMode() {
 }
 
 function switchAppMode(mode) {
+  if (mode === appMode) return;
   // Stop all render loops before switching
   UI.stopRenderLoop();
   stopTimerRenderLoop();
   stopPomodoroRenderLoop();
-  appMode = mode;
-  localStorage.setItem('app_mode', mode);
-  applyAppMode();
+
+  // Animate transition
+  const display = document.getElementById('timer-display');
+  display.classList.add('mode-fade-out');
+  setTimeout(() => {
+    appMode = mode;
+    localStorage.setItem('app_mode', mode);
+    applyAppMode();
+    display.classList.remove('mode-fade-out');
+    display.classList.add('mode-fade-in');
+    setTimeout(() => display.classList.remove('mode-fade-in'), 150);
+  }, 100);
 }
 
 function applyAppMode() {
@@ -392,6 +402,10 @@ function initPomodoroUI() {
 
 function onPomodoroLeft() {
   if (appMode !== 'pomodoro') return;
+  if (pomodoroClickLock) return;
+  pomodoroClickLock = true;
+  setTimeout(() => { pomodoroClickLock = false; }, 100);
+
   const status = Pomodoro.getStatus();
   if (status === 'paused') {
     // Save session before reset
@@ -411,13 +425,18 @@ function onPomodoroLeft() {
   }
 }
 
+let pomodoroClickLock = false;
 function onPomodoroRight() {
   if (appMode !== 'pomodoro') return;
+  if (pomodoroClickLock) return;
+  pomodoroClickLock = true;
+  setTimeout(() => { pomodoroClickLock = false; }, 100);
+
   const status = Pomodoro.getStatus();
   if (status === 'running') {
+    stopPomodoroRenderLoop();
     Pomodoro.pause();
     savePomodoroState();
-    stopPomodoroRenderLoop();
     SFX.playStop();
     updatePomodoroUI();
   } else if (status === 'idle' || status === 'paused') {
@@ -580,6 +599,8 @@ function renderPomodoroDots() {
 function startPomodoroRenderLoop() {
   if (pomodoroRafId !== null) return;
   function tick() {
+    // Guard: if loop was stopped externally, don't continue
+    if (pomodoroRafId === null) return;
     if (Pomodoro.getStatus() === 'running') {
       Pomodoro.checkFinished();
       updatePomodoroUI();
@@ -804,7 +825,9 @@ function renderHistory() {
     const dur = t.hours > 0 ? `${t.hours}:${t.minStr}:${t.secStr}` : `${t.minStr}:${t.secStr}`;
     const type = s.type === 'pomodoro' ? 'Pomodoro' : s.type === 'timer' ? 'Timer' : 'Stopwatch';
     const laps = s.laps.length > 0 ? `${s.laps.length} laps` : '';
-    const note = s.note ? `<div class="history-note">${s.note}</div>` : '';
+    const note = s.note
+      ? `<div class="history-note" data-note-id="${s.id}">${escapeHistoryHtml(s.note)}</div>`
+      : `<button class="history-add-note" data-note-id="${s.id}">+ note</button>`;
 
     const tags = Array.isArray(s.tags) ? s.tags : [];
     const tagsHtml = `<div class="history-tags">` +
@@ -861,6 +884,34 @@ function renderHistory() {
         else if (e.key === 'Escape') { e.preventDefault(); renderHistory(); }
       });
       input.addEventListener('blur', commitTag);
+    });
+  });
+
+  // Note editing — tap existing note or "+ note" button
+  list.querySelectorAll('.history-note, .history-add-note').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sessionId = Number(el.dataset.noteId);
+      const currentNote = el.classList.contains('history-note') ? el.textContent : '';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'note-input';
+      input.value = currentNote;
+      input.placeholder = 'Add a note...';
+      input.maxLength = 100;
+      el.replaceWith(input);
+      input.focus();
+
+      function commitNote() {
+        const note = input.value.trim();
+        History.updateNote(sessionId, note);
+        renderHistory();
+      }
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitNote(); }
+        else if (e.key === 'Escape') { e.preventDefault(); renderHistory(); }
+      });
+      input.addEventListener('blur', commitNote);
     });
   });
 }

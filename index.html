@@ -36,7 +36,8 @@
     <!-- Theme picker (hidden by default) -->
     <div id="theme-picker" class="theme-picker hidden"></div>
 
-    <div id="timer-display" role="timer" aria-live="off">
+    <div id="sr-announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <div id="timer-display" role="timer" aria-label="Elapsed time">
       <span id="time">00:00<span class="centiseconds">.00</span></span>
       <div id="analog-display" class="hidden">
         <svg viewBox="0 0 200 200" class="analog-svg">
@@ -198,15 +199,15 @@
 
     <div id="lap-stats" class="lap-stats hidden"></div>
 
-    <div id="lap-section">
-      <div id="lap-list"></div>
+    <div id="lap-section" aria-label="Lap times">
+      <div id="lap-list" role="list"></div>
     </div>
 
     <!-- History panel (slide-up overlay) -->
     <div id="history-panel" class="history-panel hidden">
       <div class="history-header">
         <h3>History</h3>
-        <button id="history-close" class="icon-btn">&times;</button>
+        <button id="history-close" class="icon-btn" aria-label="Close history">&times;</button>
       </div>
       <div id="history-filter" class="history-filter"></div>
       <div id="history-list" class="history-list"></div>

@@ -25,6 +25,20 @@ const Analog = (() => {
         line.setAttribute('y2', 100 + outerR * Math.sin(rad));
         line.setAttribute('class', isMajor ? 'analog-tick-major' : 'analog-tick');
         tickGroup.appendChild(line);
+
+        // Add numbers at 5-second intervals
+        if (isMajor) {
+          const text = document.createElementNS(ns, 'text');
+          const numR = 72;
+          const numVal = i === 0 ? 60 : i;
+          text.setAttribute('x', 100 + numR * Math.cos(rad));
+          text.setAttribute('y', 100 + numR * Math.sin(rad));
+          text.setAttribute('class', 'analog-number');
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('dominant-baseline', 'central');
+          text.textContent = numVal;
+          tickGroup.appendChild(text);
+        }
       }
     }
 

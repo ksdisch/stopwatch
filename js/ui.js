@@ -52,6 +52,14 @@ const UI = (() => {
     if (navigator.vibrate) navigator.vibrate(ms);
   }
 
+  function announce(msg) {
+    const el = document.getElementById('sr-announce');
+    if (el) {
+      el.textContent = '';
+      requestAnimationFrame(() => { el.textContent = msg; });
+    }
+  }
+
   function onLeftClick() {
     if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
     const status = Stopwatch.getStatus();
@@ -60,6 +68,7 @@ const UI = (() => {
       Persistence.save();
       haptic(10);
       SFX.playLap();
+      announce('Lap ' + Stopwatch.getLaps().length + ' recorded');
       renderLaps(true);
     } else if (status === 'paused') {
       lastResetState = Stopwatch.getState();
@@ -67,6 +76,7 @@ const UI = (() => {
       Persistence.save();
       haptic(25);
       SFX.playReset();
+      announce('Stopwatch reset');
       syncUI();
       showUndoToast();
     }
@@ -80,6 +90,7 @@ const UI = (() => {
       Persistence.save();
       haptic(25);
       SFX.playStop();
+      announce('Stopwatch paused');
       stopRenderLoop();
       syncUI();
     } else {
@@ -88,6 +99,7 @@ const UI = (() => {
       Persistence.save();
       haptic(10);
       SFX.playStart();
+      announce('Stopwatch started');
       startRenderLoop();
       syncUI();
     }
@@ -174,8 +186,10 @@ const UI = (() => {
     if (status === 'running') {
       const currentLapMs = Stopwatch.getCurrentLapMs();
       html += `<div class="lap-row" id="current-lap">
-        <span class="lap-label">Lap ${laps.length + 1}</span>
-        <span class="lap-time" id="current-lap-time">${formatTime(currentLapMs)}</span>
+        <div class="lap-row-inner">
+          <span class="lap-label">Lap ${laps.length + 1}</span>
+          <span class="lap-time" id="current-lap-time">${formatTime(currentLapMs)}</span>
+        </div>
       </div>`;
     }
 
@@ -187,9 +201,12 @@ const UI = (() => {
       else if (i === worstIdx) cls = 'lap-worst';
 
       const animCls = scrollToTop && i === laps.length - 1 ? ' lap-entering' : '';
-      html += `<div class="lap-row ${cls}${animCls}">
-        <span class="lap-label">Lap ${i + 1}</span>
-        <span class="lap-time">${formatTime(lap.lapMs)}</span>
+      html += `<div class="lap-row lap-swipeable ${cls}${animCls}" data-lap-index="${i}">
+        <div class="lap-row-delete-bg">Delete</div>
+        <div class="lap-row-inner">
+          <span class="lap-label">Lap ${i + 1}</span>
+          <span class="lap-time">${formatTime(lap.lapMs)}</span>
+        </div>
       </div>`;
     }
 
@@ -198,6 +215,96 @@ const UI = (() => {
       lapList.scrollTop = 0;
     }
     renderLapStats();
+    attachSwipeHandlers();
+  }
+
+  function attachSwipeHandlers() {
+    const THRESHOLD = 80;
+    lapList.querySelectorAll('.lap-swipeable').forEach(row => {
+      const inner = row.querySelector('.lap-row-inner');
+      let startX = 0, startY = 0, currentX = 0, isSwiping = false, isScrolling = false;
+
+      row.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        currentX = 0;
+        isSwiping = false;
+        isScrolling = false;
+        row.classList.remove('lap-row-swiping');
+      }, { passive: true });
+
+      row.addEventListener('touchmove', (e) => {
+        if (isScrolling) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+
+        // Determine intent on first significant move
+        if (!isSwiping && !isScrolling) {
+          if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 5) {
+            isScrolling = true;
+            return;
+          }
+          if (Math.abs(dx) > 5) {
+            isSwiping = true;
+            row.classList.add('lap-row-swiping');
+          }
+        }
+
+        if (isSwiping) {
+          e.preventDefault();
+          currentX = Math.min(0, dx); // Only allow left swipe
+          inner.style.transform = `translateX(${currentX}px)`;
+        }
+      }, { passive: false });
+
+      row.addEventListener('touchend', () => {
+        if (!isSwiping) return;
+        row.classList.remove('lap-row-swiping');
+
+        if (Math.abs(currentX) > THRESHOLD) {
+          // Delete the lap
+          const index = parseInt(row.dataset.lapIndex, 10);
+          const stateBeforeDelete = Stopwatch.getState();
+
+          row.classList.add('lap-row-removing');
+          inner.style.transform = `translateX(-100%)`;
+
+          setTimeout(() => {
+            Stopwatch.deleteLap(index);
+            Persistence.save();
+            renderLaps();
+            showDeleteUndoToast(stateBeforeDelete);
+          }, 200);
+        } else {
+          // Snap back
+          inner.style.transform = '';
+        }
+      }, { passive: true });
+    });
+  }
+
+  function showDeleteUndoToast(savedState) {
+    hideUndoToast();
+    const toast = document.createElement('div');
+    toast.id = 'undo-toast';
+    toast.className = 'undo-toast';
+    toast.innerHTML = 'Lap deleted <button id="undo-btn" class="undo-btn">Undo</button>';
+    document.getElementById('app').appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('undo-visible'));
+
+    document.getElementById('undo-btn').addEventListener('click', () => {
+      if (savedState) {
+        Stopwatch.loadState(savedState);
+        Persistence.save();
+        renderLaps();
+        renderLapStats();
+      }
+      hideUndoToast();
+    });
+
+    undoTimeout = setTimeout(hideUndoToast, 5000);
   }
 
   function renderLapStats() {
