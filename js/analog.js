@@ -2,15 +2,20 @@ const Analog = (() => {
   let svgContainer, secondHand, minuteHand, digitalSmall;
   let mode = localStorage.getItem('display_mode') || 'digital';
 
+  let initialized = false;
+
   function init() {
+    if (initialized) return;
+    initialized = true;
+
     svgContainer = document.getElementById('analog-display');
     secondHand = document.getElementById('analog-second');
     minuteHand = document.getElementById('analog-minute');
     digitalSmall = document.getElementById('digital-small');
 
-    // Generate tick marks (guard against double-init)
+    // Generate tick marks and numbers
     const tickGroup = document.querySelector('.tick-marks');
-    if (tickGroup && tickGroup.children.length === 0) {
+    if (tickGroup) {
       const ns = 'http://www.w3.org/2000/svg';
       for (let i = 0; i < 60; i++) {
         const isMajor = i % 5 === 0;

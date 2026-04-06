@@ -63,7 +63,7 @@
 
     <div id="offset-area">
       <button id="offset-toggle" class="offset-link">Start with time already elapsed</button>
-      <div id="offset-input" class="offset-input hidden">
+      <div id="offset-input" class="offset-input" data-collapsed>
         <div id="preset-list" class="preset-list"></div>
         <div class="offset-fields">
           <div class="offset-field">
@@ -97,7 +97,7 @@
     <!-- Alert area (stopwatch only) -->
     <div id="alert-area" class="alert-area">
       <button id="alert-toggle" class="offset-link">Add alert at time</button>
-      <div id="alert-input" class="offset-input hidden">
+      <div id="alert-input" class="offset-input" data-collapsed>
         <div class="offset-fields">
           <div class="offset-field">
             <input type="number" id="alert-hours" min="0" max="99" value="0" inputmode="numeric">
@@ -128,7 +128,7 @@
       </div>
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
       <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
-      <div id="pomodoro-settings" class="offset-input hidden">
+      <div id="pomodoro-settings" class="offset-input" data-collapsed>
         <div class="pomodoro-setting-row">
           <label>Work</label>
           <input type="number" id="pomo-work-min" min="1" max="99" value="25" inputmode="numeric">
@@ -158,7 +158,7 @@
     <!-- Timer duration input (hidden when in stopwatch mode) -->
     <div id="timer-set-area" class="hidden">
       <button id="timer-set-toggle" class="offset-link">Set countdown duration</button>
-      <div id="timer-set-input" class="offset-input hidden">
+      <div id="timer-set-input" class="offset-input" data-collapsed>
         <div class="offset-fields">
           <div class="offset-field">
             <input type="number" id="timer-hours" min="0" max="99" value="0" inputmode="numeric">
@@ -228,6 +228,10 @@
   <script src="js/offset-input.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/cards-ui.js"></script>
+  <script src="js/timer-ui.js"></script>
+  <script src="js/pomodoro-ui.js"></script>
+  <script src="js/alert-ui.js"></script>
+  <script src="js/history-ui.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

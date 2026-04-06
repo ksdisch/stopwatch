@@ -95,6 +95,7 @@ Both persist to localStorage. Timer state key: `timer_state`. Stopwatch state ke
 | 9 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
 | 10 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
 | 11 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
+| 12 | **Pomodoro session checklist** | Medium | Low | Basic goal checklist visible before/during a Pomodoro session. Add/check-off items to stay on track. Persists per session. |
 
 ### Known Issues / Tech Debt
 

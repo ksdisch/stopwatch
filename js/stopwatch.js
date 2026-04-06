@@ -135,7 +135,6 @@ function createStopwatch(id) {
 
     // Guard against clock skew
     if (status === 'running' && startedAt && startedAt > Date.now()) {
-      accumulatedMs += 0;
       startedAt = null;
       status = 'paused';
     }

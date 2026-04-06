@@ -67,7 +67,7 @@ const OffsetInput = (() => {
   }
 
   function show() {
-    inputArea.classList.remove('hidden');
+    inputArea.removeAttribute('data-collapsed');
     toggleBtn.classList.add('hidden');
     renderPresetList();
     minutesEl.focus();
@@ -75,7 +75,7 @@ const OffsetInput = (() => {
   }
 
   function hide() {
-    inputArea.classList.add('hidden');
+    inputArea.setAttribute('data-collapsed', '');
     toggleBtn.classList.remove('hidden');
     hidePresetNameInput();
     hoursEl.value = 0;
