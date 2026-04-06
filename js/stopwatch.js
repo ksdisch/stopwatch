@@ -6,6 +6,7 @@ function createStopwatch(id) {
   let laps = [];
   let lapStartMs = 0;
   let name = 'Stopwatch';
+  let alerts = [];
 
   function getElapsedMs() {
     let elapsed = offsetMs + accumulatedMs;
@@ -35,6 +36,7 @@ function createStopwatch(id) {
     accumulatedMs = 0;
     laps = [];
     lapStartMs = 0;
+    alerts = [];
   }
 
   function lap() {
@@ -63,6 +65,34 @@ function createStopwatch(id) {
     return getElapsedMs() - lapStartMs;
   }
 
+  function addAlert(ms) {
+    if (ms <= 0) return;
+    if (alerts.some(a => a.ms === ms)) return;
+    alerts.push({ ms, fired: false });
+    alerts.sort((a, b) => a.ms - b.ms);
+  }
+
+  function removeAlert(ms) {
+    alerts = alerts.filter(a => a.ms !== ms);
+  }
+
+  function getAlerts() {
+    return alerts.map(a => ({ ...a }));
+  }
+
+  function checkAlerts() {
+    if (status !== 'running') return [];
+    const elapsed = getElapsedMs();
+    const fired = [];
+    alerts.forEach(a => {
+      if (!a.fired && elapsed >= a.ms) {
+        a.fired = true;
+        fired.push(a.ms);
+      }
+    });
+    return fired;
+  }
+
   function getId() { return id; }
   function getName() { return name; }
   function setName(n) { name = n || 'Stopwatch'; }
@@ -77,6 +107,7 @@ function createStopwatch(id) {
       accumulatedMs,
       laps: laps.slice(),
       lapStartMs,
+      alerts: alerts.map(a => ({ ...a })),
     };
   }
 
@@ -89,6 +120,7 @@ function createStopwatch(id) {
     accumulatedMs = state.accumulatedMs || 0;
     laps = Array.isArray(state.laps) ? state.laps.slice() : [];
     lapStartMs = state.lapStartMs || 0;
+    alerts = Array.isArray(state.alerts) ? state.alerts.map(a => ({ ...a })) : [];
 
     // Guard against clock skew
     if (status === 'running' && startedAt && startedAt > Date.now()) {
@@ -108,6 +140,10 @@ function createStopwatch(id) {
     getStatus,
     getLaps,
     getCurrentLapMs,
+    addAlert,
+    removeAlert,
+    getAlerts,
+    checkAlerts,
     getId,
     getName,
     setName,

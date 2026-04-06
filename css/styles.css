@@ -807,6 +807,72 @@ html, body {
   to { color: var(--red); }
 }
 
+/* Alert Area */
+.alert-area {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.alert-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.alert-list:empty {
+  display: none;
+}
+
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-chip-icon {
+  font-style: normal;
+  font-size: 0.75rem;
+}
+
+.alert-chip-fired {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.alert-chip-fired .alert-chip-icon {
+  color: var(--green);
+}
+
+.alert-chip-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.alert-chip-delete:active {
+  opacity: 1;
+  color: var(--red);
+}
+
 /* Pomodoro Area */
 .pomodoro-area {
   text-align: center;

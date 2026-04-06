@@ -93,6 +93,32 @@
       </div>
     </div>
 
+    <!-- Alert area (stopwatch only) -->
+    <div id="alert-area" class="alert-area">
+      <button id="alert-toggle" class="offset-link">Add alert at time</button>
+      <div id="alert-input" class="offset-input hidden">
+        <div class="offset-fields">
+          <div class="offset-field">
+            <input type="number" id="alert-hours" min="0" max="99" value="0" inputmode="numeric">
+            <label for="alert-hours">h</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="alert-minutes" min="0" max="59" value="0" inputmode="numeric">
+            <label for="alert-minutes">m</label>
+          </div>
+          <div class="offset-field">
+            <input type="number" id="alert-seconds" min="0" max="59" value="0" inputmode="numeric">
+            <label for="alert-seconds">s</label>
+          </div>
+        </div>
+        <div class="offset-buttons">
+          <button id="alert-set" class="offset-btn">Set</button>
+          <button id="alert-cancel" class="offset-btn">Cancel</button>
+        </div>
+      </div>
+      <div id="alert-list" class="alert-list"></div>
+    </div>
+
     <!-- Pomodoro info (hidden by default) -->
     <div id="pomodoro-area" class="pomodoro-area hidden">
       <div class="pomodoro-phase-label">

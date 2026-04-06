@@ -238,6 +238,23 @@ const UI = (() => {
         return;
       }
       if (Stopwatch.getStatus() === 'running') {
+        // Check alerts
+        const firedAlerts = Stopwatch.checkAlerts();
+        if (firedAlerts.length > 0) {
+          firedAlerts.forEach(ms => {
+            const t = Utils.formatMs(ms);
+            const timeStr = t.hours > 0
+              ? `${t.hours}:${t.minStr}:${t.secStr}`
+              : `${t.minStr}:${t.secStr}`;
+            SFX.playAlarm();
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              new Notification('Stopwatch Alert', { body: `${timeStr} reached` });
+            }
+          });
+          Persistence.save();
+          if (typeof renderAlerts === 'function') renderAlerts();
+        }
         updateDisplay(Stopwatch.getElapsedMs());
         updateCurrentLap();
         rafId = requestAnimationFrame(tick);
