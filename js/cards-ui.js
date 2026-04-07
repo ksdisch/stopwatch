@@ -41,6 +41,7 @@ const CardsUI = (() => {
         <span class="card-status ${statusCls}"></span>
         <span class="card-name" contenteditable="true" spellcheck="false" data-name-id="${inst.getId()}">${escapeHtml(inst.getName())}</span>
         <span class="card-time" data-time-id="${inst.getId()}">${time}</span>
+        <button class="card-compare" data-compare-id="${inst.getId()}" aria-label="Compare">⇔</button>
         <button class="card-delete" data-delete-id="${inst.getId()}" aria-label="Delete">&times;</button>
       </div>`;
     });
@@ -68,7 +69,7 @@ const CardsUI = (() => {
     // Card tap → swap to primary
     container.querySelectorAll('.instance-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.card-delete') || e.target.closest('.card-name')) return;
+        if (e.target.closest('.card-delete') || e.target.closest('.card-name') || e.target.closest('.card-compare')) return;
         const id = card.dataset.instanceId;
         swapPrimary(id, isStopwatch);
       });
@@ -86,6 +87,15 @@ const CardsUI = (() => {
         }
         Persistence.save();
         render();
+      });
+    });
+
+    // Compare buttons
+    container.querySelectorAll('.card-compare').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.compareId;
+        if (typeof enterCompare === 'function') enterCompare(id);
       });
     });
 

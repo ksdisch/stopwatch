@@ -688,6 +688,25 @@ input:focus:not(:focus-visible) {
   flex-shrink: 0;
 }
 
+.card-compare {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-compare:active {
+  opacity: 1;
+  color: var(--green);
+}
+
 .card-delete {
   background: none;
   border: none;
@@ -739,6 +758,140 @@ input:focus:not(:focus-visible) {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-variant-numeric: tabular-nums;
   border-bottom: 0.5px solid var(--separator);
+}
+
+/* Compare View */
+.compare-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.compare-columns {
+  display: flex;
+  gap: 1px;
+}
+
+.compare-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 4px;
+}
+
+.compare-divider {
+  width: 1px;
+  background: var(--separator);
+  align-self: stretch;
+}
+
+.compare-name {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  outline: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-name:focus {
+  background: var(--btn-bg);
+  color: var(--text);
+}
+
+.compare-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-bottom: 6px;
+}
+
+.compare-time {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  font-size: clamp(1.5rem, 7vw, 2.5rem);
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.compare-time .centiseconds {
+  font-size: 0.6em;
+  opacity: 0.85;
+}
+
+.compare-controls {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.compare-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.1s ease;
+}
+
+.compare-btn:active {
+  transform: scale(0.92);
+}
+
+.compare-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.compare-btn-start {
+  border-color: var(--green);
+  background: var(--green-dark);
+  color: var(--green);
+}
+
+.compare-btn-stop {
+  border-color: var(--red);
+  background: var(--red-dark);
+  color: var(--red);
+}
+
+.compare-exit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: none;
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.compare-exit:active {
+  border-color: var(--green);
+  color: var(--green);
 }
 
 /* Lap Chart */

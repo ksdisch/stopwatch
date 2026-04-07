@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v15';
+const CACHE_NAME = 'stopwatch-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
   './js/offset-input.js',
   './js/ui.js',
   './js/cards-ui.js',
+  './js/compare-ui.js',
   './js/timer-ui.js',
   './js/pomodoro-ui.js',
   './js/alert-ui.js',

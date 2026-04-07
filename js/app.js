@@ -95,6 +95,12 @@ function switchAppMode(mode) {
 }
 
 function applyAppMode() {
+  // Exit compare mode if active
+  if (typeof isCompareActive === 'function' && isCompareActive()) {
+    exitCompare();
+    return; // exitCompare calls applyAppMode again
+  }
+
   const tabs = document.querySelectorAll('.mode-tab');
   tabs.forEach(t => t.classList.toggle('mode-tab-active', t.dataset.appMode === appMode));
 
