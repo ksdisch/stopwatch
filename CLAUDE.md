@@ -9,46 +9,62 @@ A cross-platform stopwatch PWA (Progressive Web App) that works on phone and des
 
 ## Tech Stack
 
-Vanilla HTML + CSS + JS. No framework, no build step. The entire app is a static folder deployable to any static host. All modules use the IIFE pattern exposing a single global object.
+Vanilla HTML + CSS + JS. No framework, no build step. The entire app is a static folder deployable to any static host. Engine modules use factory functions; UI modules are plain global functions. No IIFEs except for self-contained data modules (History, Persistence, SFX, Themes, etc.).
 
 ## Architecture
 
 ```
-index.html                 — App shell, all HTML structure
-css/styles.css (761 lines) — All styling, dark/light themes, responsive, animations
-js/utils.js                — Utils.formatMs(ms) shared time formatting
-js/stopwatch.js            — Stopwatch engine (pure logic, no DOM). Drift-free wall-clock timing.
-js/timer.js                — Timer (countdown) engine. Same pattern as Stopwatch.
-js/persistence.js          — Persistence.save()/load() via localStorage
-js/audio.js                — SFX module. Web Audio API synthetic sounds (no audio files).
-js/themes.js               — Themes module. 6 presets, applies CSS vars to :root.
-js/history.js              — History module. Session storage in localStorage (last 100).
-js/export.js               — Export module. Clipboard, CSV download, Web Share API.
-js/analog.js               — Analog clock face. SVG with 60 ticks, rotating hands.
-js/offset-input.js         — "Start with time already elapsed" input UI.
-js/ui.js (276 lines)       — Main UI: render loop (RAF), button state machine, lap list, lap stats.
-js/app.js (452 lines)      — Entry point. Wires all modules. Mode switching, timer UI, theme picker, history panel, export button, sound toggle, PWA install prompt.
-sw.js                      — Service worker, cache-first, version-bumped on deploys.
-manifest.json              — PWA manifest, standalone display.
-icons/                     — 192px and 512px PNG icons.
+index.html                      — App shell, all HTML structure
+css/styles.css (~1400 lines)    — All styling, dark/light themes, responsive, animations, a11y
+js/utils.js                     — Utils.formatMs(ms) shared time formatting
+js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall-clock timing. Alerts.
+js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.
+js/instance-manager.js          — InstanceManager: manages multiple stopwatch/timer instances (up to 5 each), primary tracking, persistence.
+js/pomodoro.js                  — Pomodoro engine. Work/break cycle state machine.
+js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
+js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files).
+js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
+js/history.js                   — History module. Session storage in localStorage (last 100). Tags, notes.
+js/export.js                    — Export module. Clipboard, CSV download, Web Share API.
+js/analog.js                    — Analog clock face. SVG with 60 ticks, numbers, rotating hands.
+js/offset-input.js              — "Start with time already elapsed" input UI + presets.
+js/ui.js (~300 lines)           — Main UI: render loop (RAF), button state machine, lap list, swipe-to-delete, a11y announcements.
+js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
+js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
+js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, session checklist.
+js/alert-ui.js                  — Alert UI: add/remove/render threshold alerts for stopwatch.
+js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing.
+js/app.js (~240 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
+sw.js                           — Service worker, cache-first, version-bumped on deploys.
+manifest.json                   — PWA manifest, standalone display.
+icons/                          — 192px and 512px PNG icons.
+```
+
+### Script Load Order
+```
+utils → stopwatch → timer → instance-manager → pomodoro → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → timer-ui → pomodoro-ui → alert-ui → history-ui → app
 ```
 
 ### Key Design Decisions
 
 - **Drift-free timing:** `elapsed = offsetMs + accumulatedMs + (Date.now() - startedAt)`. Never uses setInterval to increment. Always derives from wall clock.
+- **Mutable global proxy pattern:** `let Stopwatch = createStopwatch('sw-default')`. When the primary instance is swapped, `Stopwatch` is reassigned — all existing code in ui.js, offset-input.js, etc. automatically operates on the new primary without changes.
 - **Persistence across tab close:** On page load, if status was 'running', `getElapsedMs()` auto-corrects because it reads `Date.now() - startedAt`.
-- **RAF render loop:** `requestAnimationFrame` for smooth 60fps updates. Only updates the current in-progress lap's text node (not full DOM rebuild). Self-starts on start(), self-stops on pause()/reset().
+- **RAF render loop:** `requestAnimationFrame` for smooth 60fps updates. Only updates the current in-progress lap's text node (not full DOM rebuild). Self-starts on start(), self-stops on pause()/reset(). Mode guards prevent cross-mode interference.
 - **Module naming:** `SFX` (not `Audio`) to avoid conflicting with the browser's native `Audio` constructor.
-- **No build step:** All modules are IIFEs. Script load order in index.html is the dependency graph: utils → stopwatch → timer → persistence → audio → themes → history → export → analog → offset-input → ui → app.
+- **No build step:** Script load order in index.html is the dependency graph. Engine modules must load before UI modules which must load before app.js.
+- **Shared button handlers:** All three modes (stopwatch, timer, pomodoro) register addEventListener on the same btn-left/btn-right elements. Each handler has an `appMode` guard to short-circuit when not active. Pomodoro also has a click debounce lock.
+- **Collapsed panels:** `.offset-input[data-collapsed]` uses a data attribute (not `.hidden` class) to enable CSS max-height transitions.
 
 ### State Model
 
-**Stopwatch:** `{ status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs }`
-**Timer:** `{ status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
+**Stopwatch:** `{ id, name, status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs, alerts[] }`
+**Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
+**Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs }`
 
-Both persist to localStorage. Timer state key: `timer_state`. Stopwatch state key: `stopwatch_state`.
+All instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` and `pomodoro_config`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
 
-## What Has Been Built (Phases 1-3)
+## What Has Been Built
 
 ### Phase 1: Polish
 - Shared `Utils.formatMs()` (DRY'd time formatting)
@@ -78,49 +94,50 @@ Both persist to localStorage. Timer state key: `timer_state`. Stopwatch state ke
 - **Customizable themes:** 6 presets (Auto, Midnight, Ocean, Sunset, Minimal, OLED). Gear icon opens picker. CSS vars applied to documentElement. Persists to localStorage.
 - **Sound effects:** Web Audio API synthetic beeps/tones for start, stop, lap, reset, and timer alarm. Speaker icon toggle. Mute preference persisted.
 
+### Phase 4: Major Features
+- **Pomodoro mode:** 25/5/15 min work/short break/long break cycles. Configurable durations and cycle count. Phase transitions with alarm, vibration, notifications. Cycle progress dots. Session checklist for tracking goals.
+- **Offset presets:** Save/load named offset configs (e.g., "Medication 30:00"). Inline creation flow via "Save as Preset" button. Delete with ✕.
+- **Multiple simultaneous timers:** Factory pattern refactor (`createStopwatch(id)`, `createTimer(id)`). Up to 5 stopwatch and 5 timer instances. Compact card UI for non-primary instances. Tap to swap primary. Editable names. InstanceManager handles persistence, creation, deletion.
+- **Categories/tags for sessions:** Add/remove tags on history entries. Deduplicated filter bar at top of history panel. Tags persist per session.
+- **Notifications at time thresholds:** Set alerts at specific elapsed times on stopwatch (e.g., "alert at 30:00"). Fires Notification API + alarm sound + vibration. Alert chips shown below controls. Persisted per instance.
+
+### Phase 5: UX Improvements
+- **Swipe-to-delete laps:** Touch-drag left reveals red "Delete" background. Snap past threshold to delete with undo toast. `deleteLap()` method on engine.
+- **History notes:** Tap "+ note" or existing note to edit inline. Persists via `History.updateNote()`.
+- **Animated mode switching:** Fade-out/fade-in transition on timer display when switching tabs.
+- **Accessibility:** Global `:focus-visible` outlines, `.sr-only` announcer for state changes (start/stop/lap/reset), improved light mode contrast (#636366), aria-labels on interactive elements, semantic aria regions.
+- **Better analog face:** Numbers at 5-second intervals, larger on desktop (280px), drop shadows on hands.
+- **Desktop layout:** Wider container (720px) at >768px, adjusted spacing.
+
+### Phase 6: Tech Debt Cleanup
+- **app.js split:** From 995 lines to 242 lines. Extracted timer-ui.js, pomodoro-ui.js, alert-ui.js, history-ui.js.
+- **Offset input hack fixed:** Replaced `.offset-input.hidden` specificity hack with `data-collapsed` attribute.
+- **Analog double-init fixed:** Root cause fix with `initialized` flag instead of children.length guard.
+- **Clock skew no-op removed:** `accumulatedMs += 0` removed from stopwatch loadState.
+
 ## What's Next — Planned Improvements
 
-### Feature Backlog (Ranked by Impact / Effort)
+### Feature Backlog
 
 | Priority | Feature | Impact | Effort | Notes |
 |----------|---------|--------|--------|-------|
-| 1 | **Notifications at time thresholds** | High | Low | "Alert me at 30:00". Check in RAF loop, use Notification API. Great for the medication use case. |
-| 2 | **Presets** (saved offset configs) | High | Low | Named offsets like "Medication (30 min)", "Laundry (45 min)". Quick-pick list in offset area. Saves to localStorage. |
-| 3 | **Pomodoro mode** | High | Medium | 25/5/15 min work/break cycle with auto-transitions. Reuses Timer engine. New "Pomodoro" tab in mode selector. |
-| 4 | **Multiple simultaneous timers** | High | High | Refactor Stopwatch from singleton IIFE to factory `createStopwatch(id)`. Primary timer full-screen, secondary timers as compact card rows. Editable names. Persist under keyed localStorage. Limit ~5. This is the biggest refactor — touches stopwatch.js, ui.js, persistence.js, app.js. |
-| 5 | **Lap data visualization** | Medium | Medium | Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. |
-| 6 | **Categories/tags for sessions** | Medium | Low | Tag chips in the session history view. Filterable. Extend History module's session schema. |
-| 7 | **Split-screen timer comparison** | Medium | High | Side-by-side two timers. Requires significant layout rework. |
-| 8 | **Voice control** | Low | Medium | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
-| 9 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
-| 10 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
-| 11 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
-| 12 | **Pomodoro session checklist** | Medium | Low | Basic goal checklist visible before/during a Pomodoro session. Add/check-off items to stay on track. Persists per session. |
+| 1 | **Lap data visualization** | Medium | Medium | Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. |
+| 2 | **Split-screen timer comparison** | Medium | High | Side-by-side two timers. Requires significant layout rework. |
+| 3 | **Voice control** | Low | Medium | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
+| 4 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
+| 5 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
+| 6 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
 
-### Known Issues / Tech Debt
+### Remaining Tech Debt
 
-- **app.js is too large (452 lines):** The mode-switching, timer UI, history panel, theme picker, and export button logic all live in app.js. Should be broken into dedicated UI modules (e.g., `timer-ui.js`, `history-ui.js`, `theme-ui.js`).
-- **Session history uses localStorage:** For 100+ sessions with lap arrays, should migrate to IndexedDB (async, no size limit). Current limit is 100 sessions.
-- **Offset input hidden class override:** `.offset-input.hidden` uses `display: flex !important; max-height: 0; opacity: 0` to enable CSS transitions. This is a specificity hack — could be cleaner with a data attribute or separate class.
-- **No data migration strategy:** If persisted state shape changes, old localStorage data could break. Should add a version field to stored state.
-- **Analog tick marks double-init guard:** `init()` checks `tickGroup.children.length === 0` to prevent duplicate ticks if called twice. Root cause is that `Analog.init()` shouldn't be callable twice.
-- **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in app.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Should unify into a shared state machine.
-- **No tests:** Modules aren't easily testable. Consider adding a simple test runner or migrating to ES modules with `<script type="module">` for better testability.
-- **Clock skew guard is incomplete:** `stopwatch.js` line 87 has `accumulatedMs += 0` which is a no-op. Should just set `startedAt = null` without the pointless addition.
-- **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Could use `insertAdjacentHTML` for the new row and only re-render best/worst highlighting.
-
-### UX Improvements Still Worth Doing
-
-- **Swipe-to-delete laps** with undo
-- **Long-press on history session** to add notes/tags
-- **Smooth animated transition** when switching between Stopwatch and Timer modes
-- **Accessibility audit:** Ensure all interactive elements have proper focus styles, screen reader announces state changes
-- **Better analog face:** Add numbers at 5-second intervals, make the face larger on desktop, add a subtle shadow on the hands
-- **Desktop layout:** On wide screens (>768px), could show stopwatch and timer side-by-side instead of switching modes
+- **Session history uses localStorage:** For 100+ sessions with lap arrays, could migrate to IndexedDB (async, no size limit). Current limit is 100 sessions. Low urgency.
+- **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in timer-ui.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
+- **No tests:** Modules aren't easily testable. Consider adding a simple test runner or migrating to ES modules for better testability.
+- **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Low impact for typical lap counts.
 
 ### If Migrating to ES Modules
 
-If the file count keeps growing, consider migrating from IIFEs to ES modules:
+If the file count keeps growing, consider migrating from IIFEs/globals to ES modules:
 ```html
 <script type="module" src="js/app.js"></script>
 ```

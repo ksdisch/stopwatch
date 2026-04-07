@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stopwatch Tests</title>
+  <style>
+    body {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      padding: 20px;
+      font-size: 14px;
+    }
+    #results {
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <pre id="results">Running tests...</pre>
+
+  <!-- Load engine modules (no DOM dependencies) -->
+  <script src="../js/utils.js"></script>
+  <script src="../js/stopwatch.js"></script>
+  <script src="../js/timer.js"></script>
+  <script src="../js/pomodoro.js"></script>
+
+  <!-- Test framework -->
+  <script src="test-runner.js"></script>
+
+  <!-- Test suites -->
+  <script src="stopwatch.test.js"></script>
+  <script src="timer.test.js"></script>
+  <script src="pomodoro.test.js"></script>
+
+  <!-- Report -->
+  <script>reportResults();</script>
+</body>
+</html>
