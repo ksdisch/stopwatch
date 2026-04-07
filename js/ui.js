@@ -2,6 +2,8 @@ const UI = (() => {
   let timeEl, btnLeft, btnRight, lapList, timerDisplay, appEl, rafId = null;
   let lastResetState = null;
   let undoTimeout = null;
+  let vibrateIntervalMs = parseInt(localStorage.getItem('vibrate_interval') || '0', 10);
+  let lastVibrateMs = 0;
 
   function init() {
     timeEl = document.getElementById('time');
@@ -44,6 +46,17 @@ const UI = (() => {
           break;
       }
     });
+
+    // Vibrate interval selector
+    const vibrateSelect = document.getElementById('vibrate-interval');
+    if (vibrateSelect) {
+      vibrateSelect.value = vibrateIntervalMs;
+      vibrateSelect.addEventListener('change', () => {
+        vibrateIntervalMs = parseInt(vibrateSelect.value, 10);
+        localStorage.setItem('vibrate_interval', vibrateIntervalMs);
+        lastVibrateMs = 0;
+      });
+    }
 
     syncUI();
   }
@@ -107,6 +120,7 @@ const UI = (() => {
 
   function syncUI() {
     const status = Stopwatch.getStatus();
+    if (status === 'idle') lastVibrateMs = 0;
     updateDisplay(Stopwatch.getElapsedMs());
     updateButtons(status);
     renderLaps();
@@ -215,7 +229,42 @@ const UI = (() => {
       lapList.scrollTop = 0;
     }
     renderLapStats();
+    renderLapChart();
     attachSwipeHandlers();
+  }
+
+  function renderLapChart() {
+    const chartEl = document.getElementById('lap-chart');
+    const laps = Stopwatch.getLaps();
+    if (laps.length < 2) {
+      chartEl.classList.add('hidden');
+      chartEl.innerHTML = '';
+      return;
+    }
+    chartEl.classList.remove('hidden');
+
+    const times = laps.map(l => l.lapMs);
+    const maxTime = Math.max(...times);
+    const bestIdx = times.indexOf(Math.min(...times));
+    const worstIdx = times.indexOf(maxTime);
+    const barCount = times.length;
+    const gap = 2;
+    const barWidth = Math.max(4, (100 / barCount) - gap);
+    const totalWidth = barCount * (barWidth + gap) - gap;
+    const offsetX = (100 - totalWidth) / 2;
+
+    let bars = '';
+    times.forEach((ms, i) => {
+      const height = maxTime > 0 ? (ms / maxTime) * 70 : 0;
+      const x = offsetX + i * (barWidth + gap);
+      const y = 75 - height;
+      let cls = 'lap-chart-bar';
+      if (i === bestIdx) cls = 'lap-chart-bar lap-chart-bar-best';
+      else if (i === worstIdx) cls = 'lap-chart-bar lap-chart-bar-worst';
+      bars += `<rect class="${cls}" x="${x}" y="${y}" width="${barWidth}" height="${height}" rx="1"/>`;
+    });
+
+    chartEl.innerHTML = `<svg viewBox="0 0 100 80" preserveAspectRatio="none">${bars}</svg>`;
   }
 
   function attachSwipeHandlers() {
@@ -361,6 +410,16 @@ const UI = (() => {
           });
           Persistence.save();
           if (typeof renderAlerts === 'function') renderAlerts();
+        }
+        // Check vibration interval
+        if (vibrateIntervalMs > 0) {
+          const elapsed = Stopwatch.getElapsedMs();
+          const currentInterval = Math.floor(elapsed / vibrateIntervalMs);
+          const lastInterval = Math.floor(lastVibrateMs / vibrateIntervalMs);
+          if (currentInterval > lastInterval && elapsed > vibrateIntervalMs) {
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          }
+          lastVibrateMs = elapsed;
         }
         updateDisplay(Stopwatch.getElapsedMs());
         updateCurrentLap();

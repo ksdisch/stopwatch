@@ -94,6 +94,21 @@
       </div>
     </div>
 
+    <!-- Vibration interval (stopwatch only) -->
+    <div id="vibrate-area" class="vibrate-area">
+      <label class="vibrate-label">
+        <span>Vibrate every</span>
+        <select id="vibrate-interval">
+          <option value="0">Off</option>
+          <option value="60000">1 min</option>
+          <option value="300000">5 min</option>
+          <option value="600000">10 min</option>
+          <option value="900000">15 min</option>
+          <option value="1800000">30 min</option>
+        </select>
+      </label>
+    </div>
+
     <!-- Alert area (stopwatch only) -->
     <div id="alert-area" class="alert-area">
       <button id="alert-toggle" class="offset-link">Add alert at time</button>
@@ -204,6 +219,7 @@
     </div>
 
     <div id="lap-stats" class="lap-stats hidden"></div>
+    <div id="lap-chart" class="lap-chart hidden"></div>
 
     <div id="lap-section" aria-label="Lap times">
       <div id="lap-list" role="list"></div>

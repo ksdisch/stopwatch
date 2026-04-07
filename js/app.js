@@ -103,6 +103,7 @@ function applyAppMode() {
   const isStopwatch = appMode === 'stopwatch';
 
   document.getElementById('offset-area').classList.toggle('hidden', !isStopwatch);
+  document.getElementById('vibrate-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('alert-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer);
   document.getElementById('pomodoro-area').classList.toggle('hidden', !isPomodoro);
