@@ -166,6 +166,7 @@ function applyAppMode() {
   }
 
   CardsUI.render();
+  PresetsUI.updateQuickVisibility();
 }
 
 // ── Sound Toggle ──
@@ -247,6 +248,7 @@ UI.syncUI = function() {
     area.classList.add('hidden');
   }
   if (appMode === 'stopwatch') renderAlerts();
+  PresetsUI.updateQuickVisibility();
 };
 
 // Hook into stopwatch reset to save history

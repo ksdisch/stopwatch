@@ -29,6 +29,9 @@
         <button id="theme-toggle" class="icon-btn" aria-label="Theme settings">
           <span>&#x2699;</span>
         </button>
+        <button id="presets-toggle" class="icon-btn" aria-label="Presets">
+          <span>&#x2B50;</span>
+        </button>
         <button id="history-toggle" class="icon-btn" aria-label="Session history">
           <span>&#x1F4CB;</span>
         </button>
@@ -38,9 +41,20 @@
     <!-- Theme picker (hidden by default) -->
     <div id="theme-picker" class="theme-picker hidden"></div>
 
-    <!-- Quick-launch preset cards -->
-    <div id="presets-grid" class="presets-grid"></div>
-    <div id="preset-save-area" class="preset-save-area hidden"></div>
+    <!-- Quick-picks (top 3 presets, auto-hides when running) -->
+    <div id="presets-quick" class="presets-quick"></div>
+
+    <!-- Presets drawer (slide-up overlay) -->
+    <div id="presets-drawer" class="presets-drawer hidden">
+      <div class="history-header">
+        <h3>Presets</h3>
+        <button id="presets-drawer-close" class="icon-btn" aria-label="Close presets">&times;</button>
+      </div>
+      <div class="presets-drawer-body">
+        <div id="presets-grid" class="presets-grid"></div>
+        <div id="preset-save-area" class="preset-save-area"></div>
+      </div>
+    </div>
 
     <div id="sr-announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
     <div id="timer-display" role="timer" aria-label="Elapsed time">

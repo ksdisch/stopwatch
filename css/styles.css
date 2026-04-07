@@ -187,12 +187,78 @@ input:focus:not(:focus-visible) {
   color: var(--green);
 }
 
+/* Presets Quick Picks */
+.presets-quick {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
+.presets-quick:empty {
+  display: none;
+}
+
+.preset-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 16px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s;
+}
+
+.preset-quick-chip:active {
+  transform: scale(0.95);
+}
+
+.preset-quick-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.preset-quick-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+}
+
+/* Presets Drawer */
+.presets-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.presets-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 20px;
+}
+
 /* Preset Cards */
 .presets-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 4px 0 8px;
+  padding: 0 0 8px;
 }
 
 @media (min-width: 500px) {

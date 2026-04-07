@@ -1,20 +1,69 @@
-// ── Presets UI — Card Grid ──
+// ── Presets UI — Drawer + Quick Picks ──
 const PresetsUI = (() => {
-  let grid;
-  let saveArea;
+  let grid, saveArea, quickRow, drawer;
+  const MAX_QUICK = 3;
+  const modeColors = { stopwatch: 'var(--green)', timer: '#5ac8fa', pomodoro: '#ff6b6b', interval: '#ff9f0a', cooking: '#ff6347' };
+  const modeLabels = { stopwatch: 'SW', timer: 'TMR', pomodoro: 'POMO', interval: 'INT', cooking: 'COOK' };
 
   function init() {
     grid = document.getElementById('presets-grid');
     saveArea = document.getElementById('preset-save-area');
-    render();
-    initSaveButton();
+    quickRow = document.getElementById('presets-quick');
+    drawer = document.getElementById('presets-drawer');
+
+    // Drawer toggle
+    document.getElementById('presets-toggle')?.addEventListener('click', () => {
+      drawer.classList.toggle('hidden');
+      if (!drawer.classList.contains('hidden')) renderGrid();
+    });
+    document.getElementById('presets-drawer-close')?.addEventListener('click', () => {
+      drawer.classList.add('hidden');
+    });
+
+    renderQuickPicks();
   }
 
-  function render() {
+  // ── Quick Picks (main screen, top 3) ──
+  function renderQuickPicks() {
+    if (!quickRow) return;
+    const presets = Presets.getAll().slice(0, MAX_QUICK);
+
+    if (presets.length === 0) {
+      quickRow.innerHTML = '';
+      return;
+    }
+
+    quickRow.innerHTML = presets.map(p => {
+      const hint = Presets.formatDurationHint(p);
+      const color = modeColors[p.mode] || 'var(--text-secondary)';
+      return `<button class="preset-quick-chip" data-preset-id="${p.id}">
+        <span class="preset-quick-icon">${p.icon || '⏱️'}</span>
+        <span class="preset-quick-name">${escapeHtml(p.name)}</span>
+      </button>`;
+    }).join('');
+
+    quickRow.querySelectorAll('.preset-quick-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        Presets.applyPreset(chip.dataset.presetId);
+      });
+    });
+  }
+
+  function updateQuickVisibility() {
+    if (!quickRow) return;
+    // Hide quick picks when something is running
+    const anyRunning =
+      Stopwatch.getStatus() === 'running' ||
+      Timer.getStatus() === 'running' ||
+      Pomodoro.getStatus() === 'running' ||
+      (typeof Interval !== 'undefined' && Interval.getStatus() === 'running');
+    quickRow.classList.toggle('hidden', anyRunning);
+  }
+
+  // ── Full Grid (inside drawer) ──
+  function renderGrid() {
     if (!grid) return;
     const presets = Presets.getAll();
-    const modeColors = { stopwatch: 'var(--green)', timer: '#5ac8fa', pomodoro: '#ff6b6b', interval: '#ff9f0a', cooking: '#ff6347' };
-    const modeLabels = { stopwatch: 'SW', timer: 'TMR', pomodoro: 'POMO', interval: 'INT', cooking: 'COOK' };
 
     grid.innerHTML = presets.map(p => {
       const hint = Presets.formatDurationHint(p);
@@ -36,17 +85,17 @@ const PresetsUI = (() => {
       </span>
     </button>`;
 
-    // Tap to apply preset
+    // Tap to apply
     grid.querySelectorAll('.preset-card[data-preset-id]').forEach(card => {
-      // Tap
       card.addEventListener('click', () => {
         Presets.applyPreset(card.dataset.presetId);
-        render();
+        drawer.classList.add('hidden');
+        renderQuickPicks();
       });
 
       // Long-press to delete
       let pressTimer = null;
-      card.addEventListener('touchstart', (e) => {
+      card.addEventListener('touchstart', () => {
         pressTimer = setTimeout(() => {
           pressTimer = null;
           const id = card.dataset.presetId;
@@ -55,23 +104,15 @@ const PresetsUI = (() => {
           showDeleteConfirm(card, id, preset.name);
         }, 600);
       }, { passive: true });
-      card.addEventListener('touchend', () => {
-        if (pressTimer) clearTimeout(pressTimer);
-      }, { passive: true });
-      card.addEventListener('touchmove', () => {
-        if (pressTimer) clearTimeout(pressTimer);
-      }, { passive: true });
+      card.addEventListener('touchend', () => { if (pressTimer) clearTimeout(pressTimer); }, { passive: true });
+      card.addEventListener('touchmove', () => { if (pressTimer) clearTimeout(pressTimer); }, { passive: true });
     });
 
     // Add button
-    const addBtn = document.getElementById('preset-add-btn');
-    if (addBtn) {
-      addBtn.addEventListener('click', showSaveForm);
-    }
+    document.getElementById('preset-add-btn')?.addEventListener('click', showSaveForm);
   }
 
   function showDeleteConfirm(card, id, name) {
-    // Show inline delete confirmation
     const original = card.innerHTML;
     card.innerHTML = `<span class="preset-card-confirm">Delete "${escapeHtml(name)}"?
       <button class="preset-confirm-yes" data-confirm-id="${id}">Delete</button>
@@ -80,21 +121,22 @@ const PresetsUI = (() => {
     card.querySelector('.preset-confirm-yes').addEventListener('click', (e) => {
       e.stopPropagation();
       Presets.remove(id);
-      render();
+      renderGrid();
+      renderQuickPicks();
     });
     card.querySelector('.preset-confirm-no').addEventListener('click', (e) => {
       e.stopPropagation();
-      card.innerHTML = original;
-      // Re-render to restore handlers
-      render();
+      renderGrid();
     });
   }
 
   function showSaveForm() {
     if (!saveArea) return;
     const captured = Presets.captureCurrentConfig();
-    const modeLabel = captured.mode === 'stopwatch' ? 'Stopwatch' : captured.mode === 'timer' ? 'Timer' : 'Pomodoro';
-    const defaultIcon = captured.mode === 'stopwatch' ? '⏱️' : captured.mode === 'timer' ? '⏲️' : '🍅';
+    const modeName = { stopwatch: 'Stopwatch', timer: 'Timer', pomodoro: 'Pomodoro', interval: 'Interval', cooking: 'Cooking' };
+    const modeLabel = modeName[captured.mode] || 'Preset';
+    const modeIcon = { stopwatch: '⏱️', timer: '⏲️', pomodoro: '🍅', interval: '🏋️', cooking: '🍳' };
+    const defaultIcon = modeIcon[captured.mode] || '⏱️';
 
     saveArea.classList.remove('hidden');
     saveArea.innerHTML = `
@@ -114,15 +156,11 @@ const PresetsUI = (() => {
     document.getElementById('preset-save-confirm').addEventListener('click', () => {
       const name = nameInput.value.trim() || `${modeLabel} preset`;
       const icon = document.getElementById('preset-save-icon').value.trim() || defaultIcon;
-      Presets.save({
-        name,
-        icon,
-        mode: captured.mode,
-        config: captured.config,
-      });
+      Presets.save({ name, icon, mode: captured.mode, config: captured.config });
       saveArea.classList.add('hidden');
       saveArea.innerHTML = '';
-      render();
+      renderGrid();
+      renderQuickPicks();
     });
 
     document.getElementById('preset-save-cancel').addEventListener('click', () => {
@@ -136,9 +174,10 @@ const PresetsUI = (() => {
     });
   }
 
-  function initSaveButton() {
-    // The save form is triggered from the "+" card in the grid
+  function render() {
+    renderQuickPicks();
+    updateQuickVisibility();
   }
 
-  return { init, render };
+  return { init, render, renderQuickPicks, updateQuickVisibility };
 })();
