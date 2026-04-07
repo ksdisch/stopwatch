@@ -766,6 +766,8 @@ input:focus:not(:focus-visible) {
   flex-direction: column;
   gap: 8px;
   padding: 0 4px;
+  position: relative;
+  z-index: 50;
 }
 
 .compare-columns {

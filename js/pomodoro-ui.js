@@ -47,10 +47,10 @@ function initPomodoroUI() {
   Pomodoro.onPhaseComplete((completedPhase) => {
     SFX.playAlarm();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    if (Notification.permission === 'granted') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
       new Notification('Pomodoro', { body: label });
-    } else if (Notification.permission !== 'denied') {
+    } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
     savePomodoroState();

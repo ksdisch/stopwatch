@@ -190,9 +190,9 @@ function initTimerAlarm() {
   Timer.onAlarm(() => {
     SFX.playAlarm();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    if (Notification.permission === 'granted') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       new Notification('Timer Complete', { body: 'Your countdown has finished!' });
-    } else if (Notification.permission !== 'denied') {
+    } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
     saveTimerState();

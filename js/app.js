@@ -3,10 +3,15 @@ let appMode = localStorage.getItem('app_mode') || 'stopwatch';
 
 // ── Restore persisted state ──
 Persistence.load();
-const pomodoroState = JSON.parse(localStorage.getItem('pomodoro_state') || 'null');
-if (pomodoroState) Pomodoro.loadState(pomodoroState);
-const pomodoroConfig = JSON.parse(localStorage.getItem('pomodoro_config') || 'null');
-if (pomodoroConfig) Pomodoro.configure(pomodoroConfig);
+try {
+  const pomodoroState = JSON.parse(localStorage.getItem('pomodoro_state') || 'null');
+  if (pomodoroState) Pomodoro.loadState(pomodoroState);
+  const pomodoroConfig = JSON.parse(localStorage.getItem('pomodoro_config') || 'null');
+  if (pomodoroConfig) Pomodoro.configure(pomodoroConfig);
+} catch (e) {
+  localStorage.removeItem('pomodoro_state');
+  localStorage.removeItem('pomodoro_config');
+}
 
 // ── Initialize modules ──
 Themes.init();
