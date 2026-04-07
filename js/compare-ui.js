@@ -219,8 +219,5 @@ function stopCompareRenderLoop() {
   }
 }
 
-function escapeCompareHtml(str) {
-  const el = document.createElement('span');
-  el.textContent = str;
-  return el.innerHTML;
-}
+// Uses shared escapeHtml from dom-utils.js
+const escapeCompareHtml = escapeHtml;

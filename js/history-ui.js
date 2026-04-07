@@ -153,8 +153,5 @@ function renderHistory() {
   });
 }
 
-function escapeHistoryHtml(str) {
-  const el = document.createElement('span');
-  el.textContent = str;
-  return el.innerHTML;
-}
+// Uses shared escapeHtml from dom-utils.js
+const escapeHistoryHtml = escapeHtml;

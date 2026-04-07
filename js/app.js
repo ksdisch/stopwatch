@@ -15,10 +15,12 @@ try {
 
 // ── Initialize modules ──
 Themes.init();
+Presets.init();
 OffsetInput.init();
 Analog.init();
 UI.init();
 CardsUI.init();
+PresetsUI.init();
 initAppMode();
 initTimerUI();
 initPomodoroUI();
@@ -27,6 +29,17 @@ initSoundToggle();
 initThemePicker();
 initHistoryPanel();
 initExportButton();
+
+// ── PWA shortcut query param ──
+const urlParams = new URLSearchParams(window.location.search);
+const modeParam = urlParams.get('mode');
+if (modeParam && ['stopwatch', 'timer', 'pomodoro'].includes(modeParam) && modeParam !== appMode) {
+  appMode = modeParam;
+  localStorage.setItem('app_mode', modeParam);
+  applyAppMode();
+  // Clean up URL
+  window.history.replaceState({}, '', window.location.pathname);
+}
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {

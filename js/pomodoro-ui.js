@@ -420,8 +420,5 @@ function initChecklistInput() {
   });
 }
 
-function escapeChecklistHtml(str) {
-  const el = document.createElement('span');
-  el.textContent = str;
-  return el.innerHTML;
-}
+// Uses shared escapeHtml from dom-utils.js
+const escapeChecklistHtml = escapeHtml;

@@ -17,5 +17,25 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Stopwatch",
+      "short_name": "Stopwatch",
+      "url": "./?mode=stopwatch",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Timer",
+      "short_name": "Timer",
+      "url": "./?mode=timer",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pomodoro",
+      "short_name": "Pomodoro",
+      "url": "./?mode=pomodoro",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }
