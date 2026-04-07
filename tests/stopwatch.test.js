@@ -245,4 +245,16 @@ describe('Stopwatch — state serialization', () => {
     });
     assertEqual(sw.getStatus(), 'paused');
   });
+
+  it('loadState preserves 0 values with nullish coalescing', () => {
+    const sw = createStopwatch('test-30');
+    sw.loadState({
+      status: 'idle',
+      offsetMs: 0,
+      accumulatedMs: 0,
+      lapStartMs: 0,
+    });
+    assertEqual(sw.getElapsedMs(), 0);
+    assertEqual(sw.getStatus(), 'idle');
+  });
 });

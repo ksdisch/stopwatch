@@ -124,13 +124,13 @@ function createStopwatch(id) {
 
   function loadState(state) {
     if (!state) return;
-    name = state.name || 'Stopwatch';
-    status = state.status || 'idle';
-    offsetMs = state.offsetMs || 0;
-    startedAt = state.startedAt || null;
-    accumulatedMs = state.accumulatedMs || 0;
+    name = state.name ?? 'Stopwatch';
+    status = state.status ?? 'idle';
+    offsetMs = state.offsetMs ?? 0;
+    startedAt = state.startedAt ?? null;
+    accumulatedMs = state.accumulatedMs ?? 0;
     laps = Array.isArray(state.laps) ? state.laps.slice() : [];
-    lapStartMs = state.lapStartMs || 0;
+    lapStartMs = state.lapStartMs ?? 0;
     alerts = Array.isArray(state.alerts) ? state.alerts.map(a => ({ ...a })) : [];
 
     // Guard against clock skew

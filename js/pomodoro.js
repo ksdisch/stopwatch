@@ -127,15 +127,15 @@ const Pomodoro = (() => {
 
   function loadState(state) {
     if (!state) return;
-    status = state.status || 'idle';
-    phase = state.phase || 'work';
-    cycleIndex = state.cycleIndex || 0;
-    totalCycles = state.totalCycles || 4;
-    workMs = state.workMs || 25 * 60000;
-    shortBreakMs = state.shortBreakMs || 5 * 60000;
-    longBreakMs = state.longBreakMs || 15 * 60000;
-    startedAt = state.startedAt || null;
-    accumulatedMs = state.accumulatedMs || 0;
+    status = state.status ?? 'idle';
+    phase = state.phase ?? 'work';
+    cycleIndex = state.cycleIndex ?? 0;
+    totalCycles = state.totalCycles ?? 4;
+    workMs = state.workMs ?? 25 * 60000;
+    shortBreakMs = state.shortBreakMs ?? 5 * 60000;
+    longBreakMs = state.longBreakMs ?? 15 * 60000;
+    startedAt = state.startedAt ?? null;
+    accumulatedMs = state.accumulatedMs ?? 0;
 
     // Clock skew guard
     if (status === 'running' && startedAt && startedAt > Date.now()) {

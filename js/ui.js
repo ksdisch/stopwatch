@@ -251,7 +251,7 @@ const UI = (() => {
     const gap = 2;
     const barWidth = Math.max(4, (100 / barCount) - gap);
     const totalWidth = barCount * (barWidth + gap) - gap;
-    const offsetX = (100 - totalWidth) / 2;
+    const offsetX = Math.max(0, (100 - totalWidth) / 2);
 
     let bars = '';
     times.forEach((ms, i) => {

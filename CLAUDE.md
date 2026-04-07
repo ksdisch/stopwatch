@@ -132,7 +132,7 @@ All instances persist to localStorage via `InstanceManager.saveAll()` under key 
 
 - **Session history uses localStorage:** For 100+ sessions with lap arrays, could migrate to IndexedDB (async, no size limit). Current limit is 100 sessions. Low urgency.
 - **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in timer-ui.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
-- **No tests:** Modules aren't easily testable. Consider adding a simple test runner or migrating to ES modules for better testability.
+- **Engine tests only:** 74 tests cover stopwatch/timer/pomodoro engines. No UI/integration tests yet.
 - **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Low impact for typical lap counts.
 
 ### If Migrating to ES Modules

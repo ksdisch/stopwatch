@@ -80,11 +80,11 @@ function createTimer(id) {
 
   function loadState(state) {
     if (!state) return;
-    name = state.name || 'Timer';
-    status = state.status || 'idle';
-    durationMs = state.durationMs || 0;
-    startedAt = state.startedAt || null;
-    accumulatedMs = state.accumulatedMs || 0;
+    name = state.name ?? 'Timer';
+    status = state.status ?? 'idle';
+    durationMs = state.durationMs ?? 0;
+    startedAt = state.startedAt ?? null;
+    accumulatedMs = state.accumulatedMs ?? 0;
 
     if (status === 'running' && startedAt && startedAt > Date.now()) {
       startedAt = null;

@@ -267,4 +267,26 @@ describe('Pomodoro — state serialization', () => {
     assertEqual(Pomodoro.getPhase(), 'work');
     assertEqual(Pomodoro.getCycleIndex(), 0);
   });
+
+  it('loadState preserves 0 values with nullish coalescing', () => {
+    Pomodoro.reset();
+    Pomodoro.loadState({
+      status: 'idle',
+      cycleIndex: 0,
+      accumulatedMs: 0,
+    });
+    assertEqual(Pomodoro.getCycleIndex(), 0);
+    assertEqual(Pomodoro.getStatus(), 'idle');
+  });
+
+  it('done state preserves cycleIndex 0 correctly', () => {
+    Pomodoro.reset();
+    Pomodoro.loadState({
+      status: 'done',
+      phase: 'work',
+      cycleIndex: 0,
+    });
+    assertEqual(Pomodoro.getStatus(), 'done');
+    assertEqual(Pomodoro.getCycleIndex(), 0);
+  });
 });

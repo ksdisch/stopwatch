@@ -65,6 +65,31 @@ function initPomodoroUI() {
   renderChecklist();
   initChecklistInput();
 
+  // Keyboard shortcuts for Pomodoro mode
+  document.addEventListener('keydown', (e) => {
+    if (appMode !== 'pomodoro') return;
+    if (e.target.tagName === 'INPUT') return;
+    const status = Pomodoro.getStatus();
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        if (status === 'running' || status === 'idle' || status === 'paused') {
+          onPomodoroRight();
+        }
+        break;
+      case 'KeyR':
+        if (status === 'paused') onPomodoroLeft();
+        break;
+      case 'KeyN':
+      case 'Enter':
+        if (status === 'phaseComplete') {
+          e.preventDefault();
+          onPomodoroRight();
+        }
+        break;
+    }
+  });
+
   // Restore render loop if needed
   if (Pomodoro.getStatus() === 'running' && appMode === 'pomodoro') {
     startPomodoroRenderLoop();
@@ -125,6 +150,7 @@ function onPomodoroRight() {
     // Start next phase
     Pomodoro.nextPhase();
     if (Pomodoro.getStatus() === 'done') {
+      History.addSession({ type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [] });
       savePomodoroState();
       updatePomodoroUI();
       return;
@@ -262,11 +288,18 @@ function renderPomodoroDots() {
   const status = Pomodoro.getStatus();
 
   let html = '';
+  if (status === 'done') {
+    for (let i = 0; i < total; i++) {
+      html += `<div class="pomodoro-dot pomodoro-dot-done"></div>`;
+    }
+    dotsEl.innerHTML = html;
+    return;
+  }
   for (let i = 0; i < total; i++) {
     let cls = 'pomodoro-dot';
     if (i < cycleIdx) {
       cls += ' pomodoro-dot-done';
-    } else if (i === cycleIdx && phase === 'work' && status !== 'idle' && status !== 'done') {
+    } else if (i === cycleIdx && phase === 'work' && status !== 'idle') {
       cls += ' pomodoro-dot-active';
     }
     html += `<div class="${cls}"></div>`;
@@ -299,6 +332,12 @@ function stopPomodoroRenderLoop() {
     cancelAnimationFrame(pomodoroRafId);
     pomodoroRafId = null;
   }
+}
+
+function getPomodoroTotalDuration() {
+  const cfg = Pomodoro.getConfig();
+  const cycles = cfg.totalCycles;
+  return (cfg.workMs * cycles) + (cfg.shortBreakMs * (cycles - 1)) + cfg.longBreakMs;
 }
 
 function savePomodoroState() {

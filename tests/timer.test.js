@@ -109,29 +109,35 @@ describe('Timer — checkFinished', () => {
     let alarmFired = false;
     const t = createTimer('tm-test-14');
     t.onAlarm(() => { alarmFired = true; });
-    // Set duration and start, then manipulate accumulatedMs to simulate near-completion
-    t.setDuration(10000);
-    t.start();
-    // loadState with accumulated time that exceeds duration once combined with current elapsed
-    t.loadState({ status: 'running', durationMs: 10000, startedAt: Date.now(), accumulatedMs: 10001 });
-    // loadState auto-finishes this — verify the callback re-registers
+    t.setDuration(100000); // 100s duration
+    // Set up: accumulatedMs + time since startedAt must be < duration at loadState time
+    // but >= duration at checkFinished time.
+    // accumulatedMs = 99000, startedAt = 500ms ago → elapsed = 99500 < 100000 (no auto-finish)
+    // By the time checkFinished runs, elapsed = 99000 + 500+ = 99500+ (still under)
+    // So use a tighter margin: startedAt 2000ms ago, accumulatedMs = 98500
+    // loadState: elapsed = 98500 + 2000 = 100500 > 100000 → auto-finishes. Hmm.
+    // The problem: loadState's auto-finish check runs the same getRemainingMs() as checkFinished.
+    // Any state that checkFinished would catch, loadState also catches.
+    // Solution: set onAlarm BEFORE loadState so the auto-finish path is what we test.
+    t.loadState({ status: 'running', durationMs: 100000, startedAt: Date.now() - 200000, accumulatedMs: 0 });
+    // loadState auto-finished — but onAlarm was set before, so it should NOT have fired
+    // (loadState doesn't call alarmCallback, only checkFinished does)
     assertEqual(t.getStatus(), 'finished');
-    // Test that alarm callback pattern works via a fresh instance
-    const t2 = createTimer('tm-test-14b');
+    assert(!alarmFired, 'Alarm should not fire from loadState auto-finish');
+
+    // Test checkFinished directly with a fresh timer
     let alarm2 = false;
+    const t2 = createTimer('tm-test-14b');
     t2.onAlarm(() => { alarm2 = true; });
-    t2.setDuration(10000);
+    t2.setDuration(100);
     t2.start();
-    // Directly test: set up state where remaining will be <= 0 on next check
-    // We need accumulatedMs + (now - startedAt) >= durationMs
-    // Set startedAt far in the past so elapsed exceeds duration
-    t2.loadState({ status: 'running', durationMs: 10000, startedAt: Date.now() - 20000, accumulatedMs: 0 });
-    // loadState auto-finishes, so alarm2 won't fire (callback set after loadState).
-    // Instead, verify the state is correct:
+    // Busy-wait until checkFinished triggers (100ms is fast enough)
+    const start = Date.now();
+    while (Date.now() - start < 200) { /* spin */ }
+    const result = t2.checkFinished();
+    assertEqual(result, true);
     assertEqual(t2.getStatus(), 'finished');
-    assertEqual(t2.getRemainingMs(), 0);
-    // The alarm callback mechanism is tested via the loadState auto-finish path
-    assert(true, 'Timer auto-finishes on loadState when expired');
+    assert(alarm2, 'Alarm callback should have fired via checkFinished');
   });
 
   it('does not fire when not finished', () => {
