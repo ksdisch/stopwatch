@@ -195,6 +195,10 @@ const Presets = (() => {
       { id: 'default-pomo', name: 'Pomodoro', icon: '🍅', mode: 'pomodoro', config: { workMs: 25 * 60000, shortBreakMs: 5 * 60000, longBreakMs: 15 * 60000, totalCycles: 4 }, createdAt: 2 },
       { id: 'default-tabata', name: 'Tabata', icon: '🏋️', mode: 'interval', config: { intervalProgram: { name: 'Tabata', rounds: 8, restBetweenRoundsMs: 0, phases: [{ name: 'Work', durationMs: 20000, color: '#30d158' }, { name: 'Rest', durationMs: 10000, color: '#ff9f0a' }] } }, createdAt: 3 },
       { id: 'default-hiit', name: 'HIIT 30/30', icon: '💪', mode: 'interval', config: { intervalProgram: { name: 'HIIT 30/30', rounds: 10, restBetweenRoundsMs: 0, phases: [{ name: 'Work', durationMs: 30000, color: '#30d158' }, { name: 'Rest', durationMs: 30000, color: '#ff9f0a' }] } }, createdAt: 4 },
+      { id: 'default-crate', name: 'Milhouse Crate', icon: '🐕', mode: 'timer', config: { durationMs: 15 * 60000 }, createdAt: 5 },
+      { id: 'default-walk', name: 'Louis Walk', icon: '🦮', mode: 'stopwatch', config: { vibrateIntervalMs: 1800000, alertsMs: [1800000] }, createdAt: 6 },
+      { id: 'default-potty', name: 'Puppy Potty', icon: '🐶', mode: 'timer', config: { durationMs: 45 * 60000 }, createdAt: 7 },
+      { id: 'default-training', name: 'Training Session', icon: '🎾', mode: 'timer', config: { durationMs: 10 * 60000 }, createdAt: 8 },
     ];
   }
 

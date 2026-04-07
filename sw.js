@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v20';
+const CACHE_NAME = 'stopwatch-v21';
 const ASSETS = [
   './',
   './index.html',
@@ -26,6 +26,7 @@ const ASSETS = [
   './js/bg-notify.js',
   './js/interval-ui.js',
   './js/cooking-ui.js',
+  './js/pomodoro-stats.js',
   './js/dom-utils.js',
   './js/presets.js',
   './js/presets-ui.js',

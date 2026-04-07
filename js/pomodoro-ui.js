@@ -65,6 +65,16 @@ function initPomodoroUI() {
   renderChecklist();
   initChecklistInput();
 
+  // Stats panel
+  document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
+    const panel = document.getElementById('pomo-stats-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) renderPomodoroStats();
+  });
+  document.getElementById('pomo-stats-close')?.addEventListener('click', () => {
+    document.getElementById('pomo-stats-panel').classList.add('hidden');
+  });
+
   // Keyboard shortcuts for Pomodoro mode
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'pomodoro') return;
@@ -110,7 +120,12 @@ function onPomodoroLeft() {
     // Save session before reset
     const elapsed = Pomodoro.getElapsedMs();
     if (elapsed > 1000) {
-      History.addSession({ type: 'pomodoro', duration: elapsed, laps: [] });
+      const cfg = Pomodoro.getConfig();
+      History.addSession({
+        type: 'pomodoro', duration: elapsed, laps: [],
+        completedCycles: Pomodoro.getCycleIndex(),
+        totalWorkMs: Pomodoro.getCycleIndex() * cfg.workMs,
+      });
     }
     Pomodoro.reset();
     BgNotify.cancel('pomodoro');
@@ -155,7 +170,12 @@ function onPomodoroRight() {
     // Start next phase
     Pomodoro.nextPhase();
     if (Pomodoro.getStatus() === 'done') {
-      History.addSession({ type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [] });
+      const cfg = Pomodoro.getConfig();
+      History.addSession({
+        type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
+        completedCycles: cfg.totalCycles,
+        totalWorkMs: cfg.totalCycles * cfg.workMs,
+      });
       savePomodoroState();
       updatePomodoroUI();
       return;
@@ -423,6 +443,45 @@ function initChecklistInput() {
       renderChecklist();
     }
   });
+}
+
+function renderPomodoroStats() {
+  const content = document.getElementById('pomo-stats-content');
+  if (!content) return;
+
+  const streak = PomodoroStats.getCurrentStreak();
+  const cyclesThisWeek = PomodoroStats.getCompletedCyclesThisWeek();
+  const workMsThisWeek = PomodoroStats.getTotalWorkMsThisWeek();
+  const workMinThisWeek = Math.round(workMsThisWeek / 60000);
+  const daily = PomodoroStats.getDailyMinutesThisWeek();
+  const maxMin = Math.max(1, ...daily.map(d => d.minutes));
+
+  const chartBars = daily.map(d => {
+    const height = d.minutes > 0 ? Math.max(4, (d.minutes / maxMin) * 80) : 0;
+    return `<div class="pomo-stat-bar-col">
+      <div class="pomo-stat-bar" style="height:${height}px"></div>
+      <span class="pomo-stat-bar-label">${d.label}</span>
+    </div>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="pomo-stat-cards">
+      <div class="pomo-stat-card">
+        <div class="pomo-stat-value">${streak}</div>
+        <div class="pomo-stat-label">Day Streak</div>
+      </div>
+      <div class="pomo-stat-card">
+        <div class="pomo-stat-value">${cyclesThisWeek}</div>
+        <div class="pomo-stat-label">Cycles This Week</div>
+      </div>
+      <div class="pomo-stat-card">
+        <div class="pomo-stat-value">${workMinThisWeek}m</div>
+        <div class="pomo-stat-label">Focus Time</div>
+      </div>
+    </div>
+    <div class="pomo-stat-chart-title">Daily Focus (minutes)</div>
+    <div class="pomo-stat-chart">${chartBars}</div>
+  `;
 }
 
 // Uses shared escapeHtml from dom-utils.js

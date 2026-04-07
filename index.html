@@ -154,7 +154,10 @@
           <input type="text" id="pomo-checklist-input" placeholder="Add a goal..." maxlength="60">
         </div>
       </div>
-      <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
+      <div class="pomo-action-links">
+        <button id="pomodoro-stats-toggle" class="offset-link">Stats</button>
+        <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
+      </div>
       <div id="pomodoro-settings" class="offset-input" data-collapsed>
         <div class="pomodoro-setting-row">
           <label>Work</label>
@@ -274,6 +277,15 @@
       <div id="lap-list" role="list"></div>
     </div>
 
+    <!-- Pomodoro stats panel (slide-up overlay) -->
+    <div id="pomo-stats-panel" class="pomo-stats-panel hidden">
+      <div class="history-header">
+        <h3>Pomodoro Stats</h3>
+        <button id="pomo-stats-close" class="icon-btn" aria-label="Close stats">&times;</button>
+      </div>
+      <div id="pomo-stats-content" class="pomo-stats-content"></div>
+    </div>
+
     <!-- History panel (slide-up overlay) -->
     <div id="history-panel" class="history-panel hidden">
       <div class="history-header">
@@ -308,6 +320,7 @@
   <script src="js/bg-notify.js"></script>
   <script src="js/interval-ui.js"></script>
   <script src="js/cooking-ui.js"></script>
+  <script src="js/pomodoro-stats.js"></script>
   <script src="js/history-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>

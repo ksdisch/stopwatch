@@ -17,7 +17,7 @@ const History = (() => {
 
   function addSession(session) {
     const sessions = getSessions();
-    sessions.push({
+    const entry = {
       id: Date.now(),
       date: new Date().toISOString(),
       type: session.type || 'stopwatch',
@@ -25,7 +25,11 @@ const History = (() => {
       laps: session.laps || [],
       note: session.note || '',
       tags: session.tags || [],
-    });
+    };
+    // Pomodoro-specific metadata
+    if (session.completedCycles !== undefined) entry.completedCycles = session.completedCycles;
+    if (session.totalWorkMs !== undefined) entry.totalWorkMs = session.totalWorkMs;
+    sessions.push(entry);
     saveSessions(sessions);
   }
 

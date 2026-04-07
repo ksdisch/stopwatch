@@ -1414,6 +1414,101 @@ input:focus:not(:focus-visible) {
   width: 24px;
 }
 
+/* Pomodoro Action Links */
+.pomo-action-links {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+/* Pomodoro Stats Panel */
+.pomo-stats-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pomo-stats-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.pomo-stat-cards {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.pomo-stat-card {
+  flex: 1;
+  max-width: 120px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.pomo-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--green);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.pomo-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.pomo-stat-chart-title {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.pomo-stat-chart {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: flex-end;
+  height: 100px;
+  padding: 0 10px;
+}
+
+.pomo-stat-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.pomo-stat-bar {
+  width: 100%;
+  max-width: 30px;
+  background: var(--green);
+  border-radius: 3px 3px 0 0;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.pomo-stat-bar-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
 /* Pomodoro Checklist */
 .pomo-checklist {
   width: 100%;
