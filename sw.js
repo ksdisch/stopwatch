@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v19';
+const CACHE_NAME = 'stopwatch-v20';
 const ASSETS = [
   './',
   './index.html',
@@ -23,7 +23,9 @@ const ASSETS = [
   './js/alert-ui.js',
   './js/history-ui.js',
   './js/interval.js',
+  './js/bg-notify.js',
   './js/interval-ui.js',
+  './js/cooking-ui.js',
   './js/dom-utils.js',
   './js/presets.js',
   './js/presets-ui.js',
@@ -55,4 +57,38 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
+});
+
+// ── Background Notification Scheduling ──
+const pendingNotifications = new Map();
+
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || !data.type) return;
+
+  if (data.type === 'scheduleNotification') {
+    // Cancel any existing notification with the same ID
+    if (pendingNotifications.has(data.id)) {
+      clearTimeout(pendingNotifications.get(data.id));
+    }
+    const timeoutId = setTimeout(() => {
+      pendingNotifications.delete(data.id);
+      self.registration.showNotification(data.title || 'Timer', {
+        body: data.body || 'Time is up!',
+        icon: './icons/icon-192.png',
+        badge: './icons/icon-192.png',
+        vibrate: [200, 100, 200, 100, 200],
+        tag: data.id,
+        requireInteraction: true,
+      });
+    }, Math.max(0, data.delayMs));
+    pendingNotifications.set(data.id, timeoutId);
+  }
+
+  if (data.type === 'cancelNotification') {
+    if (pendingNotifications.has(data.id)) {
+      clearTimeout(pendingNotifications.get(data.id));
+      pendingNotifications.delete(data.id);
+    }
+  }
 });

@@ -1693,6 +1693,183 @@ input:focus:not(:focus-visible) {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
+/* Cooking Mode */
+.cooking-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cooking-timer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cooking-timer-card {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cooking-running {
+  border-color: var(--green);
+}
+
+.cooking-finished {
+  border-color: var(--red);
+}
+
+.cooking-paused {
+  border-color: #ff9f0a;
+}
+
+.cooking-timer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cooking-timer-name {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--btn-border);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 2px 0;
+  outline: none;
+}
+
+.cooking-timer-name:focus {
+  border-bottom-color: var(--green);
+}
+
+.cooking-timer-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  opacity: 0.5;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cooking-timer-delete:active {
+  opacity: 1;
+  color: var(--red);
+}
+
+.cooking-timer-time {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  font-size: clamp(2rem, 10vw, 3.5rem);
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.cooking-finished .cooking-timer-time {
+  color: var(--red);
+}
+
+.cooking-quick-btns {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.cooking-quick-btn {
+  background: var(--bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cooking-quick-btn:active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.cooking-timer-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.cooking-ctrl-btn {
+  flex: 1;
+  max-width: 120px;
+  height: 36px;
+  border-radius: 18px;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cooking-ctrl-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cooking-ctrl-start {
+  border-color: var(--green);
+  background: var(--green-dark);
+  color: var(--green);
+}
+
+.cooking-ctrl-stop {
+  border-color: var(--red);
+  background: var(--red-dark);
+  color: var(--red);
+}
+
+.cooking-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: none;
+  border: 1px dashed var(--btn-border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cooking-add-btn:active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.cooking-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 20px 0;
+  font-size: 0.9rem;
+}
+
 #pomodoro-settings {
   max-height: 350px;
 }

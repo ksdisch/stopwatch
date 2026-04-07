@@ -58,6 +58,7 @@ function onTimerLeft() {
       History.addSession({ type: 'timer', duration: elapsed, laps: [] });
     }
     Timer.reset();
+    BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
     updateTimerUI();
   }
@@ -68,12 +69,14 @@ function onTimerRight() {
   const status = Timer.getStatus();
   if (status === 'running') {
     Timer.pause();
+    BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
     stopTimerRenderLoop();
     updateTimerUI();
   } else if (status === 'idle' || status === 'paused') {
     if (Timer.getDurationMs() === 0) return;
     Timer.start();
+    BgNotify.schedule('timer-' + Timer.getId(), Timer.getRemainingMs(), 'Timer Complete', 'Your countdown has finished!');
     saveTimerState();
     SFX.playStart();
     startTimerRenderLoop();

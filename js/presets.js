@@ -88,6 +88,10 @@ const Presets = (() => {
         saveIntervalState();
         break;
 
+      case 'cooking':
+        // Cooking mode just switches — no preset config to apply
+        break;
+
       case 'pomodoro':
         Pomodoro.reset();
         const pomoConfig = {};

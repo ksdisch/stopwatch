@@ -42,6 +42,12 @@
       "short_name": "Interval",
       "url": "./?mode=interval",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cooking",
+      "short_name": "Cook",
+      "url": "./?mode=cooking",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

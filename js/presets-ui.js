@@ -13,8 +13,8 @@ const PresetsUI = (() => {
   function render() {
     if (!grid) return;
     const presets = Presets.getAll();
-    const modeColors = { stopwatch: 'var(--green)', timer: '#5ac8fa', pomodoro: '#ff6b6b', interval: '#ff9f0a' };
-    const modeLabels = { stopwatch: 'SW', timer: 'TMR', pomodoro: 'POMO', interval: 'INT' };
+    const modeColors = { stopwatch: 'var(--green)', timer: '#5ac8fa', pomodoro: '#ff6b6b', interval: '#ff9f0a', cooking: '#ff6347' };
+    const modeLabels = { stopwatch: 'SW', timer: 'TMR', pomodoro: 'POMO', interval: 'INT', cooking: 'COOK' };
 
     grid.innerHTML = presets.map(p => {
       const hint = Presets.formatDurationHint(p);

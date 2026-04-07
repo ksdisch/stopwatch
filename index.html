@@ -20,6 +20,7 @@
         <button class="mode-tab" data-app-mode="timer">Timer</button>
         <button class="mode-tab" data-app-mode="pomodoro">Pomodoro</button>
         <button class="mode-tab" data-app-mode="interval">Interval</button>
+        <button class="mode-tab" data-app-mode="cooking">Cook</button>
       </div>
       <div class="top-actions">
         <button id="sound-toggle" class="icon-btn" aria-label="Toggle sound">
@@ -213,6 +214,14 @@
       </div>
     </div>
 
+    <!-- Cooking mode (hidden by default) -->
+    <div id="cooking-area" class="cooking-area hidden">
+      <div id="cooking-timer-list" class="cooking-timer-list">
+        <div class="cooking-empty">Tap "Add Timer" to start cooking</div>
+      </div>
+      <button id="cooking-add-btn" class="cooking-add-btn">+ Add Timer</button>
+    </div>
+
     <!-- Timer duration input (hidden when in stopwatch mode) -->
     <div id="timer-set-area" class="hidden">
       <button id="timer-set-toggle" class="offset-link">Set countdown duration</button>
@@ -296,7 +305,9 @@
   <script src="js/timer-ui.js"></script>
   <script src="js/pomodoro-ui.js"></script>
   <script src="js/alert-ui.js"></script>
+  <script src="js/bg-notify.js"></script>
   <script src="js/interval-ui.js"></script>
+  <script src="js/cooking-ui.js"></script>
   <script src="js/history-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>

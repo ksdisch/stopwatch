@@ -113,6 +113,7 @@ function onPomodoroLeft() {
       History.addSession({ type: 'pomodoro', duration: elapsed, laps: [] });
     }
     Pomodoro.reset();
+    BgNotify.cancel('pomodoro');
     savePomodoroState();
     clearChecklist();
     renderChecklist();
@@ -137,11 +138,15 @@ function onPomodoroRight() {
   if (status === 'running') {
     stopPomodoroRenderLoop();
     Pomodoro.pause();
+    BgNotify.cancel('pomodoro');
     savePomodoroState();
     SFX.playStop();
     updatePomodoroUI();
   } else if (status === 'idle' || status === 'paused') {
     Pomodoro.start();
+    const phase = Pomodoro.getPhase();
+    const phaseLabel = phase === 'work' ? 'Work session complete!' : 'Break is over!';
+    BgNotify.schedule('pomodoro', Pomodoro.getRemainingMs(), 'Pomodoro', phaseLabel);
     savePomodoroState();
     SFX.playStart();
     startPomodoroRenderLoop();

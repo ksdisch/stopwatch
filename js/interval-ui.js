@@ -27,6 +27,7 @@ function initIntervalUI() {
     if (type === 'phase' || type === 'rest' || type === 'roundEnd') {
       Interval.advancePhase();
       Interval.start();
+      BgNotify.schedule('interval', Interval.getRemainingMs(), 'Interval', 'Phase complete!');
       saveIntervalState();
       startIntervalRenderLoop();
     }
@@ -198,6 +199,7 @@ function onIntervalLeft() {
   const status = Interval.getStatus();
   if (status === 'paused') {
     Interval.reset();
+    BgNotify.cancel('interval');
     saveIntervalState();
     SFX.playReset();
     updateIntervalUI();
@@ -212,12 +214,14 @@ function onIntervalRight() {
   if (status === 'running') {
     stopIntervalRenderLoop();
     Interval.pause();
+    BgNotify.cancel('interval');
     saveIntervalState();
     SFX.playStop();
     updateIntervalUI();
   } else if (status === 'idle' || status === 'paused') {
     if (Interval.getTotalPhases() === 0) return;
     Interval.start();
+    BgNotify.schedule('interval', Interval.getRemainingMs(), 'Interval', 'Phase complete!');
     saveIntervalState();
     SFX.playStart();
     startIntervalRenderLoop();
