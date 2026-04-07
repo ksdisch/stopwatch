@@ -80,6 +80,14 @@ const Presets = (() => {
         Persistence.save();
         break;
 
+      case 'interval':
+        Interval.reset();
+        if (cfg.intervalProgram) {
+          Interval.setProgram(cfg.intervalProgram);
+        }
+        saveIntervalState();
+        break;
+
       case 'pomodoro':
         Pomodoro.reset();
         const pomoConfig = {};
@@ -122,6 +130,11 @@ const Presets = (() => {
         if (dur > 0) config.durationMs = dur;
         break;
       }
+      case 'interval': {
+        const prog = Interval.getProgram();
+        if (prog.phases.length > 0) config.intervalProgram = prog;
+        break;
+      }
       case 'pomodoro': {
         const cfg = Pomodoro.getConfig();
         config.workMs = cfg.workMs;
@@ -154,6 +167,13 @@ const Presets = (() => {
           return t.hours > 0 ? `${t.hours}:${t.minStr}:${t.secStr}` : `${t.minStr}:${t.secStr}`;
         }
         return 'No duration';
+      case 'interval': {
+        const prog = cfg.intervalProgram;
+        if (prog && prog.phases.length > 0) {
+          return `${prog.phases.length} phases × ${prog.rounds || 1}`;
+        }
+        return 'No phases';
+      }
       case 'pomodoro': {
         const work = (cfg.workMs || 25 * 60000) / 60000;
         const cycles = cfg.totalCycles || 4;
@@ -169,6 +189,8 @@ const Presets = (() => {
       { id: 'default-sw', name: 'Stopwatch', icon: '⏱️', mode: 'stopwatch', config: {}, createdAt: 0 },
       { id: 'default-timer-5', name: '5 min Timer', icon: '⏲️', mode: 'timer', config: { durationMs: 5 * 60000 }, createdAt: 1 },
       { id: 'default-pomo', name: 'Pomodoro', icon: '🍅', mode: 'pomodoro', config: { workMs: 25 * 60000, shortBreakMs: 5 * 60000, longBreakMs: 15 * 60000, totalCycles: 4 }, createdAt: 2 },
+      { id: 'default-tabata', name: 'Tabata', icon: '🏋️', mode: 'interval', config: { intervalProgram: { name: 'Tabata', rounds: 8, restBetweenRoundsMs: 0, phases: [{ name: 'Work', durationMs: 20000, color: '#30d158' }, { name: 'Rest', durationMs: 10000, color: '#ff9f0a' }] } }, createdAt: 3 },
+      { id: 'default-hiit', name: 'HIIT 30/30', icon: '💪', mode: 'interval', config: { intervalProgram: { name: 'HIIT 30/30', rounds: 10, restBetweenRoundsMs: 0, phases: [{ name: 'Work', durationMs: 30000, color: '#30d158' }, { name: 'Rest', durationMs: 30000, color: '#ff9f0a' }] } }, createdAt: 4 },
     ];
   }
 

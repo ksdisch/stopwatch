@@ -24,6 +24,7 @@ PresetsUI.init();
 initAppMode();
 initTimerUI();
 initPomodoroUI();
+initIntervalUI();
 initAlertUI();
 initSoundToggle();
 initThemePicker();
@@ -33,7 +34,7 @@ initExportButton();
 // ── PWA shortcut query param ──
 const urlParams = new URLSearchParams(window.location.search);
 const modeParam = urlParams.get('mode');
-if (modeParam && ['stopwatch', 'timer', 'pomodoro'].includes(modeParam) && modeParam !== appMode) {
+if (modeParam && ['stopwatch', 'timer', 'pomodoro', 'interval'].includes(modeParam) && modeParam !== appMode) {
   appMode = modeParam;
   localStorage.setItem('app_mode', modeParam);
   applyAppMode();
@@ -98,6 +99,7 @@ function switchAppMode(mode) {
   UI.stopRenderLoop();
   stopTimerRenderLoop();
   stopPomodoroRenderLoop();
+  stopIntervalRenderLoop();
 
   // Animate transition
   const display = document.getElementById('timer-display');
@@ -125,25 +127,30 @@ function applyAppMode() {
   const isTimer = appMode === 'timer';
   const isPomodoro = appMode === 'pomodoro';
   const isStopwatch = appMode === 'stopwatch';
+  const isInterval = appMode === 'interval';
 
   document.getElementById('offset-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('vibrate-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('alert-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer);
   document.getElementById('pomodoro-area').classList.toggle('hidden', !isPomodoro);
+  document.getElementById('interval-area').classList.toggle('hidden', !isInterval);
   document.getElementById('timer-progress').classList.toggle('hidden',
-    isStopwatch || (isTimer && Timer.getStatus() === 'idle') || (isPomodoro && Pomodoro.getStatus() === 'idle'));
+    isStopwatch || (isTimer && Timer.getStatus() === 'idle') || (isPomodoro && Pomodoro.getStatus() === 'idle') || (isInterval && Interval.getStatus() === 'idle'));
   document.querySelector('.mode-toggle').classList.toggle('hidden', !isStopwatch);
   document.getElementById('export-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('lap-stats').classList.toggle('hidden', !isStopwatch);
   document.getElementById('lap-section').classList.toggle('hidden', !isStopwatch);
+  document.getElementById('lap-chart').classList.toggle('hidden', !isStopwatch);
 
-  document.getElementById('instance-cards').classList.toggle('hidden', isPomodoro);
+  document.getElementById('instance-cards').classList.toggle('hidden', isPomodoro || isInterval);
 
   if (isTimer) {
     updateTimerUI();
   } else if (isPomodoro) {
     updatePomodoroUI();
+  } else if (isInterval) {
+    updateIntervalUI();
   } else {
     UI.syncUI();
   }

@@ -12,6 +12,7 @@ const Persistence = (() => {
     localStorage.removeItem('pomodoro_state');
     localStorage.removeItem('pomodoro_config');
     localStorage.removeItem('pomodoro_checklist');
+    localStorage.removeItem('interval_state');
   }
 
   return { save, load, clear };

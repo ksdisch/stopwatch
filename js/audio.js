@@ -51,6 +51,12 @@ const SFX = (() => {
     setTimeout(() => beep(1200, 300), 400);
   }
 
+  function playPhaseChange() {
+    // Two quick high beeps for interval phase transition
+    beep(1100, 80);
+    setTimeout(() => beep(1400, 80), 100);
+  }
+
   function isMuted() { return muted; }
 
   function toggleMute() {
@@ -59,5 +65,5 @@ const SFX = (() => {
     return muted;
   }
 
-  return { playStart, playStop, playLap, playReset, playAlarm, isMuted, toggleMute };
+  return { playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, isMuted, toggleMute };
 })();

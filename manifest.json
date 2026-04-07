@@ -36,6 +36,12 @@
       "short_name": "Pomodoro",
       "url": "./?mode=pomodoro",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Interval",
+      "short_name": "Interval",
+      "url": "./?mode=interval",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
