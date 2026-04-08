@@ -155,13 +155,58 @@
       <div id="alert-list" class="alert-list"></div>
     </div>
 
-    <!-- Pomodoro info (hidden by default) -->
+    <!-- Pomodoro phase header (above controls) -->
     <div id="pomodoro-area" class="pomodoro-area hidden">
       <div class="pomodoro-phase-label">
         <span id="pomodoro-phase">Work</span>
         <span id="pomodoro-cycle" class="pomodoro-cycle">1/4</span>
       </div>
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
+    </div>
+
+    <!-- Interval setup/info (hidden by default) -->
+    <div id="interval-area" class="interval-area hidden">
+      <div id="interval-setup">
+        <div class="interval-templates">
+          <button class="interval-tpl-btn" id="interval-tpl-tabata">Tabata</button>
+          <button class="interval-tpl-btn" id="interval-tpl-hiit">HIIT 30/30</button>
+          <button class="interval-tpl-btn" id="interval-tpl-custom">Custom</button>
+        </div>
+        <div id="interval-phase-list" class="interval-phase-list">
+          <div class="interval-empty">No phases added yet</div>
+        </div>
+        <div class="interval-add-row">
+          <input type="text" id="interval-phase-name" placeholder="Phase name" maxlength="20" class="interval-input-name">
+          <input type="number" id="interval-phase-sec" value="30" min="1" max="3600" class="interval-input-sec" inputmode="numeric">
+          <span class="interval-sec-label">s</span>
+          <button id="interval-add-phase" class="interval-add-btn">+</button>
+        </div>
+        <div class="interval-config-row">
+          <label>Rounds</label>
+          <input type="number" id="interval-rounds" value="1" min="1" max="99" class="interval-input-small" inputmode="numeric">
+          <label>Rest</label>
+          <input type="number" id="interval-rest-sec" value="0" min="0" max="300" class="interval-input-small" inputmode="numeric">
+          <span class="interval-sec-label">s</span>
+        </div>
+      </div>
+      <div id="interval-run-info" class="interval-run-info hidden">
+        <div id="interval-current-phase" class="interval-current-phase">Work</div>
+        <div id="interval-next-phase" class="interval-next-phase">Next: Rest</div>
+        <div id="interval-round-label" class="interval-round-label">Round 1/1</div>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="btn-left" class="control-btn" aria-label="Lap" disabled>
+        <span class="btn-inner">Lap</span>
+      </button>
+      <button id="btn-right" class="control-btn btn-start" aria-label="Start">
+        <span class="btn-inner">Start</span>
+      </button>
+    </div>
+
+    <!-- Pomodoro lists and settings (below controls) -->
+    <div id="pomodoro-lists" class="pomodoro-area hidden">
       <div id="pomo-checklist" class="pomo-checklist">
         <div id="pomo-checklist-label" class="pomo-checklist-label">Focus Goals</div>
         <div id="pomo-checklist-items"></div>
@@ -223,38 +268,6 @@
       </div>
     </div>
 
-    <!-- Interval setup/info (hidden by default) -->
-    <div id="interval-area" class="interval-area hidden">
-      <div id="interval-setup">
-        <div class="interval-templates">
-          <button class="interval-tpl-btn" id="interval-tpl-tabata">Tabata</button>
-          <button class="interval-tpl-btn" id="interval-tpl-hiit">HIIT 30/30</button>
-          <button class="interval-tpl-btn" id="interval-tpl-custom">Custom</button>
-        </div>
-        <div id="interval-phase-list" class="interval-phase-list">
-          <div class="interval-empty">No phases added yet</div>
-        </div>
-        <div class="interval-add-row">
-          <input type="text" id="interval-phase-name" placeholder="Phase name" maxlength="20" class="interval-input-name">
-          <input type="number" id="interval-phase-sec" value="30" min="1" max="3600" class="interval-input-sec" inputmode="numeric">
-          <span class="interval-sec-label">s</span>
-          <button id="interval-add-phase" class="interval-add-btn">+</button>
-        </div>
-        <div class="interval-config-row">
-          <label>Rounds</label>
-          <input type="number" id="interval-rounds" value="1" min="1" max="99" class="interval-input-small" inputmode="numeric">
-          <label>Rest</label>
-          <input type="number" id="interval-rest-sec" value="0" min="0" max="300" class="interval-input-small" inputmode="numeric">
-          <span class="interval-sec-label">s</span>
-        </div>
-      </div>
-      <div id="interval-run-info" class="interval-run-info hidden">
-        <div id="interval-current-phase" class="interval-current-phase">Work</div>
-        <div id="interval-next-phase" class="interval-next-phase">Next: Rest</div>
-        <div id="interval-round-label" class="interval-round-label">Round 1/1</div>
-      </div>
-    </div>
-
     <!-- Cooking mode (hidden by default) -->
     <div id="cooking-area" class="cooking-area hidden">
       <div id="cooking-timer-list" class="cooking-timer-list">
@@ -286,15 +299,6 @@
           <button id="timer-cancel-btn" class="offset-btn">Cancel</button>
         </div>
       </div>
-    </div>
-
-    <div id="controls">
-      <button id="btn-left" class="control-btn" aria-label="Lap" disabled>
-        <span class="btn-inner">Lap</span>
-      </button>
-      <button id="btn-right" class="control-btn btn-start" aria-label="Start">
-        <span class="btn-inner">Start</span>
-      </button>
     </div>
 
     <!-- Instance cards (multiple stopwatches/timers) -->

@@ -137,6 +137,7 @@ function applyAppMode() {
   document.getElementById('alert-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer);
   document.getElementById('pomodoro-area').classList.toggle('hidden', !isPomodoro);
+  document.getElementById('pomodoro-lists').classList.toggle('hidden', !isPomodoro);
   document.getElementById('interval-area').classList.toggle('hidden', !isInterval);
   document.getElementById('cooking-area').classList.toggle('hidden', !isCooking);
   document.getElementById('timer-progress').classList.toggle('hidden',
