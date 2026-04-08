@@ -441,6 +441,7 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
 
   container.innerHTML = items.map((item, i) =>
     `<div class="pomo-checklist-item ${item.done ? 'pomo-checklist-item-done' : ''}" data-idx="${i}">
+      <span class="pomo-drag-handle" data-drag-idx="${i}">&#x2630;</span>
       <input type="checkbox" ${item.done ? 'checked' : ''} data-check-idx="${i}">
       <span class="pomo-checklist-item-text">${escapeChecklistHtml(item.text)}</span>
       <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
@@ -469,6 +470,8 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
       renderChecklistInto(containerId, loadFn, saveFn);
     });
   });
+
+  initDragReorder(container, loadFn, saveFn, () => renderChecklistInto(containerId, loadFn, saveFn));
 }
 
 function initChecklistInput() {
@@ -528,6 +531,7 @@ function renderActualWork() {
 
   container.innerHTML = items.map((text, i) =>
     `<div class="pomo-bullet-item" data-idx="${i}">
+      <span class="pomo-drag-handle" data-drag-idx="${i}">&#x2630;</span>
       <span class="pomo-bullet-marker">\u2022</span>
       <span class="pomo-checklist-item-text">${escapeChecklistHtml(text)}</span>
       <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
@@ -544,6 +548,8 @@ function renderActualWork() {
       renderActualWork();
     });
   });
+
+  initDragReorder(container, loadActualWork, saveActualWork, renderActualWork);
 }
 
 function initActualWorkInput() {
@@ -632,6 +638,102 @@ function initActionsDrawer() {
     updatePomodoroUI();
     panel.setAttribute('data-collapsed', '');
   });
+}
+
+// ── Drag-to-Reorder ──
+function initDragReorder(container, loadFn, saveFn, renderFn) {
+  let dragEl = null;
+  let placeholder = null;
+  let startY = 0;
+  let offsetY = 0;
+  let fromIdx = -1;
+
+  function getY(e) {
+    return e.touches ? e.touches[0].clientY : e.clientY;
+  }
+
+  function onStart(e) {
+    const handle = e.target.closest('.pomo-drag-handle');
+    if (!handle) return;
+    e.preventDefault();
+
+    dragEl = handle.closest('[data-idx]');
+    fromIdx = parseInt(dragEl.dataset.idx, 10);
+    const rect = dragEl.getBoundingClientRect();
+    startY = getY(e);
+    offsetY = startY - rect.top;
+
+    // Create placeholder
+    placeholder = document.createElement('div');
+    placeholder.className = 'pomo-drag-placeholder';
+    placeholder.style.height = rect.height + 'px';
+    dragEl.parentNode.insertBefore(placeholder, dragEl);
+
+    // Float the dragged element
+    dragEl.classList.add('pomo-dragging');
+    dragEl.style.width = rect.width + 'px';
+    dragEl.style.top = rect.top + 'px';
+    dragEl.style.left = rect.left + 'px';
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+  }
+
+  function onMove(e) {
+    if (!dragEl) return;
+    e.preventDefault();
+    const y = getY(e);
+    dragEl.style.top = (y - offsetY) + 'px';
+
+    // Find which item we're over
+    const siblings = Array.from(container.querySelectorAll('[data-idx]:not(.pomo-dragging)'));
+    for (const sib of siblings) {
+      const rect = sib.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (y < mid) {
+        container.insertBefore(placeholder, sib);
+        return;
+      }
+    }
+    // Past all items — put placeholder at end
+    container.appendChild(placeholder);
+  }
+
+  function onEnd() {
+    if (!dragEl) return;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+
+    // Determine new index from placeholder position
+    const allChildren = Array.from(container.children);
+    let toIdx = allChildren.indexOf(placeholder);
+    // Adjust: if placeholder is after original position, account for the dragged element still being in DOM
+    if (toIdx > fromIdx) toIdx--;
+
+    dragEl.classList.remove('pomo-dragging');
+    dragEl.style.width = '';
+    dragEl.style.top = '';
+    dragEl.style.left = '';
+    placeholder.remove();
+
+    if (toIdx !== fromIdx && toIdx >= 0) {
+      const items = loadFn();
+      const [moved] = items.splice(fromIdx, 1);
+      items.splice(toIdx, 0, moved);
+      saveFn(items);
+      renderFn();
+    }
+
+    dragEl = null;
+    placeholder = null;
+  }
+
+  container.addEventListener('mousedown', onStart);
+  container.addEventListener('touchstart', onStart, { passive: false });
 }
 
 function renderPomodoroStats() {
