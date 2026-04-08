@@ -504,7 +504,9 @@ function updateChecklistVisibility() {
 
   document.getElementById('pomo-checklist').classList.toggle('hidden', showBreak);
   document.getElementById('pomo-actual-work').classList.toggle('hidden', showBreak);
-  document.getElementById('pomo-break-checklist').classList.toggle('hidden', !showBreak);
+  // Always show break checklist when idle (for pre-planning) or during breaks
+  const showIdle = status === 'idle' || status === 'done';
+  document.getElementById('pomo-break-checklist').classList.toggle('hidden', !showBreak && !showIdle);
 }
 
 // ── "What I Worked On" Bullet List ──
