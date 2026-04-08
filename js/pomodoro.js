@@ -97,6 +97,13 @@ const Pomodoro = (() => {
     status = 'idle';
   }
 
+  function restartPhase() {
+    if (status === 'idle' || status === 'done') return;
+    accumulatedMs = 0;
+    startedAt = null;
+    status = 'idle';
+  }
+
   function onPhaseComplete(cb) {
     phaseCallback = cb;
   }
@@ -151,7 +158,7 @@ const Pomodoro = (() => {
   }
 
   return {
-    start, pause, reset, checkFinished, nextPhase,
+    start, pause, reset, restartPhase, checkFinished, nextPhase,
     getRemainingMs, getElapsedMs, getProgress,
     getStatus, getPhase, getCycleIndex, getTotalCycles,
     getCurrentPhaseDurationMs, getConfig,

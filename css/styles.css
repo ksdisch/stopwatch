@@ -1582,6 +1582,14 @@ input:focus:not(:focus-visible) {
   margin: 4px auto;
 }
 
+.pomo-checklist-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 4px 4px;
+}
+
 .pomo-checklist-item {
   display: flex;
   align-items: center;
@@ -1654,6 +1662,52 @@ input:focus:not(:focus-visible) {
 .pomo-checklist-add input::placeholder {
   color: var(--text-secondary);
   opacity: 0.5;
+}
+
+/* Bullet list items (no checkbox) */
+.pomo-bullet-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.pomo-bullet-marker {
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+/* Actions drawer */
+.pomo-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.pomo-action-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 10px 4px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pomo-action-btn:active {
+  opacity: 0.6;
+}
+
+.pomo-action-btn-primary {
+  color: var(--green);
+  border-color: var(--green);
 }
 
 /* Interval Area */
@@ -2122,6 +2176,34 @@ input:focus:not(:focus-visible) {
 .history-laps {
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+.history-tasks {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--separator);
+}
+
+.history-task-section {
+  margin-bottom: 4px;
+}
+
+.history-task-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.history-task-list {
+  margin: 2px 0 0 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.history-task-list li {
+  margin-bottom: 1px;
 }
 
 .history-note {

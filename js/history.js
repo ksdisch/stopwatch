@@ -29,6 +29,9 @@ const History = (() => {
     // Pomodoro-specific metadata
     if (session.completedCycles !== undefined) entry.completedCycles = session.completedCycles;
     if (session.totalWorkMs !== undefined) entry.totalWorkMs = session.totalWorkMs;
+    if (session.focusGoals) entry.focusGoals = session.focusGoals;
+    if (session.breakTasks) entry.breakTasks = session.breakTasks;
+    if (session.actualWork) entry.actualWork = session.actualWork;
     sessions.push(entry);
     saveSessions(sessions);
   }

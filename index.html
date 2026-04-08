@@ -163,14 +163,38 @@
       </div>
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
       <div id="pomo-checklist" class="pomo-checklist">
+        <div id="pomo-checklist-label" class="pomo-checklist-label">Focus Goals</div>
         <div id="pomo-checklist-items"></div>
         <div class="pomo-checklist-add">
           <input type="text" id="pomo-checklist-input" placeholder="Add a goal..." maxlength="60">
         </div>
       </div>
+      <div id="pomo-actual-work" class="pomo-checklist">
+        <div class="pomo-checklist-label">What I Worked On</div>
+        <div id="pomo-actual-work-items"></div>
+        <div class="pomo-checklist-add">
+          <input type="text" id="pomo-actual-work-input" placeholder="Add what you worked on..." maxlength="80">
+        </div>
+      </div>
+      <div id="pomo-break-checklist" class="pomo-checklist hidden">
+        <div id="pomo-break-checklist-label" class="pomo-checklist-label">Break Tasks</div>
+        <div id="pomo-break-checklist-items"></div>
+        <div class="pomo-checklist-add">
+          <input type="text" id="pomo-break-checklist-input" placeholder="Add a break task..." maxlength="60">
+        </div>
+      </div>
       <div class="pomo-action-links">
         <button id="pomodoro-stats-toggle" class="offset-link">Stats</button>
         <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
+        <button id="pomodoro-actions-toggle" class="offset-link hidden">Actions</button>
+      </div>
+      <div id="pomodoro-actions" class="offset-input" data-collapsed>
+        <div class="pomo-actions-grid">
+          <button id="pomo-clear-focus" class="pomo-action-btn">Clear Focus Goals</button>
+          <button id="pomo-clear-break" class="pomo-action-btn">Clear Break Tasks</button>
+          <button id="pomo-restart-phase" class="pomo-action-btn">Restart Phase</button>
+          <button id="pomo-finish" class="pomo-action-btn pomo-action-btn-primary">Finish &amp; Reset</button>
+        </div>
       </div>
       <div id="pomodoro-settings" class="offset-input" data-collapsed>
         <div class="pomodoro-setting-row">

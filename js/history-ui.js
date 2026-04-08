@@ -73,6 +73,23 @@ function renderHistory() {
       ).join('') +
       `<button class="tag-add-btn" data-session-id="${s.id}">+ tag</button></div>`;
 
+    let taskHtml = '';
+    if (s.type === 'pomodoro') {
+      const sections = [];
+      if (Array.isArray(s.focusGoals) && s.focusGoals.length > 0) {
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Completed Goals</span><ul class="history-task-list">${s.focusGoals.map(g => `<li>${escapeHistoryHtml(g)}</li>`).join('')}</ul></div>`);
+      }
+      if (Array.isArray(s.breakTasks) && s.breakTasks.length > 0) {
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Break Tasks Done</span><ul class="history-task-list">${s.breakTasks.map(t => `<li>${escapeHistoryHtml(t)}</li>`).join('')}</ul></div>`);
+      }
+      if (Array.isArray(s.actualWork) && s.actualWork.length > 0) {
+        sections.push(`<div class="history-task-section"><span class="history-task-label">What I Worked On</span><ul class="history-task-list">${s.actualWork.map(w => `<li>${escapeHistoryHtml(w)}</li>`).join('')}</ul></div>`);
+      }
+      if (sections.length > 0) {
+        taskHtml = `<div class="history-tasks">${sections.join('')}</div>`;
+      }
+    }
+
     return `<div class="history-row" data-id="${s.id}">
       <div class="history-row-top">
         <span class="history-type">${type}</span>
@@ -83,6 +100,7 @@ function renderHistory() {
         <span class="history-laps">${laps}</span>
         ${note}
       </div>
+      ${taskHtml}
       ${tagsHtml}
     </div>`;
   }).join('');

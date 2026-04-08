@@ -12,6 +12,8 @@ const Persistence = (() => {
     localStorage.removeItem('pomodoro_state');
     localStorage.removeItem('pomodoro_config');
     localStorage.removeItem('pomodoro_checklist');
+    localStorage.removeItem('pomodoro_break_checklist');
+    localStorage.removeItem('pomodoro_actual_work');
     localStorage.removeItem('interval_state');
     localStorage.removeItem('cooking_timers');
   }

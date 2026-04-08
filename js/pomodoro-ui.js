@@ -61,9 +61,16 @@ function initPomodoroUI() {
   document.getElementById('btn-left').addEventListener('click', onPomodoroLeft);
   document.getElementById('btn-right').addEventListener('click', onPomodoroRight);
 
-  // Init checklist
+  // Init checklists and actual work list
   renderChecklist();
+  renderBreakChecklist();
+  renderActualWork();
   initChecklistInput();
+  initActualWorkInput();
+  updateChecklistVisibility();
+
+  // Init actions drawer
+  initActionsDrawer();
 
   // Stats panel
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
@@ -125,6 +132,7 @@ function onPomodoroLeft() {
         type: 'pomodoro', duration: elapsed, laps: [],
         completedCycles: Pomodoro.getCycleIndex(),
         totalWorkMs: Pomodoro.getCycleIndex() * cfg.workMs,
+        ...gatherTaskData(),
       });
     }
     Pomodoro.reset();
@@ -132,6 +140,8 @@ function onPomodoroLeft() {
     savePomodoroState();
     clearChecklist();
     renderChecklist();
+    renderBreakChecklist();
+    renderActualWork();
     SFX.playReset();
     updatePomodoroUI();
   } else if (status === 'phaseComplete') {
@@ -175,6 +185,7 @@ function onPomodoroRight() {
         type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
         completedCycles: cfg.totalCycles,
         totalWorkMs: cfg.totalCycles * cfg.workMs,
+        ...gatherTaskData(),
       });
       savePomodoroState();
       updatePomodoroUI();
@@ -190,6 +201,8 @@ function onPomodoroRight() {
     savePomodoroState();
     clearChecklist();
     renderChecklist();
+    renderBreakChecklist();
+    renderActualWork();
     updatePomodoroUI();
   }
 }
@@ -229,6 +242,9 @@ function updatePomodoroUI() {
   // Cycle dots
   renderPomodoroDots();
 
+  // Swap focus/break checklists
+  updateChecklistVisibility();
+
   // Format remaining time
   const t = Utils.formatMs(remaining);
   if (t.hours > 0) {
@@ -256,6 +272,12 @@ function updatePomodoroUI() {
 
   // Settings visibility
   settingsToggle.classList.toggle('hidden', status !== 'idle');
+
+  // Actions visibility (show when not idle)
+  document.getElementById('pomodoro-actions-toggle').classList.toggle('hidden', status === 'idle');
+  if (status === 'idle') {
+    document.getElementById('pomodoro-actions').setAttribute('data-collapsed', '');
+  }
 
   // Buttons
   switch (status) {
@@ -369,8 +391,9 @@ function savePomodoroState() {
   localStorage.setItem('pomodoro_state', JSON.stringify(Pomodoro.getState()));
 }
 
-// ── Pomodoro Checklist ──
+// ── Pomodoro Checklists ──
 const CHECKLIST_KEY = 'pomodoro_checklist';
+const BREAK_CHECKLIST_KEY = 'pomodoro_break_checklist';
 
 function loadChecklist() {
   try {
@@ -384,12 +407,32 @@ function saveChecklist(items) {
 
 function clearChecklist() {
   localStorage.removeItem(CHECKLIST_KEY);
+  localStorage.removeItem(BREAK_CHECKLIST_KEY);
+  localStorage.removeItem(ACTUAL_WORK_KEY);
+}
+
+function loadBreakChecklist() {
+  try {
+    return JSON.parse(localStorage.getItem(BREAK_CHECKLIST_KEY)) || [];
+  } catch (e) { return []; }
+}
+
+function saveBreakChecklist(items) {
+  localStorage.setItem(BREAK_CHECKLIST_KEY, JSON.stringify(items));
 }
 
 function renderChecklist() {
-  const container = document.getElementById('pomo-checklist-items');
+  renderChecklistInto('pomo-checklist-items', loadChecklist, saveChecklist);
+}
+
+function renderBreakChecklist() {
+  renderChecklistInto('pomo-break-checklist-items', loadBreakChecklist, saveBreakChecklist);
+}
+
+function renderChecklistInto(containerId, loadFn, saveFn) {
+  const container = document.getElementById(containerId);
   if (!container) return;
-  const items = loadChecklist();
+  const items = loadFn();
 
   if (items.length === 0) {
     container.innerHTML = '';
@@ -407,11 +450,11 @@ function renderChecklist() {
   container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', () => {
       const idx = parseInt(cb.dataset.checkIdx, 10);
-      const items = loadChecklist();
+      const items = loadFn();
       if (items[idx]) {
         items[idx].done = cb.checked;
-        saveChecklist(items);
-        renderChecklist();
+        saveFn(items);
+        renderChecklistInto(containerId, loadFn, saveFn);
       }
     });
   });
@@ -420,28 +463,174 @@ function renderChecklist() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.delIdx, 10);
-      const items = loadChecklist();
+      const items = loadFn();
       items.splice(idx, 1);
-      saveChecklist(items);
-      renderChecklist();
+      saveFn(items);
+      renderChecklistInto(containerId, loadFn, saveFn);
     });
   });
 }
 
 function initChecklistInput() {
-  const input = document.getElementById('pomo-checklist-input');
+  initChecklistInputFor('pomo-checklist-input', loadChecklist, saveChecklist, renderChecklist);
+  initChecklistInputFor('pomo-break-checklist-input', loadBreakChecklist, saveBreakChecklist, renderBreakChecklist);
+}
+
+function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
+  const input = document.getElementById(inputId);
   if (!input) return;
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      const items = loadChecklist();
+      const items = loadFn();
       items.push({ text, done: false });
-      saveChecklist(items);
+      saveFn(items);
       input.value = '';
-      renderChecklist();
+      renderFn();
     }
+  });
+}
+
+function updateChecklistVisibility() {
+  const phase = Pomodoro.getPhase();
+  const status = Pomodoro.getStatus();
+  const isBreak = phase === 'shortBreak' || phase === 'longBreak';
+  const showBreak = isBreak && status !== 'idle' && status !== 'done';
+
+  document.getElementById('pomo-checklist').classList.toggle('hidden', showBreak);
+  document.getElementById('pomo-actual-work').classList.toggle('hidden', showBreak);
+  document.getElementById('pomo-break-checklist').classList.toggle('hidden', !showBreak);
+}
+
+// ── "What I Worked On" Bullet List ──
+const ACTUAL_WORK_KEY = 'pomodoro_actual_work';
+
+function loadActualWork() {
+  try { return JSON.parse(localStorage.getItem(ACTUAL_WORK_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveActualWork(items) {
+  localStorage.setItem(ACTUAL_WORK_KEY, JSON.stringify(items));
+}
+
+function renderActualWork() {
+  const container = document.getElementById('pomo-actual-work-items');
+  if (!container) return;
+  const items = loadActualWork();
+
+  if (items.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = items.map((text, i) =>
+    `<div class="pomo-bullet-item" data-idx="${i}">
+      <span class="pomo-bullet-marker">\u2022</span>
+      <span class="pomo-checklist-item-text">${escapeChecklistHtml(text)}</span>
+      <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
+    </div>`
+  ).join('');
+
+  container.querySelectorAll('.pomo-checklist-item-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.delIdx, 10);
+      const items = loadActualWork();
+      items.splice(idx, 1);
+      saveActualWork(items);
+      renderActualWork();
+    });
+  });
+}
+
+function initActualWorkInput() {
+  const input = document.getElementById('pomo-actual-work-input');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const items = loadActualWork();
+      items.push(text);
+      saveActualWork(items);
+      input.value = '';
+      renderActualWork();
+    }
+  });
+}
+
+// ── Task Data Gathering ──
+function gatherTaskData() {
+  return {
+    focusGoals: loadChecklist().filter(i => i.done).map(i => i.text),
+    breakTasks: loadBreakChecklist().filter(i => i.done).map(i => i.text),
+    actualWork: loadActualWork(),
+  };
+}
+
+// ── Actions Drawer ──
+function initActionsDrawer() {
+  const toggle = document.getElementById('pomodoro-actions-toggle');
+  const panel = document.getElementById('pomodoro-actions');
+
+  toggle.addEventListener('click', () => {
+    if (panel.hasAttribute('data-collapsed')) {
+      panel.removeAttribute('data-collapsed');
+    } else {
+      panel.setAttribute('data-collapsed', '');
+    }
+  });
+
+  document.getElementById('pomo-clear-focus').addEventListener('click', () => {
+    saveChecklist([]);
+    renderChecklist();
+  });
+
+  document.getElementById('pomo-clear-break').addEventListener('click', () => {
+    saveBreakChecklist([]);
+    renderBreakChecklist();
+  });
+
+  document.getElementById('pomo-restart-phase').addEventListener('click', () => {
+    const status = Pomodoro.getStatus();
+    if (status === 'idle' || status === 'done') return;
+    stopPomodoroRenderLoop();
+    BgNotify.cancel('pomodoro');
+    Pomodoro.restartPhase();
+    savePomodoroState();
+    updatePomodoroUI();
+    panel.setAttribute('data-collapsed', '');
+  });
+
+  document.getElementById('pomo-finish').addEventListener('click', () => {
+    const elapsed = Pomodoro.getElapsedMs();
+    const cfg = Pomodoro.getConfig();
+    const cycleIdx = Pomodoro.getCycleIndex();
+    const phase = Pomodoro.getPhase();
+    if (elapsed > 1000 || cycleIdx > 0) {
+      History.addSession({
+        type: 'pomodoro',
+        duration: elapsed,
+        laps: [],
+        completedCycles: cycleIdx,
+        totalWorkMs: cycleIdx * cfg.workMs + (phase === 'work' ? elapsed : 0),
+        ...gatherTaskData(),
+      });
+    }
+    stopPomodoroRenderLoop();
+    BgNotify.cancel('pomodoro');
+    Pomodoro.reset();
+    savePomodoroState();
+    clearChecklist();
+    renderChecklist();
+    renderBreakChecklist();
+    renderActualWork();
+    updatePomodoroUI();
+    panel.setAttribute('data-collapsed', '');
   });
 }
 
