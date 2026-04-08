@@ -133,6 +133,7 @@ function onPomodoroLeft() {
         completedCycles: Pomodoro.getCycleIndex(),
         totalWorkMs: Pomodoro.getCycleIndex() * cfg.workMs,
         ...gatherTaskData(),
+        ...gatherTimingData(),
       });
     }
     Pomodoro.reset();
@@ -186,6 +187,7 @@ function onPomodoroRight() {
         completedCycles: cfg.totalCycles,
         totalWorkMs: cfg.totalCycles * cfg.workMs,
         ...gatherTaskData(),
+        ...gatherTimingData(),
       });
       savePomodoroState();
       updatePomodoroUI();
@@ -571,12 +573,26 @@ function initActualWorkInput() {
   });
 }
 
-// ── Task Data Gathering ──
+// ── Task & Timing Data Gathering ──
 function gatherTaskData() {
   return {
     focusGoals: loadChecklist().filter(i => i.done).map(i => i.text),
     breakTasks: loadBreakChecklist().filter(i => i.done).map(i => i.text),
     actualWork: loadActualWork(),
+  };
+}
+
+function gatherTimingData() {
+  const log = Pomodoro.getPhaseLog().slice();
+  // If a phase is currently in progress, include it as open-ended
+  const phaseStart = Pomodoro.getPhaseStartedAt();
+  if (phaseStart) {
+    log.push({ phase: Pomodoro.getPhase(), startedAt: phaseStart, endedAt: Date.now(), partial: true });
+  }
+  return {
+    sessionStartedAt: Pomodoro.getSessionStartedAt(),
+    sessionEndedAt: Date.now(),
+    phaseLog: log,
   };
 }
 
@@ -627,6 +643,7 @@ function initActionsDrawer() {
         completedCycles: cycleIdx,
         totalWorkMs: cycleIdx * cfg.workMs + (phase === 'work' ? elapsed : 0),
         ...gatherTaskData(),
+        ...gatherTimingData(),
       });
     }
     stopPomodoroRenderLoop();

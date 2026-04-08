@@ -74,6 +74,7 @@ function renderHistory() {
       `<button class="tag-add-btn" data-session-id="${s.id}">+ tag</button></div>`;
 
     let taskHtml = '';
+    let timingHtml = '';
     if (s.type === 'pomodoro') {
       const sections = [];
       if (Array.isArray(s.focusGoals) && s.focusGoals.length > 0) {
@@ -88,6 +89,16 @@ function renderHistory() {
       if (sections.length > 0) {
         taskHtml = `<div class="history-tasks">${sections.join('')}</div>`;
       }
+      if (s.sessionStartedAt && Array.isArray(s.phaseLog) && s.phaseLog.length > 0) {
+        const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        const phaseNames = { work: 'Work', shortBreak: 'Short Break', longBreak: 'Long Break' };
+        const rows = s.phaseLog.map(p => {
+          const name = phaseNames[p.phase] || p.phase;
+          const suffix = p.restarted ? ' (restarted)' : p.partial ? ' (partial)' : '';
+          return `<div class="history-phase-row"><span class="history-phase-name">${name}${suffix}</span><span class="history-phase-time">${fmtTime(p.startedAt)} – ${fmtTime(p.endedAt)}</span></div>`;
+        }).join('');
+        timingHtml = `<div class="history-timing"><span class="history-task-label">Session ${fmtTime(s.sessionStartedAt)} – ${fmtTime(s.sessionEndedAt)}</span>${rows}</div>`;
+      }
     }
 
     return `<div class="history-row" data-id="${s.id}">
@@ -100,6 +111,7 @@ function renderHistory() {
         <span class="history-laps">${laps}</span>
         ${note}
       </div>
+      ${timingHtml}
       ${taskHtml}
       ${tagsHtml}
     </div>`;

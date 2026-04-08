@@ -32,6 +32,9 @@ const History = (() => {
     if (session.focusGoals) entry.focusGoals = session.focusGoals;
     if (session.breakTasks) entry.breakTasks = session.breakTasks;
     if (session.actualWork) entry.actualWork = session.actualWork;
+    if (session.sessionStartedAt) entry.sessionStartedAt = session.sessionStartedAt;
+    if (session.sessionEndedAt) entry.sessionEndedAt = session.sessionEndedAt;
+    if (session.phaseLog) entry.phaseLog = session.phaseLog;
     sessions.push(entry);
     saveSessions(sessions);
   }

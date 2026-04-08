@@ -9,6 +9,9 @@ const Pomodoro = (() => {
   let startedAt = null;
   let accumulatedMs = 0;
   let phaseCallback = null;
+  let sessionStartedAt = null;  // When the overall Pomodoro session began
+  let phaseStartedAt = null;    // When the current phase first started
+  let phaseLog = [];            // { phase, startedAt, endedAt } for each completed phase
 
   function getCurrentPhaseDurationMs() {
     if (phase === 'work') return workMs;
@@ -41,7 +44,10 @@ const Pomodoro = (() => {
   function start() {
     if (status === 'running' || status === 'done') return;
     if (status === 'phaseComplete') return;
-    startedAt = Date.now();
+    const now = Date.now();
+    startedAt = now;
+    if (!sessionStartedAt) sessionStartedAt = now;
+    if (!phaseStartedAt) phaseStartedAt = now;
     status = 'running';
   }
 
@@ -58,13 +64,19 @@ const Pomodoro = (() => {
     cycleIndex = 0;
     startedAt = null;
     accumulatedMs = 0;
+    sessionStartedAt = null;
+    phaseStartedAt = null;
+    phaseLog = [];
   }
 
   function checkFinished() {
     if (status === 'running' && getRemainingMs() <= 0) {
+      const now = Date.now();
       accumulatedMs = getCurrentPhaseDurationMs();
       startedAt = null;
       status = 'phaseComplete';
+      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now });
+      phaseStartedAt = null;
       if (phaseCallback) phaseCallback(phase);
       return true;
     }
@@ -75,6 +87,7 @@ const Pomodoro = (() => {
     if (status !== 'phaseComplete' && status !== 'done') return;
     accumulatedMs = 0;
     startedAt = null;
+    phaseStartedAt = null;
 
     if (phase === 'work') {
       cycleIndex++;
@@ -99,8 +112,12 @@ const Pomodoro = (() => {
 
   function restartPhase() {
     if (status === 'idle' || status === 'done') return;
+    if (phaseStartedAt) {
+      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: Date.now(), restarted: true });
+    }
     accumulatedMs = 0;
     startedAt = null;
+    phaseStartedAt = null;
     status = 'idle';
   }
 
@@ -129,6 +146,7 @@ const Pomodoro = (() => {
       status, phase, cycleIndex, totalCycles,
       workMs, shortBreakMs, longBreakMs,
       startedAt, accumulatedMs,
+      sessionStartedAt, phaseStartedAt, phaseLog,
     };
   }
 
@@ -143,6 +161,9 @@ const Pomodoro = (() => {
     longBreakMs = state.longBreakMs ?? 15 * 60000;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    sessionStartedAt = state.sessionStartedAt ?? null;
+    phaseStartedAt = state.phaseStartedAt ?? null;
+    phaseLog = state.phaseLog ?? [];
 
     // Clock skew guard
     if (status === 'running' && startedAt && startedAt > Date.now()) {
@@ -162,6 +183,9 @@ const Pomodoro = (() => {
     getRemainingMs, getElapsedMs, getProgress,
     getStatus, getPhase, getCycleIndex, getTotalCycles,
     getCurrentPhaseDurationMs, getConfig,
+    getSessionStartedAt: () => sessionStartedAt,
+    getPhaseLog: () => phaseLog,
+    getPhaseStartedAt: () => phaseStartedAt,
     onPhaseComplete, configure,
     getState, loadState,
   };

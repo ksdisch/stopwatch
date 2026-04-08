@@ -2239,6 +2239,29 @@ input:focus:not(:focus-visible) {
   margin-bottom: 1px;
 }
 
+.history-timing {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--separator);
+}
+
+.history-phase-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 0.8rem;
+}
+
+.history-phase-name {
+  color: var(--text);
+}
+
+.history-phase-time {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
 .history-note {
   font-size: 0.8rem;
   color: var(--text-secondary);
