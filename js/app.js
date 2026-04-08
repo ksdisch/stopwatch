@@ -1,6 +1,9 @@
 // ── State ──
 let appMode = localStorage.getItem('app_mode') || 'stopwatch';
 
+// ── Initialize IndexedDB for history (async, non-blocking) ──
+History.init().catch(e => console.error('History DB init failed:', e));
+
 // ── Restore persisted state ──
 Persistence.load();
 try {

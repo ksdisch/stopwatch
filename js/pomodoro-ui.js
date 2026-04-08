@@ -755,15 +755,15 @@ function initDragReorder(container, loadFn, saveFn, renderFn) {
   container.addEventListener('touchstart', onStart, { passive: false });
 }
 
-function renderPomodoroStats() {
+async function renderPomodoroStats() {
   const content = document.getElementById('pomo-stats-content');
   if (!content) return;
 
-  const streak = PomodoroStats.getCurrentStreak();
-  const cyclesThisWeek = PomodoroStats.getCompletedCyclesThisWeek();
-  const workMsThisWeek = PomodoroStats.getTotalWorkMsThisWeek();
+  const streak = await PomodoroStats.getCurrentStreak();
+  const cyclesThisWeek = await PomodoroStats.getCompletedCyclesThisWeek();
+  const workMsThisWeek = await PomodoroStats.getTotalWorkMsThisWeek();
   const workMinThisWeek = Math.round(workMsThisWeek / 60000);
-  const daily = PomodoroStats.getDailyMinutesThisWeek();
+  const daily = await PomodoroStats.getDailyMinutesThisWeek();
   const maxMin = Math.max(1, ...daily.map(d => d.minutes));
 
   const chartBars = daily.map(d => {

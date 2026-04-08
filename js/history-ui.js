@@ -17,13 +17,13 @@ function initHistoryPanel() {
 
 let activeTagFilter = null;
 
-function renderHistory() {
+async function renderHistory() {
   const list = document.getElementById('history-list');
   const filterEl = document.getElementById('history-filter');
-  let sessions = History.getSessions().reverse();
+  let sessions = (await History.getSessions()).reverse();
 
   // Render filter bar
-  const allTags = History.getAllTags();
+  const allTags = await History.getAllTags();
   if (allTags.length > 0) {
     filterEl.innerHTML = `<button class="filter-chip ${activeTagFilter === null ? 'filter-chip-active' : ''}" data-filter-tag="">All</button>` +
       allTags.map(tag =>
@@ -119,9 +119,9 @@ function renderHistory() {
 
   // Attach tag handlers
   list.querySelectorAll('.tag-chip-delete').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      History.removeTag(Number(btn.dataset.sessionId), btn.dataset.tag);
+      await History.removeTag(Number(btn.dataset.sessionId), btn.dataset.tag);
       renderHistory();
     });
   });
@@ -139,10 +139,10 @@ function renderHistory() {
       btn.replaceWith(input);
       input.focus();
 
-      function commitTag() {
+      async function commitTag() {
         const tag = input.value.trim().toLowerCase();
         if (tag) {
-          History.addTag(sessionId, tag);
+          await History.addTag(sessionId, tag);
         }
         renderHistory();
       }
@@ -169,9 +169,9 @@ function renderHistory() {
       el.replaceWith(input);
       input.focus();
 
-      function commitNote() {
+      async function commitNote() {
         const note = input.value.trim();
-        History.updateNote(sessionId, note);
+        await History.updateNote(sessionId, note);
         renderHistory();
       }
       input.addEventListener('keydown', (e) => {
