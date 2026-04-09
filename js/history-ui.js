@@ -43,6 +43,85 @@ function initHistoryPanel() {
       renderHistory();
     }
   });
+
+  // Log Past Session
+  const logForm = document.getElementById('log-past-form');
+  const logModeSelect = document.getElementById('log-past-mode');
+  const pomoFields = document.getElementById('log-past-pomo-fields');
+
+  document.getElementById('history-log-past').addEventListener('click', () => {
+    logForm.classList.toggle('hidden');
+    if (!logForm.classList.contains('hidden')) {
+      // Default to today
+      const today = new Date().toISOString().slice(0, 10);
+      document.getElementById('log-past-date').value = today;
+      document.getElementById('log-past-start').value = '';
+      document.getElementById('log-past-end').value = '';
+      document.getElementById('log-past-note').value = '';
+      document.getElementById('log-past-tags').value = '';
+      updateLogPastPomoVisibility();
+    }
+  });
+
+  logModeSelect.addEventListener('change', updateLogPastPomoVisibility);
+
+  function updateLogPastPomoVisibility() {
+    pomoFields.classList.toggle('hidden', logModeSelect.value !== 'pomodoro');
+  }
+
+  document.getElementById('log-past-cancel').addEventListener('click', () => {
+    logForm.classList.add('hidden');
+  });
+
+  document.getElementById('log-past-save').addEventListener('click', async () => {
+    const mode = logModeSelect.value;
+    const dateStr = document.getElementById('log-past-date').value;
+    const startTime = document.getElementById('log-past-start').value;
+    const endTime = document.getElementById('log-past-end').value;
+
+    if (!dateStr || !startTime || !endTime) {
+      alert('Please fill in date, start time, and end time.');
+      return;
+    }
+
+    const startDate = new Date(`${dateStr}T${startTime}`);
+    const endDate = new Date(`${dateStr}T${endTime}`);
+    // Handle end time crossing midnight
+    if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
+    const durationMs = endDate.getTime() - startDate.getTime();
+
+    if (durationMs <= 0) {
+      alert('End time must be after start time.');
+      return;
+    }
+
+    const note = document.getElementById('log-past-note').value.trim();
+    const tagsRaw = document.getElementById('log-past-tags').value.trim();
+    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+
+    const session = {
+      id: startDate.getTime(),
+      date: startDate.toISOString(),
+      type: mode,
+      duration: durationMs,
+      laps: [],
+      note,
+      tags,
+      sessionStartedAt: startDate.getTime(),
+      sessionEndedAt: endDate.getTime(),
+    };
+
+    if (mode === 'pomodoro') {
+      const cycles = Math.max(0, parseInt(document.getElementById('log-past-cycles').value, 10) || 0);
+      const workMin = Math.max(1, parseInt(document.getElementById('log-past-work-min').value, 10) || 25);
+      session.completedCycles = cycles;
+      session.totalWorkMs = cycles * workMin * 60000;
+    }
+
+    await History.addSession(session);
+    logForm.classList.add('hidden');
+    renderHistory();
+  });
 }
 
 let activeTagFilter = null;

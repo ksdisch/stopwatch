@@ -93,8 +93,8 @@ const History = (() => {
   async function addSession(session) {
     await ready();
     const entry = {
-      id: Date.now(),
-      date: new Date().toISOString(),
+      id: session.id || Date.now(),
+      date: session.date || new Date().toISOString(),
       type: session.type || 'stopwatch',
       duration: session.duration || 0,
       laps: session.laps || [],

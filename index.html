@@ -383,10 +383,57 @@
       <div id="history-filter" class="history-filter"></div>
       <div id="history-list" class="history-list"></div>
       <div class="history-actions">
+        <button id="history-log-past" class="offset-link">Log Past Session</button>
         <button id="history-export-all" class="offset-link">Export All Data</button>
         <button id="history-import" class="offset-link">Import Data</button>
         <button id="history-clear-all" class="offset-link history-danger">Clear All</button>
         <input type="file" id="history-import-input" accept=".json" class="hidden">
+      </div>
+      <div id="log-past-form" class="log-past-form hidden">
+        <div class="log-past-title">Log Past Session</div>
+        <div class="log-past-row">
+          <label>Mode</label>
+          <select id="log-past-mode">
+            <option value="pomodoro">Pomodoro</option>
+            <option value="stopwatch">Stopwatch</option>
+            <option value="timer">Timer</option>
+            <option value="interval">Interval</option>
+          </select>
+        </div>
+        <div class="log-past-row">
+          <label>Date</label>
+          <input type="date" id="log-past-date">
+        </div>
+        <div class="log-past-row">
+          <label>Start time</label>
+          <input type="time" id="log-past-start">
+        </div>
+        <div class="log-past-row">
+          <label>End time</label>
+          <input type="time" id="log-past-end">
+        </div>
+        <div id="log-past-pomo-fields">
+          <div class="log-past-row">
+            <label>Cycles completed</label>
+            <input type="number" id="log-past-cycles" min="0" max="20" value="1" inputmode="numeric">
+          </div>
+          <div class="log-past-row">
+            <label>Work min/cycle</label>
+            <input type="number" id="log-past-work-min" min="1" max="99" value="25" inputmode="numeric">
+          </div>
+        </div>
+        <div class="log-past-row">
+          <label>Note</label>
+          <input type="text" id="log-past-note" placeholder="Optional note..." maxlength="100">
+        </div>
+        <div class="log-past-row">
+          <label>Tags</label>
+          <input type="text" id="log-past-tags" placeholder="Comma-separated tags..." maxlength="100">
+        </div>
+        <div class="offset-buttons">
+          <button id="log-past-save" class="offset-btn">Save</button>
+          <button id="log-past-cancel" class="offset-btn">Cancel</button>
+        </div>
       </div>
     </div>
   </div>
