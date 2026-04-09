@@ -584,6 +584,10 @@ input:focus:not(:focus-visible) {
   opacity: 0.6;
 }
 
+.offset-link-active {
+  color: var(--green);
+}
+
 .offset-input {
   display: flex;
   flex-direction: column;

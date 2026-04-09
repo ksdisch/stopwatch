@@ -64,14 +64,22 @@ function initPomodoroUI() {
     }
   });
 
-  // Wire auto-advance checkbox
-  const autoAdvCb = document.getElementById('pomo-auto-advance');
-  if (autoAdvCb) {
-    autoAdvCb.checked = autoAdvance;
-    autoAdvCb.addEventListener('change', () => {
-      autoAdvance = autoAdvCb.checked;
+  // Wire auto-advance toggle
+  const autoAdvBtn = document.getElementById('pomo-auto-advance-toggle');
+  if (autoAdvBtn) {
+    updateAutoAdvanceLabel();
+    autoAdvBtn.addEventListener('click', () => {
+      autoAdvance = !autoAdvance;
       localStorage.setItem('pomo_auto_advance', autoAdvance ? '1' : '0');
+      updateAutoAdvanceLabel();
     });
+  }
+
+  function updateAutoAdvanceLabel() {
+    if (autoAdvBtn) {
+      autoAdvBtn.textContent = autoAdvance ? 'Auto-advance: On' : 'Auto-advance: Off';
+      autoAdvBtn.classList.toggle('offset-link-active', autoAdvance);
+    }
   }
 
   // Wire buttons
