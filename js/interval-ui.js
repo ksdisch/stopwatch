@@ -198,6 +198,11 @@ function onIntervalLeft() {
   if (appMode !== 'interval') return;
   const status = Interval.getStatus();
   if (status === 'paused') {
+    const elapsed = Interval.getElapsedMs();
+    if (elapsed > 1000) {
+      const prog = Interval.getProgram();
+      History.addSession({ type: 'interval', duration: elapsed, laps: [] });
+    }
     Interval.reset();
     BgNotify.cancel('interval');
     saveIntervalState();
@@ -227,6 +232,9 @@ function onIntervalRight() {
     startIntervalRenderLoop();
     updateIntervalUI();
   } else if (status === 'done') {
+    const prog = Interval.getProgram();
+    const totalMs = prog.phases.reduce((s, p) => s + p.durationMs, 0) * (prog.rounds || 1);
+    History.addSession({ type: 'interval', duration: totalMs, laps: [] });
     Interval.reset();
     saveIntervalState();
     updateIntervalUI();

@@ -143,6 +143,7 @@ const PresetsUI = (() => {
       <div class="preset-save-form">
         <input type="text" id="preset-save-icon" class="preset-save-icon-input" value="${defaultIcon}" maxlength="2">
         <input type="text" id="preset-save-name" class="preset-save-name-input" placeholder="${modeLabel} preset" maxlength="30">
+        <label class="preset-auto-start-label"><input type="checkbox" id="preset-auto-start"> Auto-start</label>
         <div class="offset-buttons">
           <button id="preset-save-confirm" class="offset-btn">Save</button>
           <button id="preset-save-cancel" class="offset-btn">Cancel</button>
@@ -156,6 +157,8 @@ const PresetsUI = (() => {
     document.getElementById('preset-save-confirm').addEventListener('click', () => {
       const name = nameInput.value.trim() || `${modeLabel} preset`;
       const icon = document.getElementById('preset-save-icon').value.trim() || defaultIcon;
+      const autoStart = document.getElementById('preset-auto-start').checked;
+      if (autoStart) captured.config.autoStart = true;
       Presets.save({ name, icon, mode: captured.mode, config: captured.config });
       saveArea.classList.add('hidden');
       saveArea.innerHTML = '';

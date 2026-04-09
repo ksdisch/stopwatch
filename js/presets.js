@@ -111,8 +111,28 @@ const Presets = (() => {
         break;
     }
 
+    // Set instance name if provided
+    if (cfg.instanceName) {
+      if (preset.mode === 'stopwatch') Stopwatch.setName(cfg.instanceName);
+      else if (preset.mode === 'timer') Timer.setName(cfg.instanceName);
+      Persistence.save();
+    }
+
     // Apply the mode UI
     if (typeof applyAppMode === 'function') applyAppMode();
+
+    // Auto-start if configured
+    if (cfg.autoStart) {
+      setTimeout(() => {
+        if (preset.mode === 'stopwatch' && Stopwatch.getStatus() === 'idle') {
+          Stopwatch.start(); Persistence.save(); SFX.playStart(); if (typeof UI !== 'undefined') UI.syncUI();
+        } else if (preset.mode === 'timer' && Timer.getStatus() === 'idle' && Timer.getDurationMs() > 0) {
+          Timer.start(); if (typeof updateTimerUI === 'function') updateTimerUI(); SFX.playStart();
+        } else if (preset.mode === 'pomodoro' && Pomodoro.getStatus() === 'idle') {
+          Pomodoro.start(); SFX.playStart(); if (typeof startPomodoroRenderLoop === 'function') startPomodoroRenderLoop(); if (typeof updatePomodoroUI === 'function') updatePomodoroUI();
+        }
+      }, 100);
+    }
   }
 
   function captureCurrentConfig() {
@@ -151,6 +171,13 @@ const Presets = (() => {
         } catch (e) {}
         break;
       }
+    }
+
+    // Capture instance name
+    if (mode === 'stopwatch' && Stopwatch.getName() !== 'Stopwatch') {
+      config.instanceName = Stopwatch.getName();
+    } else if (mode === 'timer' && Timer.getName() !== 'Timer') {
+      config.instanceName = Timer.getName();
     }
 
     return { mode, config };

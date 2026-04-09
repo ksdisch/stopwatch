@@ -1,6 +1,7 @@
 const CardsUI = (() => {
   let container;
   let cardTickId = null;
+  const COLOR_PALETTE = ['#ff6b6b','#0ac7e8','#f5a623','#30d158','#af52de','#ff9f0a','#5ac8fa','#ff453a'];
 
   function init() {
     container = document.getElementById('instance-cards');
@@ -37,8 +38,11 @@ const CardsUI = (() => {
         : status === 'finished' ? 'status-finished'
         : 'status-idle';
 
-      html += `<div class="instance-card" data-instance-id="${inst.getId()}">
-        <span class="card-status ${statusCls}"></span>
+      const instColor = inst.getColor ? inst.getColor() : null;
+      const colorStyle = instColor ? ` style="border-left:3px solid ${instColor}"` : '';
+      const dotStyle = instColor ? ` style="background:${instColor}"` : '';
+      html += `<div class="instance-card"${colorStyle} data-instance-id="${inst.getId()}">
+        <span class="card-status ${statusCls}" data-color-id="${inst.getId()}"${dotStyle}></span>
         <span class="card-name" contenteditable="true" spellcheck="false" data-name-id="${inst.getId()}">${escapeHtml(inst.getName())}</span>
         <span class="card-time" data-time-id="${inst.getId()}">${time}</span>
         <button class="card-compare" data-compare-id="${inst.getId()}" aria-label="Compare">⇔</button>
@@ -113,6 +117,15 @@ const CardsUI = (() => {
       });
       el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+      });
+    });
+
+    // Color picker on status dot tap
+    container.querySelectorAll('.card-status').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = dot.dataset.colorId;
+        showColorPicker(dot, id, isStopwatch);
       });
     });
 
@@ -200,6 +213,42 @@ const CardsUI = (() => {
     });
 
     if (!anyRunning) stopCardTick();
+  }
+
+  function showColorPicker(dot, instanceId, isStopwatch) {
+    // Remove any existing picker
+    const existing = container.querySelector('.color-palette');
+    if (existing) existing.remove();
+
+    const instances = isStopwatch ? InstanceManager.getStopwatches() : InstanceManager.getTimers();
+    const inst = instances.find(i => i.getId() === instanceId);
+    if (!inst) return;
+
+    const palette = document.createElement('div');
+    palette.className = 'color-palette';
+    palette.innerHTML = COLOR_PALETTE.map(c =>
+      `<span class="color-swatch ${inst.getColor() === c ? 'color-swatch-active' : ''}" data-color="${c}" style="background:${c}"></span>`
+    ).join('') + `<span class="color-swatch color-swatch-none ${!inst.getColor() ? 'color-swatch-active' : ''}" data-color="">&#x2715;</span>`;
+
+    dot.closest('.instance-card').appendChild(palette);
+
+    palette.querySelectorAll('.color-swatch').forEach(swatch => {
+      swatch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        inst.setColor(swatch.dataset.color || null);
+        Persistence.save();
+        palette.remove();
+        render();
+      });
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', function close() {
+        palette.remove();
+        document.removeEventListener('click', close);
+      }, { once: true });
+    }, 0);
   }
 
   // ── Helpers ──

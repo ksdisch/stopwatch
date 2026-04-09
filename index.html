@@ -32,6 +32,12 @@
         <button id="presets-toggle" class="icon-btn" aria-label="Presets">
           <span>&#x2B50;</span>
         </button>
+        <button id="analytics-toggle" class="icon-btn" aria-label="Analytics">
+          <span>&#x1F4CA;</span>
+        </button>
+        <button id="focus-toggle" class="icon-btn" aria-label="Focus mode">
+          <span>&#x26F6;</span>
+        </button>
         <button id="history-toggle" class="icon-btn" aria-label="Session history">
           <span>&#x1F4CB;</span>
         </button>
@@ -40,6 +46,7 @@
 
     <!-- Theme picker (hidden by default) -->
     <div id="theme-picker" class="theme-picker hidden"></div>
+    <div id="sound-picker" class="theme-picker hidden"></div>
 
     <!-- Quick-picks (top 3 presets, auto-hides when running) -->
     <div id="presets-quick" class="presets-quick"></div>
@@ -58,6 +65,7 @@
 
     <div id="sr-announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
     <div id="timer-display" role="timer" aria-label="Elapsed time">
+      <div id="auto-advance-overlay" class="auto-advance-overlay hidden"></div>
       <span id="time">00:00<span class="centiseconds">.00</span></span>
       <div id="analog-display" class="hidden">
         <svg viewBox="0 0 200 200" class="analog-svg">
@@ -261,6 +269,10 @@
           <label>Cycles</label>
           <input type="number" id="pomo-cycles" min="1" max="10" value="4" inputmode="numeric">
         </div>
+        <div class="pomodoro-setting-row">
+          <label>Auto-advance</label>
+          <input type="checkbox" id="pomo-auto-advance">
+        </div>
         <div class="offset-buttons">
           <button id="pomo-settings-save" class="offset-btn">Save</button>
           <button id="pomo-settings-cancel" class="offset-btn">Cancel</button>
@@ -277,6 +289,32 @@
     </div>
 
     <!-- Timer duration input (hidden when in stopwatch mode) -->
+    <div id="seq-mode-area" class="hidden" style="text-align:center;padding:4px 0;">
+      <button id="seq-mode-toggle" class="offset-link">Sequence Mode</button>
+    </div>
+    <div id="sequence-area" class="sequence-area hidden">
+      <div id="seq-setup">
+        <div class="interval-templates">
+          <button class="interval-tpl-btn" id="seq-tpl-warmup">Warm Up</button>
+          <button class="interval-tpl-btn" id="seq-tpl-cooking">Cooking</button>
+          <button class="interval-tpl-btn" id="seq-tpl-custom">Custom</button>
+        </div>
+        <div id="seq-phase-list" class="interval-phase-list">
+          <div class="interval-empty">No phases added yet</div>
+        </div>
+        <div class="interval-add-row">
+          <input type="text" id="seq-phase-name" placeholder="Phase name" maxlength="20" class="interval-input-name">
+          <input type="number" id="seq-phase-sec" value="30" min="1" max="3600" class="interval-input-sec" inputmode="numeric">
+          <span class="interval-sec-label">s</span>
+          <button id="seq-add-phase" class="interval-add-btn">+</button>
+        </div>
+      </div>
+      <div id="seq-run-info" class="interval-run-info hidden">
+        <div id="seq-current-phase" class="interval-current-phase"></div>
+        <div id="seq-next-phase" class="interval-next-phase"></div>
+        <div id="seq-phase-count" class="interval-round-label"></div>
+      </div>
+    </div>
     <div id="timer-set-area" class="hidden">
       <button id="timer-set-toggle" class="offset-link">Set countdown duration</button>
       <div id="timer-set-input" class="offset-input" data-collapsed>
@@ -320,6 +358,14 @@
     </div>
 
     <!-- Pomodoro stats panel (slide-up overlay) -->
+    <div id="analytics-panel" class="analytics-panel hidden">
+      <div class="history-header">
+        <h3>Analytics</h3>
+        <button id="analytics-close" class="icon-btn" aria-label="Close analytics">&times;</button>
+      </div>
+      <div id="analytics-content" class="analytics-content"></div>
+    </div>
+
     <div id="pomo-stats-panel" class="pomo-stats-panel hidden">
       <div class="history-header">
         <h3>Pomodoro Stats</h3>
@@ -336,6 +382,12 @@
       </div>
       <div id="history-filter" class="history-filter"></div>
       <div id="history-list" class="history-list"></div>
+      <div class="history-actions">
+        <button id="history-export-all" class="offset-link">Export All Data</button>
+        <button id="history-import" class="offset-link">Import Data</button>
+        <button id="history-clear-all" class="offset-link history-danger">Clear All</button>
+        <input type="file" id="history-import-input" accept=".json" class="hidden">
+      </div>
     </div>
   </div>
 
@@ -364,6 +416,11 @@
   <script src="js/cooking-ui.js"></script>
   <script src="js/pomodoro-stats.js"></script>
   <script src="js/history-ui.js"></script>
+  <script src="js/sequence.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/focus-ui.js"></script>
+  <script src="js/sequence-ui.js"></script>
+  <script src="js/analytics-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>
   <script src="js/app.js"></script>

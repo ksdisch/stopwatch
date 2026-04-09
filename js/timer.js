@@ -5,6 +5,7 @@ function createTimer(id) {
   let accumulatedMs = 0;
   let alarmCallback = null;
   let name = 'Timer';
+  let color = null;
 
   function setDuration(ms) {
     if (status !== 'idle') return;
@@ -75,12 +76,13 @@ function createTimer(id) {
   function setName(n) { name = n || 'Timer'; }
 
   function getState() {
-    return { id, name, status, durationMs, startedAt, accumulatedMs };
+    return { id, name, status, durationMs, startedAt, accumulatedMs, color };
   }
 
   function loadState(state) {
     if (!state) return;
     name = state.name ?? 'Timer';
+    color = state.color ?? null;
     status = state.status ?? 'idle';
     durationMs = state.durationMs ?? 0;
     startedAt = state.startedAt ?? null;
@@ -102,6 +104,8 @@ function createTimer(id) {
     setDuration, start, pause, reset, checkFinished,
     getRemainingMs, getElapsedMs, getProgress,
     getStatus, getDurationMs, getId, getName, setName,
+    getColor: () => color,
+    setColor: (c) => { color = c; },
     getState, loadState, onAlarm,
   };
 }

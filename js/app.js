@@ -32,8 +32,11 @@ initCookingUI();
 initAlertUI();
 initSoundToggle();
 initThemePicker();
+initSequenceUI();
 initHistoryPanel();
+initAnalyticsPanel();
 initExportButton();
+document.getElementById('focus-toggle').addEventListener('click', () => FocusUI.enter());
 
 // ── PWA shortcut query param ──
 const urlParams = new URLSearchParams(window.location.search);
@@ -138,7 +141,9 @@ function applyAppMode() {
   document.getElementById('offset-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('vibrate-area').classList.toggle('hidden', !isStopwatch);
   document.getElementById('alert-area').classList.toggle('hidden', !isStopwatch);
-  document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer);
+  document.getElementById('timer-set-area').classList.toggle('hidden', !isTimer || sequenceMode);
+  document.getElementById('seq-mode-area').classList.toggle('hidden', !isTimer);
+  document.getElementById('sequence-area').classList.toggle('hidden', !isTimer || !sequenceMode);
   document.getElementById('pomodoro-area').classList.toggle('hidden', !isPomodoro);
   document.getElementById('pomodoro-lists').classList.toggle('hidden', !isPomodoro);
   document.getElementById('interval-area').classList.toggle('hidden', !isInterval);
@@ -177,16 +182,51 @@ function applyAppMode() {
 function initSoundToggle() {
   const btn = document.getElementById('sound-toggle');
   const icon = document.getElementById('sound-icon');
+  const picker = document.getElementById('sound-picker');
   updateSoundIcon();
 
   btn.addEventListener('click', () => {
     SFX.toggleMute();
     updateSoundIcon();
-    if (!SFX.isMuted()) SFX.playLap(); // feedback beep
+    if (!SFX.isMuted()) SFX.playLap();
   });
+
+  btn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    picker.classList.toggle('hidden');
+    if (!picker.classList.contains('hidden')) renderSoundPicker();
+  });
+
+  // Long-press for mobile
+  let pressTimer = null;
+  btn.addEventListener('touchstart', () => {
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      picker.classList.toggle('hidden');
+      if (!picker.classList.contains('hidden')) renderSoundPicker();
+    }, 500);
+  }, { passive: true });
+  btn.addEventListener('touchend', () => {
+    if (pressTimer) clearTimeout(pressTimer);
+  }, { passive: true });
 
   function updateSoundIcon() {
     icon.textContent = SFX.isMuted() ? '\u{1F507}' : '\u{1F50A}';
+  }
+
+  function renderSoundPicker() {
+    const profiles = SFX.getProfiles();
+    const current = SFX.getProfile();
+    picker.innerHTML = profiles.map(p =>
+      `<button class="theme-option ${p.id === current ? 'theme-option-active' : ''}" data-profile="${p.id}">${p.name}</button>`
+    ).join('');
+    picker.querySelectorAll('.theme-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        SFX.setProfile(btn.dataset.profile);
+        renderSoundPicker();
+        SFX.playStart();
+      });
+    });
   }
 }
 

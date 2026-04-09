@@ -1,5 +1,7 @@
 // ── Pomodoro UI ──
 let pomodoroRafId = null;
+let autoAdvance = localStorage.getItem('pomo_auto_advance') === '1';
+let autoAdvanceTimer = null;
 
 function initPomodoroUI() {
   const settingsToggle = document.getElementById('pomodoro-settings-toggle');
@@ -55,7 +57,22 @@ function initPomodoroUI() {
     }
     savePomodoroState();
     updatePomodoroUI();
+
+    // Auto-advance: start 3s countdown then advance
+    if (autoAdvance && completedPhase !== 'longBreak') {
+      startAutoAdvanceCountdown();
+    }
   });
+
+  // Wire auto-advance checkbox
+  const autoAdvCb = document.getElementById('pomo-auto-advance');
+  if (autoAdvCb) {
+    autoAdvCb.checked = autoAdvance;
+    autoAdvCb.addEventListener('change', () => {
+      autoAdvance = autoAdvCb.checked;
+      localStorage.setItem('pomo_auto_advance', autoAdvance ? '1' : '0');
+    });
+  }
 
   // Wire buttons
   document.getElementById('btn-left').addEventListener('click', onPomodoroLeft);
@@ -116,11 +133,42 @@ function initPomodoroUI() {
   }
 }
 
+function startAutoAdvanceCountdown() {
+  cancelAutoAdvance();
+  let remaining = 3;
+  const overlay = document.getElementById('auto-advance-overlay');
+  if (overlay) {
+    overlay.textContent = `Next in ${remaining}...`;
+    overlay.classList.remove('hidden');
+  }
+  autoAdvanceTimer = setInterval(() => {
+    remaining--;
+    if (remaining <= 0) {
+      cancelAutoAdvance();
+      if (Pomodoro.getStatus() === 'phaseComplete') {
+        onPomodoroRight();
+      }
+    } else if (overlay) {
+      overlay.textContent = `Next in ${remaining}...`;
+    }
+  }, 1000);
+}
+
+function cancelAutoAdvance() {
+  if (autoAdvanceTimer) {
+    clearInterval(autoAdvanceTimer);
+    autoAdvanceTimer = null;
+  }
+  const overlay = document.getElementById('auto-advance-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
 function onPomodoroLeft() {
   if (appMode !== 'pomodoro') return;
   if (pomodoroClickLock) return;
   pomodoroClickLock = true;
   setTimeout(() => { pomodoroClickLock = false; }, 100);
+  cancelAutoAdvance();
 
   const status = Pomodoro.getStatus();
   if (status === 'paused') {
@@ -159,6 +207,7 @@ function onPomodoroRight() {
   if (pomodoroClickLock) return;
   pomodoroClickLock = true;
   setTimeout(() => { pomodoroClickLock = false; }, 100);
+  cancelAutoAdvance();
 
   const status = Pomodoro.getStatus();
   if (status === 'running') {

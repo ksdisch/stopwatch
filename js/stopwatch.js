@@ -6,6 +6,7 @@ function createStopwatch(id) {
   let laps = [];
   let lapStartMs = 0;
   let name = 'Stopwatch';
+  let color = null;
   let alerts = [];
 
   function getElapsedMs() {
@@ -119,12 +120,14 @@ function createStopwatch(id) {
       laps: laps.slice(),
       lapStartMs,
       alerts: alerts.map(a => ({ ...a })),
+      color,
     };
   }
 
   function loadState(state) {
     if (!state) return;
     name = state.name ?? 'Stopwatch';
+    color = state.color ?? null;
     status = state.status ?? 'idle';
     offsetMs = state.offsetMs ?? 0;
     startedAt = state.startedAt ?? null;
@@ -158,6 +161,8 @@ function createStopwatch(id) {
     getId,
     getName,
     setName,
+    getColor: () => color,
+    setColor: (c) => { color = c; },
     getState,
     loadState,
   };

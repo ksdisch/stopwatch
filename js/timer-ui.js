@@ -50,6 +50,7 @@ function initTimerUI() {
 
 function onTimerLeft() {
   if (appMode !== 'timer') return;
+  if (sequenceMode) { onSequenceLeft(); return; }
   const status = Timer.getStatus();
   if (status === 'paused' || status === 'finished') {
     // Save session before reset
@@ -66,6 +67,7 @@ function onTimerLeft() {
 
 function onTimerRight() {
   if (appMode !== 'timer') return;
+  if (sequenceMode) { onSequenceRight(); return; }
   const status = Timer.getStatus();
   if (status === 'running') {
     Timer.pause();

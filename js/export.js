@@ -62,5 +62,60 @@ const Export = (() => {
     return !!navigator.share;
   }
 
-  return { copyToClipboard, downloadCSV, share, canShare, lapsToText, lapsToCSV };
+  // ── Full Data Export/Import ──
+
+  const EXPORT_SETTINGS_KEYS = [
+    'multi_state', 'pomodoro_state', 'pomodoro_config',
+    'pomodoro_checklist', 'pomodoro_break_checklist', 'pomodoro_actual_work',
+    'interval_state', 'cooking_timers', 'quick_presets',
+    'theme', 'sound_muted', 'sound_profile', 'vibrate_interval',
+    'lap_display_mode', 'pomo_auto_advance', 'app_mode',
+  ];
+
+  async function exportAllData() {
+    const sessions = await History.getSessions();
+    const settings = {};
+    EXPORT_SETTINGS_KEYS.forEach(key => {
+      const val = localStorage.getItem(key);
+      if (val !== null) settings[key] = val;
+    });
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sessions,
+      settings,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stopwatch-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importAllData(jsonString) {
+    const data = JSON.parse(jsonString);
+    if (!data || data.version !== 1) throw new Error('Invalid backup file');
+    let sessionsImported = 0;
+    let settingsRestored = 0;
+    if (Array.isArray(data.sessions)) {
+      await History.clearAll();
+      for (const s of data.sessions) {
+        await History.addSession(s);
+        sessionsImported++;
+      }
+    }
+    if (data.settings && typeof data.settings === 'object') {
+      EXPORT_SETTINGS_KEYS.forEach(key => {
+        if (data.settings[key] !== undefined) {
+          localStorage.setItem(key, data.settings[key]);
+          settingsRestored++;
+        }
+      });
+    }
+    return { sessionsImported, settingsRestored };
+  }
+
+  return { copyToClipboard, downloadCSV, share, canShare, lapsToText, lapsToCSV, exportAllData, importAllData };
 })();

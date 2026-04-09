@@ -2,6 +2,7 @@ const UI = (() => {
   let timeEl, btnLeft, btnRight, lapList, timerDisplay, appEl, rafId = null;
   let lastResetState = null;
   let undoTimeout = null;
+  let showCumulative = localStorage.getItem('lap_display_mode') === 'cumulative';
   let vibrateIntervalMs = parseInt(localStorage.getItem('vibrate_interval') || '0', 10);
   let lastVibrateMs = 0;
 
@@ -194,15 +195,18 @@ const UI = (() => {
       });
     }
 
-    let html = '';
+    const modeLabel = showCumulative ? 'Cumulative' : 'Lap Time';
+    let html = `<div class="lap-header"><span class="lap-header-toggle" id="lap-mode-toggle">${modeLabel} &#x25BE;</span></div>`;
 
     // Current (in-progress) lap at top
     if (status === 'running') {
       const currentLapMs = Stopwatch.getCurrentLapMs();
+      const currentElapsed = Stopwatch.getElapsedMs();
+      const displayMs = showCumulative ? currentElapsed : currentLapMs;
       html += `<div class="lap-row" id="current-lap">
         <div class="lap-row-inner">
           <span class="lap-label">Lap ${laps.length + 1}</span>
-          <span class="lap-time" id="current-lap-time">${formatTime(currentLapMs)}</span>
+          <span class="lap-time" id="current-lap-time">${formatTime(displayMs)}</span>
         </div>
       </div>`;
     }
@@ -214,17 +218,28 @@ const UI = (() => {
       if (i === bestIdx) cls = 'lap-best';
       else if (i === worstIdx) cls = 'lap-worst';
 
+      const displayMs = showCumulative ? lap.totalMs : lap.lapMs;
       const animCls = scrollToTop && i === laps.length - 1 ? ' lap-entering' : '';
       html += `<div class="lap-row lap-swipeable ${cls}${animCls}" data-lap-index="${i}">
         <div class="lap-row-delete-bg">Delete</div>
         <div class="lap-row-inner">
           <span class="lap-label">Lap ${i + 1}</span>
-          <span class="lap-time">${formatTime(lap.lapMs)}</span>
+          <span class="lap-time">${formatTime(displayMs)}</span>
         </div>
       </div>`;
     }
 
     lapList.innerHTML = html;
+
+    const toggleBtn = document.getElementById('lap-mode-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        showCumulative = !showCumulative;
+        localStorage.setItem('lap_display_mode', showCumulative ? 'cumulative' : 'split');
+        renderLaps();
+      });
+    }
+
     if (scrollToTop) {
       lapList.scrollTop = 0;
     }
@@ -374,7 +389,8 @@ const UI = (() => {
   function updateCurrentLap() {
     const el = document.getElementById('current-lap-time');
     if (el) {
-      el.textContent = formatTime(Stopwatch.getCurrentLapMs());
+      const ms = showCumulative ? Stopwatch.getElapsedMs() : Stopwatch.getCurrentLapMs();
+      el.textContent = formatTime(ms);
     }
   }
 

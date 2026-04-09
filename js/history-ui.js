@@ -12,36 +12,103 @@ function initHistoryPanel() {
   closeBtn.addEventListener('click', () => {
     panel.classList.add('hidden');
     activeTagFilter = null;
+    activeDateRange = null;
+  });
+
+  document.getElementById('history-export-all').addEventListener('click', () => {
+    Export.exportAllData();
+  });
+
+  document.getElementById('history-import').addEventListener('click', () => {
+    document.getElementById('history-import-input').click();
+  });
+
+  document.getElementById('history-import-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const result = await Export.importAllData(text);
+      alert(`Imported ${result.sessionsImported} sessions, ${result.settingsRestored} settings. Reload to apply settings.`);
+      renderHistory();
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('history-clear-all').addEventListener('click', async () => {
+    if (confirm('Delete all session history? This cannot be undone.')) {
+      await History.clearAll();
+      renderHistory();
+    }
   });
 }
 
 let activeTagFilter = null;
+let activeDateRange = null;
 
 async function renderHistory() {
   const list = document.getElementById('history-list');
   const filterEl = document.getElementById('history-filter');
   let sessions = (await History.getSessions()).reverse();
 
-  // Render filter bar
+  // Render date range pills
+  const ranges = [
+    { key: null, label: 'All' },
+    { key: 'today', label: 'Today' },
+    { key: 'week', label: 'This Week' },
+    { key: 'month', label: 'This Month' },
+  ];
+  const dateBarHtml = `<div class="date-filter-bar">${ranges.map(r =>
+    `<button class="filter-chip ${activeDateRange === r.key ? 'filter-chip-active' : ''}" data-date-range="${r.key || ''}">${r.label}</button>`
+  ).join('')}</div>`;
+
+  // Render tag filter bar
   const allTags = await History.getAllTags();
+  let tagBarHtml = '';
   if (allTags.length > 0) {
-    filterEl.innerHTML = `<button class="filter-chip ${activeTagFilter === null ? 'filter-chip-active' : ''}" data-filter-tag="">All</button>` +
+    tagBarHtml = `<div class="tag-filter-bar"><button class="filter-chip ${activeTagFilter === null ? 'filter-chip-active' : ''}" data-filter-tag="">All Tags</button>` +
       allTags.map(tag =>
         `<button class="filter-chip ${activeTagFilter === tag ? 'filter-chip-active' : ''}" data-filter-tag="${escapeHistoryHtml(tag)}">${escapeHistoryHtml(tag)}</button>`
-      ).join('');
-
-    filterEl.querySelectorAll('.filter-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tag = btn.dataset.filterTag;
-        activeTagFilter = tag || null;
-        renderHistory();
-      });
-    });
-  } else {
-    filterEl.innerHTML = '';
+      ).join('') + '</div>';
   }
 
-  // Apply filter
+  filterEl.innerHTML = dateBarHtml + tagBarHtml;
+
+  filterEl.querySelectorAll('[data-date-range]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeDateRange = btn.dataset.dateRange || null;
+      renderHistory();
+    });
+  });
+
+  filterEl.querySelectorAll('[data-filter-tag]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTagFilter = btn.dataset.filterTag || null;
+      renderHistory();
+    });
+  });
+
+  // Apply date range filter
+  if (activeDateRange) {
+    const now = new Date();
+    let rangeStart;
+    if (activeDateRange === 'today') {
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (activeDateRange === 'week') {
+      rangeStart = new Date(now);
+      rangeStart.setDate(now.getDate() - now.getDay());
+      rangeStart.setHours(0, 0, 0, 0);
+    } else if (activeDateRange === 'month') {
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    if (rangeStart) {
+      sessions = sessions.filter(s => new Date(s.date) >= rangeStart);
+    }
+  }
+
+  // Apply tag filter
   if (activeTagFilter) {
     sessions = sessions.filter(s =>
       Array.isArray(s.tags) && s.tags.includes(activeTagFilter)
