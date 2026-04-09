@@ -548,16 +548,10 @@ function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
 }
 
 function updateChecklistVisibility() {
-  const phase = Pomodoro.getPhase();
-  const status = Pomodoro.getStatus();
-  const isBreak = phase === 'shortBreak' || phase === 'longBreak';
-  const showBreak = isBreak && status !== 'idle' && status !== 'done';
-
-  document.getElementById('pomo-checklist').classList.toggle('hidden', showBreak);
-  document.getElementById('pomo-actual-work').classList.toggle('hidden', showBreak);
-  // Always show break checklist when idle (for pre-planning) or during breaks
-  const showIdle = status === 'idle' || status === 'done';
-  document.getElementById('pomo-break-checklist').classList.toggle('hidden', !showBreak && !showIdle);
+  // All three lists are always visible so users can add/manage tasks at any time
+  document.getElementById('pomo-checklist').classList.remove('hidden');
+  document.getElementById('pomo-actual-work').classList.remove('hidden');
+  document.getElementById('pomo-break-checklist').classList.remove('hidden');
 }
 
 // ── "What I Worked On" Bullet List ──
