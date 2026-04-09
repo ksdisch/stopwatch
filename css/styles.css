@@ -1805,6 +1805,55 @@ input:focus:not(:focus-visible) {
   opacity: 0.6;
 }
 
+.pomo-checklist-item-save {
+  background: none;
+  border: none;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0 2px;
+  opacity: 0.35;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pomo-checklist-item-save:active {
+  opacity: 0.8;
+}
+
+.pomo-saved-task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.pomo-saved-task-add,
+.pomo-saved-task-add-break {
+  background: none;
+  border: 1px solid var(--btn-border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pomo-saved-task-add:active,
+.pomo-saved-task-add-break:active {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.pomo-saved-empty {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 8px 0;
+  opacity: 0.5;
+}
+
 .pomo-action-btn-primary {
   color: var(--green);
   border-color: var(--green);

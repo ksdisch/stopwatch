@@ -241,6 +241,7 @@
         <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
         <button id="pomodoro-actions-toggle" class="offset-link hidden">Actions</button>
         <button id="pomo-auto-advance-toggle" class="offset-link">Auto-advance: Off</button>
+        <button id="pomo-saved-tasks-toggle" class="offset-link">Saved Tasks</button>
       </div>
       <div id="pomodoro-actions" class="offset-input" data-collapsed>
         <div class="pomo-actions-grid">
@@ -248,7 +249,12 @@
           <button id="pomo-clear-break" class="pomo-action-btn">Clear Break Tasks</button>
           <button id="pomo-restart-phase" class="pomo-action-btn">Restart Phase</button>
           <button id="pomo-finish" class="pomo-action-btn pomo-action-btn-primary">Finish &amp; Reset</button>
+          <button id="pomo-clear-all-tasks" class="pomo-action-btn">Clear All Tasks</button>
         </div>
+      </div>
+      <div id="pomo-saved-tasks" class="pomo-checklist hidden">
+        <div class="pomo-checklist-label">Saved Tasks</div>
+        <div id="pomo-saved-tasks-items"></div>
       </div>
       <div id="pomodoro-settings" class="offset-input" data-collapsed>
         <div class="pomodoro-setting-row">

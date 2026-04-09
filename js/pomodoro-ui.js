@@ -94,8 +94,9 @@ function initPomodoroUI() {
   initActualWorkInput();
   updateChecklistVisibility();
 
-  // Init actions drawer
+  // Init actions drawer and saved tasks
   initActionsDrawer();
+  initSavedTasksPanel();
 
   // Stats panel
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
@@ -195,7 +196,6 @@ function onPomodoroLeft() {
     Pomodoro.reset();
     BgNotify.cancel('pomodoro');
     savePomodoroState();
-    clearChecklist();
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -258,7 +258,6 @@ function onPomodoroRight() {
   } else if (status === 'done') {
     Pomodoro.reset();
     savePomodoroState();
-    clearChecklist();
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -503,6 +502,7 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
       <span class="pomo-drag-handle" data-drag-idx="${i}">&#x2630;</span>
       <input type="checkbox" ${item.done ? 'checked' : ''} data-check-idx="${i}">
       <span class="pomo-checklist-item-text">${escapeChecklistHtml(item.text)}</span>
+      <button class="pomo-checklist-item-save" data-save-idx="${i}" title="Save for later">&#x1F4CC;</button>
       <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
     </div>`
   ).join('');
@@ -515,6 +515,21 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
         items[idx].done = cb.checked;
         saveFn(items);
         renderChecklistInto(containerId, loadFn, saveFn);
+      }
+    });
+  });
+
+  container.querySelectorAll('.pomo-checklist-item-save').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.saveIdx, 10);
+      const items = loadFn();
+      if (items[idx]) {
+        saveTaskForLater(items[idx].text);
+        items.splice(idx, 1);
+        saveFn(items);
+        renderChecklistInto(containerId, loadFn, saveFn);
+        renderSavedTasks();
       }
     });
   });
@@ -589,9 +604,25 @@ function renderActualWork() {
       <span class="pomo-drag-handle" data-drag-idx="${i}">&#x2630;</span>
       <span class="pomo-bullet-marker">\u2022</span>
       <span class="pomo-checklist-item-text">${escapeChecklistHtml(text)}</span>
+      <button class="pomo-checklist-item-save" data-save-idx="${i}" title="Save for later">&#x1F4CC;</button>
       <button class="pomo-checklist-item-delete" data-del-idx="${i}">&times;</button>
     </div>`
   ).join('');
+
+  container.querySelectorAll('.pomo-checklist-item-save').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.saveIdx, 10);
+      const items = loadActualWork();
+      if (items[idx]) {
+        saveTaskForLater(items[idx]);
+        items.splice(idx, 1);
+        saveActualWork(items);
+        renderActualWork();
+        renderSavedTasks();
+      }
+    });
+  });
 
   container.querySelectorAll('.pomo-checklist-item-delete').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -621,6 +652,94 @@ function initActualWorkInput() {
       input.value = '';
       renderActualWork();
     }
+  });
+}
+
+// ── Saved Tasks (Save for Later) ──
+const SAVED_TASKS_KEY = 'pomodoro_saved_tasks';
+
+function loadSavedTasks() {
+  try { return JSON.parse(localStorage.getItem(SAVED_TASKS_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveSavedTasks(items) {
+  localStorage.setItem(SAVED_TASKS_KEY, JSON.stringify(items));
+}
+
+function saveTaskForLater(text) {
+  const items = loadSavedTasks();
+  if (!items.includes(text)) {
+    items.push(text);
+    saveSavedTasks(items);
+  }
+}
+
+function renderSavedTasks() {
+  const container = document.getElementById('pomo-saved-tasks-items');
+  if (!container) return;
+  const items = loadSavedTasks();
+  if (items.length === 0) {
+    container.innerHTML = '<div class="pomo-saved-empty">No saved tasks</div>';
+    return;
+  }
+  container.innerHTML = items.map((text, i) =>
+    `<div class="pomo-saved-task-item">
+      <span class="pomo-checklist-item-text">${escapeChecklistHtml(text)}</span>
+      <button class="pomo-saved-task-add" data-saved-idx="${i}" title="Add to focus goals">+Focus</button>
+      <button class="pomo-saved-task-add-break" data-saved-idx="${i}" title="Add to break tasks">+Break</button>
+      <button class="pomo-checklist-item-delete" data-saved-del="${i}">&times;</button>
+    </div>`
+  ).join('');
+
+  container.querySelectorAll('.pomo-saved-task-add').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.savedIdx, 10);
+      const items = loadSavedTasks();
+      if (items[idx]) {
+        const checklist = loadChecklist();
+        checklist.push({ text: items[idx], done: false });
+        saveChecklist(checklist);
+        renderChecklist();
+      }
+    });
+  });
+
+  container.querySelectorAll('.pomo-saved-task-add-break').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.savedIdx, 10);
+      const items = loadSavedTasks();
+      if (items[idx]) {
+        const checklist = loadBreakChecklist();
+        checklist.push({ text: items[idx], done: false });
+        saveBreakChecklist(checklist);
+        renderBreakChecklist();
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-saved-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.savedDel, 10);
+      const items = loadSavedTasks();
+      items.splice(idx, 1);
+      saveSavedTasks(items);
+      renderSavedTasks();
+    });
+  });
+}
+
+function initSavedTasksPanel() {
+  const toggle = document.getElementById('pomo-saved-tasks-toggle');
+  const panel = document.getElementById('pomo-saved-tasks');
+  if (!toggle || !panel) return;
+
+  toggle.addEventListener('click', () => {
+    const isHidden = panel.classList.toggle('hidden');
+    if (!isHidden) renderSavedTasks();
   });
 }
 
@@ -670,6 +789,13 @@ function initActionsDrawer() {
     renderBreakChecklist();
   });
 
+  document.getElementById('pomo-clear-all-tasks').addEventListener('click', () => {
+    clearChecklist();
+    renderChecklist();
+    renderBreakChecklist();
+    renderActualWork();
+  });
+
   document.getElementById('pomo-restart-phase').addEventListener('click', () => {
     const status = Pomodoro.getStatus();
     if (status === 'idle' || status === 'done') return;
@@ -701,7 +827,6 @@ function initActionsDrawer() {
     BgNotify.cancel('pomodoro');
     Pomodoro.reset();
     savePomodoroState();
-    clearChecklist();
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
