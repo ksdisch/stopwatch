@@ -2467,6 +2467,60 @@ input:focus:not(:focus-visible) {
   appearance: none;
 }
 
+.log-past-list-row {
+  padding: 6px 0;
+}
+
+.log-past-list-row label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.log-past-list-row input {
+  width: 100%;
+  height: 32px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0 10px;
+  font-family: inherit;
+  outline: none;
+  margin-top: 4px;
+}
+
+.log-past-list-row input:focus {
+  border-color: var(--green);
+}
+
+.log-past-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.8rem;
+  color: var(--text);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.log-past-list-item button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.5;
+}
+
+.log-past-list-item button:active {
+  opacity: 1;
+  color: var(--red);
+}
+
 .history-row {
   padding: 12px 0;
   border-bottom: 0.5px solid var(--separator);
