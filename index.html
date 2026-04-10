@@ -170,6 +170,18 @@
         <span id="pomodoro-cycle" class="pomodoro-cycle">1/4</span>
       </div>
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
+      <div id="pomo-timeline" class="pomo-timeline"></div>
+      <button id="pomo-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
+      <div id="pomo-distraction-picker" class="pomo-distraction-picker hidden">
+        <div class="pomo-distraction-cats">
+          <button class="pomo-distraction-cat" data-cat="phone">Phone</button>
+          <button class="pomo-distraction-cat" data-cat="email">Email</button>
+          <button class="pomo-distraction-cat" data-cat="interrupted">Interrupted</button>
+          <button class="pomo-distraction-cat" data-cat="self">Self-distracted</button>
+          <button class="pomo-distraction-cat" data-cat="other">Other</button>
+        </div>
+        <input type="text" id="pomo-distraction-note" placeholder="Optional note..." maxlength="60">
+      </div>
     </div>
 
     <!-- Interval setup/info (hidden by default) -->
@@ -255,6 +267,12 @@
       <div id="pomo-saved-tasks" class="pomo-checklist hidden">
         <div class="pomo-checklist-label">Saved Tasks</div>
         <div id="pomo-saved-tasks-items"></div>
+        <div class="pomo-checklist-label" style="margin-top:8px">Task Templates</div>
+        <div id="pomo-task-templates"></div>
+        <div class="pomo-template-save-row">
+          <input type="text" id="pomo-template-name" placeholder="Template name..." maxlength="30">
+          <button id="pomo-template-save-btn" class="offset-btn">Save Current</button>
+        </div>
       </div>
       <div id="pomodoro-settings" class="offset-input" data-collapsed>
         <div class="pomodoro-setting-row">

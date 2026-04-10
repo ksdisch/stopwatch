@@ -279,6 +279,10 @@ async function renderHistory() {
       if (Array.isArray(s.actualWork) && s.actualWork.length > 0) {
         sections.push(`<div class="history-task-section"><span class="history-task-label">What I Worked On</span><ul class="history-task-list">${s.actualWork.map(w => `<li>${escapeHistoryHtml(w)}</li>`).join('')}</ul></div>`);
       }
+      if (Array.isArray(s.distractions) && s.distractions.length > 0) {
+        const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Distractions (${s.distractions.length})</span><ul class="history-task-list">${s.distractions.map(d => `<li>${escapeHistoryHtml(d.category)}${d.note ? ' — ' + escapeHistoryHtml(d.note) : ''} <span class="history-phase-time">${fmtTime(d.timestamp)}</span></li>`).join('')}</ul></div>`);
+      }
       if (sections.length > 0) {
         taskHtml = `<div class="history-tasks">${sections.join('')}</div>`;
       }

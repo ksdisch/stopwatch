@@ -110,6 +110,7 @@ const History = (() => {
     if (session.sessionStartedAt) entry.sessionStartedAt = session.sessionStartedAt;
     if (session.sessionEndedAt) entry.sessionEndedAt = session.sessionEndedAt;
     if (session.phaseLog) entry.phaseLog = session.phaseLog;
+    if (session.distractions) entry.distractions = session.distractions;
 
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');

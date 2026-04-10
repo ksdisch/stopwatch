@@ -67,6 +67,7 @@ const Export = (() => {
   const EXPORT_SETTINGS_KEYS = [
     'multi_state', 'pomodoro_state', 'pomodoro_config',
     'pomodoro_checklist', 'pomodoro_break_checklist', 'pomodoro_actual_work', 'pomodoro_saved_tasks',
+    'pomodoro_task_templates', 'pomodoro_distractions',
     'interval_state', 'cooking_timers', 'quick_presets',
     'theme', 'sound_muted', 'sound_profile', 'vibrate_interval',
     'lap_display_mode', 'pomo_auto_advance', 'app_mode',

@@ -1846,6 +1846,160 @@ input:focus:not(:focus-visible) {
   border-color: var(--green);
 }
 
+/* Timeline */
+.pomo-timeline {
+  width: 100%;
+  max-width: 320px;
+  margin: 6px auto 2px;
+}
+
+.pomo-timeline-bar {
+  display: flex;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.pomo-tl-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pomo-tl-work {
+  background: rgba(48, 209, 88, 0.25);
+  color: var(--green);
+}
+
+.pomo-tl-break {
+  background: rgba(10, 199, 232, 0.2);
+  color: var(--text-secondary);
+}
+
+.pomo-tl-done {
+  opacity: 0.35;
+}
+
+.pomo-tl-active {
+  outline: 2px solid var(--green);
+  outline-offset: -1px;
+}
+
+.pomo-tl-label {
+  font-size: 0.55rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pomo-timeline-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  padding: 2px 2px 0;
+}
+
+/* Distraction Log */
+.pomo-distraction-btn {
+  background: none;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  color: var(--red);
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pomo-distraction-btn:active {
+  opacity: 0.6;
+}
+
+.pomo-distraction-picker {
+  margin-top: 6px;
+  text-align: center;
+}
+
+.pomo-distraction-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.pomo-distraction-cat {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pomo-distraction-cat:active {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.pomo-distraction-picker input {
+  width: 200px;
+  max-width: 80%;
+  height: 28px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 0 8px;
+  font-family: inherit;
+  outline: none;
+}
+
+.pomo-distraction-picker input:focus {
+  border-color: var(--red);
+}
+
+/* Task Templates */
+.pomo-template-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.pomo-template-save-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+.pomo-template-save-row input {
+  flex: 1;
+  height: 32px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0 10px;
+  font-family: inherit;
+  outline: none;
+}
+
+.pomo-template-save-row input:focus {
+  border-color: var(--green);
+}
+
 .pomo-saved-empty {
   font-size: 0.8rem;
   color: var(--text-secondary);

@@ -94,9 +94,11 @@ function initPomodoroUI() {
   initActualWorkInput();
   updateChecklistVisibility();
 
-  // Init actions drawer and saved tasks
+  // Init actions drawer, saved tasks, templates, distraction log
   initActionsDrawer();
   initSavedTasksPanel();
+  initTaskTemplates();
+  initDistractionLog();
 
   // Stats panel
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
@@ -196,6 +198,7 @@ function onPomodoroLeft() {
     Pomodoro.reset();
     BgNotify.cancel('pomodoro');
     savePomodoroState();
+    saveDistractions([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -258,6 +261,7 @@ function onPomodoroRight() {
   } else if (status === 'done') {
     Pomodoro.reset();
     savePomodoroState();
+    saveDistractions([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -302,6 +306,10 @@ function updatePomodoroUI() {
 
   // Swap focus/break checklists
   updateChecklistVisibility();
+
+  // Timeline and distraction button
+  renderPomodoroTimeline();
+  updateDistractionBtnVisibility();
 
   // Format remaining time
   const t = Utils.formatMs(remaining);
@@ -743,13 +751,251 @@ function initSavedTasksPanel() {
   });
 }
 
+// ── Task Templates ──
+const TASK_TEMPLATES_KEY = 'pomodoro_task_templates';
+
+function loadTaskTemplates() {
+  try { return JSON.parse(localStorage.getItem(TASK_TEMPLATES_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveTaskTemplates(templates) {
+  localStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(templates));
+}
+
+function renderTaskTemplates() {
+  const container = document.getElementById('pomo-task-templates');
+  if (!container) return;
+  const templates = loadTaskTemplates();
+  if (templates.length === 0) {
+    container.innerHTML = '<div class="pomo-saved-empty">No templates saved</div>';
+    return;
+  }
+  container.innerHTML = templates.map((tpl, i) =>
+    `<div class="pomo-template-item">
+      <span class="pomo-checklist-item-text">${escapeChecklistHtml(tpl.name)}</span>
+      <button class="pomo-saved-task-add" data-tpl-load="${i}">Load</button>
+      <button class="pomo-checklist-item-delete" data-tpl-del="${i}">&times;</button>
+    </div>`
+  ).join('');
+
+  container.querySelectorAll('[data-tpl-load]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.tplLoad, 10);
+      const tpl = loadTaskTemplates()[idx];
+      if (!tpl) return;
+      // Load focus goals
+      if (Array.isArray(tpl.focusGoals)) {
+        const items = tpl.focusGoals.map(text => ({ text, done: false }));
+        saveChecklist(items);
+        renderChecklist();
+      }
+      // Load break tasks
+      if (Array.isArray(tpl.breakTasks)) {
+        const items = tpl.breakTasks.map(text => ({ text, done: false }));
+        saveBreakChecklist(items);
+        renderBreakChecklist();
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-tpl-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.tplDel, 10);
+      const templates = loadTaskTemplates();
+      templates.splice(idx, 1);
+      saveTaskTemplates(templates);
+      renderTaskTemplates();
+    });
+  });
+}
+
+function initTaskTemplates() {
+  const saveBtn = document.getElementById('pomo-template-save-btn');
+  const nameInput = document.getElementById('pomo-template-name');
+  if (!saveBtn || !nameInput) return;
+
+  saveBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const templates = loadTaskTemplates();
+    templates.push({
+      name,
+      focusGoals: loadChecklist().map(i => i.text),
+      breakTasks: loadBreakChecklist().map(i => i.text),
+    });
+    saveTaskTemplates(templates);
+    nameInput.value = '';
+    renderTaskTemplates();
+  });
+
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+  });
+
+  renderTaskTemplates();
+}
+
+// ── Distraction / Interruption Log ──
+const DISTRACTION_LOG_KEY = 'pomodoro_distractions';
+
+function loadDistractions() {
+  try { return JSON.parse(localStorage.getItem(DISTRACTION_LOG_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveDistractions(items) {
+  localStorage.setItem(DISTRACTION_LOG_KEY, JSON.stringify(items));
+}
+
+function initDistractionLog() {
+  const btn = document.getElementById('pomo-distraction-btn');
+  const picker = document.getElementById('pomo-distraction-picker');
+  const noteInput = document.getElementById('pomo-distraction-note');
+  if (!btn || !picker) return;
+
+  btn.addEventListener('click', () => {
+    picker.classList.toggle('hidden');
+    if (!picker.classList.contains('hidden') && noteInput) noteInput.value = '';
+  });
+
+  picker.querySelectorAll('.pomo-distraction-cat').forEach(catBtn => {
+    catBtn.addEventListener('click', () => {
+      const category = catBtn.dataset.cat;
+      const note = noteInput ? noteInput.value.trim() : '';
+      const distractions = loadDistractions();
+      distractions.push({
+        category,
+        note,
+        timestamp: Date.now(),
+        phase: Pomodoro.getPhase(),
+        cycleIndex: Pomodoro.getCycleIndex(),
+      });
+      saveDistractions(distractions);
+      picker.classList.add('hidden');
+      if (navigator.vibrate) navigator.vibrate(30);
+    });
+  });
+}
+
+function updateDistractionBtnVisibility() {
+  const btn = document.getElementById('pomo-distraction-btn');
+  if (!btn) return;
+  const status = Pomodoro.getStatus();
+  const phase = Pomodoro.getPhase();
+  // Show during running work phases
+  btn.classList.toggle('hidden', !(status === 'running' && phase === 'work'));
+  // Hide picker if button hides
+  if (btn.classList.contains('hidden')) {
+    document.getElementById('pomo-distraction-picker')?.classList.add('hidden');
+  }
+}
+
+// ── Session Planning Timeline ──
+function renderPomodoroTimeline() {
+  const el = document.getElementById('pomo-timeline');
+  if (!el) return;
+
+  const cfg = Pomodoro.getConfig();
+  const status = Pomodoro.getStatus();
+  const cycleIdx = Pomodoro.getCycleIndex();
+  const phase = Pomodoro.getPhase();
+  const cycles = cfg.totalCycles;
+
+  // Build phase sequence
+  const phases = [];
+  for (let i = 0; i < cycles; i++) {
+    phases.push({ type: 'work', label: `W${i + 1}`, durationMs: cfg.workMs, cycle: i });
+    if (i < cycles - 1) {
+      phases.push({ type: 'shortBreak', label: 'SB', durationMs: cfg.shortBreakMs, cycle: i });
+    } else {
+      phases.push({ type: 'longBreak', label: 'LB', durationMs: cfg.longBreakMs, cycle: i });
+    }
+  }
+
+  const totalMs = phases.reduce((s, p) => s + p.durationMs, 0);
+  const now = new Date();
+  const endTime = new Date(now.getTime() + totalMs - (status === 'idle' ? 0 : getElapsedTotalMs(cfg, cycleIdx, phase)));
+
+  function getElapsedTotalMs(cfg, ci, ph) {
+    let ms = 0;
+    for (let i = 0; i < ci; i++) {
+      ms += cfg.workMs;
+      if (i < cfg.totalCycles - 1) ms += cfg.shortBreakMs;
+    }
+    if (ph === 'shortBreak' || ph === 'longBreak') ms += cfg.workMs;
+    ms += Pomodoro.getElapsedMs();
+    return ms;
+  }
+
+  // Determine current phase index in the sequence
+  let activeIdx = -1;
+  if (status !== 'idle' && status !== 'done') {
+    let idx = 0;
+    for (let i = 0; i < cycles; i++) {
+      if (i === cycleIdx && phase === 'work') { activeIdx = idx; break; }
+      idx++;
+      if (i < cycles - 1) {
+        if (i === cycleIdx && phase === 'shortBreak') { activeIdx = idx; break; }
+        idx++;
+      } else {
+        if (phase === 'longBreak') { activeIdx = idx; break; }
+        idx++;
+      }
+    }
+  }
+
+  // Get focus goals for assignment hints
+  const goals = loadChecklist();
+
+  const fmtMin = (ms) => {
+    const m = Math.round(ms / 60000);
+    return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? m % 60 + 'm' : ''}` : `${m}m`;
+  };
+
+  const endStr = endTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+  let html = '<div class="pomo-timeline-bar">';
+  phases.forEach((p, i) => {
+    const widthPct = (p.durationMs / totalMs) * 100;
+    const isWork = p.type === 'work';
+    const isDone = i < activeIdx;
+    const isActive = i === activeIdx;
+    let cls = 'pomo-tl-seg';
+    if (isWork) cls += ' pomo-tl-work';
+    else cls += ' pomo-tl-break';
+    if (isDone) cls += ' pomo-tl-done';
+    if (isActive) cls += ' pomo-tl-active';
+
+    // Show goal assignment for work phases
+    let goalHint = '';
+    if (isWork && goals.length > 0) {
+      const goalIdx = p.cycle;
+      if (goals[goalIdx] && !goals[goalIdx].done) {
+        goalHint = ` title="${escapeChecklistHtml(goals[goalIdx].text)}"`;
+      }
+    }
+
+    html += `<div class="${cls}" style="width:${widthPct}%"${goalHint}><span class="pomo-tl-label">${p.label}</span></div>`;
+  });
+  html += '</div>';
+  html += `<div class="pomo-timeline-info"><span>${fmtMin(totalMs)} total</span><span>Est. end: ${endStr}</span></div>`;
+
+  el.innerHTML = html;
+}
+
 // ── Task & Timing Data Gathering ──
 function gatherTaskData() {
-  return {
+  const data = {
     focusGoals: loadChecklist().filter(i => i.done).map(i => i.text),
     breakTasks: loadBreakChecklist().filter(i => i.done).map(i => i.text),
     actualWork: loadActualWork(),
   };
+  const distractions = loadDistractions();
+  if (distractions.length > 0) data.distractions = distractions;
+  return data;
 }
 
 function gatherTimingData() {
@@ -827,6 +1073,7 @@ function initActionsDrawer() {
     BgNotify.cancel('pomodoro');
     Pomodoro.reset();
     savePomodoroState();
+    saveDistractions([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
