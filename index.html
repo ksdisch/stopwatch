@@ -32,6 +32,9 @@
         <button id="presets-toggle" class="icon-btn" aria-label="Presets">
           <span>&#x2B50;</span>
         </button>
+        <button id="log-session-toggle" class="icon-btn" aria-label="Log past session">
+          <span>&#x270D;</span>
+        </button>
         <button id="analytics-toggle" class="icon-btn" aria-label="Analytics">
           <span>&#x1F4CA;</span>
         </button>
@@ -404,14 +407,20 @@
       <div id="history-filter" class="history-filter"></div>
       <div id="history-list" class="history-list"></div>
       <div class="history-actions">
-        <button id="history-log-past" class="offset-link">Log Past Session</button>
         <button id="history-export-all" class="offset-link">Export All Data</button>
         <button id="history-import" class="offset-link">Import Data</button>
         <button id="history-clear-all" class="offset-link history-danger">Clear All</button>
         <input type="file" id="history-import-input" accept=".json" class="hidden">
       </div>
-      <div id="log-past-form" class="log-past-form hidden">
-        <div class="log-past-title">Log Past Session</div>
+    </div>
+
+    <!-- Log Past Session panel (standalone overlay) -->
+    <div id="log-past-panel" class="log-past-panel hidden">
+      <div class="history-header">
+        <h3>Log Past Session</h3>
+        <button id="log-past-close" class="icon-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="log-past-form">
         <div class="log-past-row">
           <label>Mode</label>
           <select id="log-past-mode">

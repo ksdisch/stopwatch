@@ -44,74 +44,8 @@ function initHistoryPanel() {
     }
   });
 
-  // Log Past Session
-  const logForm = document.getElementById('log-past-form');
-  const logModeSelect = document.getElementById('log-past-mode');
-  const pomoFields = document.getElementById('log-past-pomo-fields');
-
-  // Task lists for past session logging
-  let logPastFocusGoals = [];
-  let logPastBreakTasks = [];
-  let logPastActualWork = [];
-
-  function initLogPastList(inputId, arr, listId) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const text = input.value.trim();
-        if (!text) return;
-        arr.push(text);
-        input.value = '';
-        renderLogPastList(arr, listId);
-      }
-    });
-  }
-
-  function renderLogPastList(arr, listId) {
-    const el = document.getElementById(listId);
-    if (!el) return;
-    if (arr.length === 0) { el.innerHTML = ''; return; }
-    el.innerHTML = arr.map((text, i) =>
-      `<div class="log-past-list-item"><span>${escapeHistoryHtml(text)}</span><button data-log-del="${i}">&times;</button></div>`
-    ).join('');
-    el.querySelectorAll('[data-log-del]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        arr.splice(parseInt(btn.dataset.logDel, 10), 1);
-        renderLogPastList(arr, listId);
-      });
-    });
-  }
-
-  initLogPastList('log-past-focus-input', logPastFocusGoals, 'log-past-focus-goals');
-  initLogPastList('log-past-break-input', logPastBreakTasks, 'log-past-break-tasks');
-  initLogPastList('log-past-actual-input', logPastActualWork, 'log-past-actual-work');
-
-  document.getElementById('history-log-past').addEventListener('click', () => {
-    logForm.classList.toggle('hidden');
-    if (!logForm.classList.contains('hidden')) {
-      const today = new Date().toISOString().slice(0, 10);
-      document.getElementById('log-past-date').value = today;
-      document.getElementById('log-past-start').value = '';
-      document.getElementById('log-past-end').value = '';
-      document.getElementById('log-past-note').value = '';
-      document.getElementById('log-past-tags').value = '';
-      logPastFocusGoals.length = 0;
-      logPastBreakTasks.length = 0;
-      logPastActualWork.length = 0;
-      renderLogPastList(logPastFocusGoals, 'log-past-focus-goals');
-      renderLogPastList(logPastBreakTasks, 'log-past-break-tasks');
-      renderLogPastList(logPastActualWork, 'log-past-actual-work');
-      updateLogPastPomoVisibility();
-    }
-  });
-
-  logModeSelect.addEventListener('change', updateLogPastPomoVisibility);
-
-  function updateLogPastPomoVisibility() {
-    pomoFields.classList.toggle('hidden', logModeSelect.value !== 'pomodoro');
-  }
+  // Log Past Session — standalone panel
+  initLogPastPanel();
 
   document.getElementById('log-past-cancel').addEventListener('click', () => {
     logForm.classList.add('hidden');
@@ -382,3 +316,139 @@ async function renderHistory() {
 
 // Uses shared escapeHtml from dom-utils.js
 const escapeHistoryHtml = escapeHtml;
+
+// ── Log Past Session Panel ──
+function initLogPastPanel() {
+  const panel = document.getElementById('log-past-panel');
+  const logModeSelect = document.getElementById('log-past-mode');
+  const pomoFields = document.getElementById('log-past-pomo-fields');
+
+  let logPastFocusGoals = [];
+  let logPastBreakTasks = [];
+  let logPastActualWork = [];
+
+  function initLogPastList(inputId, arr, listId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        arr.push(text);
+        input.value = '';
+        renderLogPastList(arr, listId);
+      }
+    });
+  }
+
+  function renderLogPastList(arr, listId) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    if (arr.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = arr.map((text, i) =>
+      `<div class="log-past-list-item"><span>${escapeHistoryHtml(text)}</span><button data-log-del="${i}">&times;</button></div>`
+    ).join('');
+    el.querySelectorAll('[data-log-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        arr.splice(parseInt(btn.dataset.logDel, 10), 1);
+        renderLogPastList(arr, listId);
+      });
+    });
+  }
+
+  initLogPastList('log-past-focus-input', logPastFocusGoals, 'log-past-focus-goals');
+  initLogPastList('log-past-break-input', logPastBreakTasks, 'log-past-break-tasks');
+  initLogPastList('log-past-actual-input', logPastActualWork, 'log-past-actual-work');
+
+  function openPanel() {
+    panel.classList.remove('hidden');
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('log-past-date').value = today;
+    document.getElementById('log-past-start').value = '';
+    document.getElementById('log-past-end').value = '';
+    document.getElementById('log-past-note').value = '';
+    document.getElementById('log-past-tags').value = '';
+    document.getElementById('log-past-cycles').value = '1';
+    document.getElementById('log-past-work-min').value = '25';
+    logPastFocusGoals.length = 0;
+    logPastBreakTasks.length = 0;
+    logPastActualWork.length = 0;
+    renderLogPastList(logPastFocusGoals, 'log-past-focus-goals');
+    renderLogPastList(logPastBreakTasks, 'log-past-break-tasks');
+    renderLogPastList(logPastActualWork, 'log-past-actual-work');
+    updateLogPastPomoVisibility();
+  }
+
+  function closePanel() {
+    panel.classList.add('hidden');
+  }
+
+  // Top bar button
+  document.getElementById('log-session-toggle').addEventListener('click', openPanel);
+
+  // Close button
+  document.getElementById('log-past-close').addEventListener('click', closePanel);
+
+  logModeSelect.addEventListener('change', updateLogPastPomoVisibility);
+
+  function updateLogPastPomoVisibility() {
+    pomoFields.classList.toggle('hidden', logModeSelect.value !== 'pomodoro');
+  }
+
+  document.getElementById('log-past-cancel').addEventListener('click', closePanel);
+
+  document.getElementById('log-past-save').addEventListener('click', async () => {
+    const mode = logModeSelect.value;
+    const dateStr = document.getElementById('log-past-date').value;
+    const startTime = document.getElementById('log-past-start').value;
+    const endTime = document.getElementById('log-past-end').value;
+
+    if (!dateStr || !startTime || !endTime) {
+      alert('Please fill in date, start time, and end time.');
+      return;
+    }
+
+    const startDate = new Date(`${dateStr}T${startTime}`);
+    const endDate = new Date(`${dateStr}T${endTime}`);
+    if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
+    const durationMs = endDate.getTime() - startDate.getTime();
+
+    if (durationMs <= 0) {
+      alert('End time must be after start time.');
+      return;
+    }
+
+    const note = document.getElementById('log-past-note').value.trim();
+    const tagsRaw = document.getElementById('log-past-tags').value.trim();
+    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+
+    const session = {
+      id: startDate.getTime(),
+      date: startDate.toISOString(),
+      type: mode,
+      duration: durationMs,
+      laps: [],
+      note,
+      tags,
+      sessionStartedAt: startDate.getTime(),
+      sessionEndedAt: endDate.getTime(),
+    };
+
+    if (mode === 'pomodoro') {
+      const cycles = Math.max(0, parseInt(document.getElementById('log-past-cycles').value, 10) || 0);
+      const workMin = Math.max(1, parseInt(document.getElementById('log-past-work-min').value, 10) || 25);
+      session.completedCycles = cycles;
+      session.totalWorkMs = cycles * workMin * 60000;
+      if (logPastFocusGoals.length > 0) session.focusGoals = logPastFocusGoals.slice();
+      if (logPastBreakTasks.length > 0) session.breakTasks = logPastBreakTasks.slice();
+      if (logPastActualWork.length > 0) session.actualWork = logPastActualWork.slice();
+    }
+
+    await History.addSession(session);
+    closePanel();
+    // Re-render history if it's open
+    const historyPanel = document.getElementById('history-panel');
+    if (historyPanel && !historyPanel.classList.contains('hidden')) renderHistory();
+  });
+}
