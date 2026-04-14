@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v37';
+const CACHE_NAME = 'stopwatch-v38';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   './js/timer.js',
   './js/instance-manager.js',
   './js/pomodoro.js',
+  './js/flow.js',
   './js/persistence.js',
   './js/audio.js',
   './js/themes.js',
@@ -20,6 +21,7 @@ const ASSETS = [
   './js/compare-ui.js',
   './js/timer-ui.js',
   './js/pomodoro-ui.js',
+  './js/flow-ui.js',
   './js/alert-ui.js',
   './js/history-ui.js',
   './js/interval.js',

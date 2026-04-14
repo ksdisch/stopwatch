@@ -111,6 +111,10 @@ const History = (() => {
     if (session.sessionEndedAt) entry.sessionEndedAt = session.sessionEndedAt;
     if (session.phaseLog) entry.phaseLog = session.phaseLog;
     if (session.distractions) entry.distractions = session.distractions;
+    // Flow-block specific metadata
+    if (session.goal) entry.goal = session.goal;
+    if (session.blockDurationMs !== undefined) entry.blockDurationMs = session.blockDurationMs;
+    if (session.preBlockSkipped !== undefined) entry.preBlockSkipped = session.preBlockSkipped;
 
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');

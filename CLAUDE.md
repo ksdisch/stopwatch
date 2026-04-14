@@ -21,6 +21,7 @@ js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall
 js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.
 js/instance-manager.js          — InstanceManager: manages multiple stopwatch/timer instances (up to 5 each), primary tracking, persistence.
 js/pomodoro.js                  — Pomodoro engine. Work/break cycle state machine.
+js/flow.js                      — Flow Block engine. Single 90/120-min focus block + 15-min recovery. Ultradian rhythm.
 js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
 js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files).
 js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
@@ -32,6 +33,7 @@ js/ui.js (~300 lines)           — Main UI: render loop (RAF), button state mac
 js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
 js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
 js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, session checklist.
+js/flow-ui.js                   — Flow Block UI: pre-block checklist, distraction log, summary card, recovery phase.
 js/alert-ui.js                  — Alert UI: add/remove/render threshold alerts for stopwatch.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing.
 js/app.js (~240 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
@@ -42,7 +44,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → stopwatch → timer → instance-manager → pomodoro → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → timer-ui → pomodoro-ui → alert-ui → history-ui → app
+utils → stopwatch → timer → instance-manager → pomodoro → flow → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → history-ui → app
 ```
 
 ### Key Design Decisions
@@ -61,8 +63,9 @@ utils → stopwatch → timer → instance-manager → pomodoro → persistence 
 **Stopwatch:** `{ id, name, status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs, alerts[] }`
 **Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
 **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs }`
+**Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
 
-All instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` and `pomodoro_config`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
+All instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` and `pomodoro_config`. Flow Block persists under `flow_state` and `flow_config`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
 
 ## What Has Been Built
 
@@ -114,6 +117,9 @@ All instances persist to localStorage via `InstanceManager.saveAll()` under key 
 - **Offset input hack fixed:** Replaced `.offset-input.hidden` specificity hack with `data-collapsed` attribute.
 - **Analog double-init fixed:** Root cause fix with `initialized` flag instead of children.length guard.
 - **Clock skew no-op removed:** `accumulatedMs += 0` removed from stopwatch loadState.
+
+### Phase 7: Flow Block Mode
+- **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). End-of-block summary card shows duration, goal, and distraction breakdown. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
 
 ## What's Next — Planned Improvements
 

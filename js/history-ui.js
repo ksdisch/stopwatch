@@ -187,7 +187,10 @@ async function renderHistory() {
     const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const t = Utils.formatMs(s.duration);
     const dur = t.hours > 0 ? `${t.hours}:${t.minStr}:${t.secStr}` : `${t.minStr}:${t.secStr}`;
-    const type = s.type === 'pomodoro' ? 'Pomodoro' : s.type === 'timer' ? 'Timer' : 'Stopwatch';
+    const type = s.type === 'pomodoro' ? 'Pomodoro'
+      : s.type === 'timer' ? 'Timer'
+      : s.type === 'flow' ? 'Flow Block'
+      : 'Stopwatch';
     const laps = s.laps.length > 0 ? `${s.laps.length} laps` : '';
     const note = s.note
       ? `<div class="history-note" data-note-id="${s.id}">${escapeHistoryHtml(s.note)}</div>`
@@ -229,6 +232,21 @@ async function renderHistory() {
           return `<div class="history-phase-row"><span class="history-phase-name">${name}${suffix}</span><span class="history-phase-time">${fmtTime(p.startedAt)} – ${fmtTime(p.endedAt)}</span></div>`;
         }).join('');
         timingHtml = `<div class="history-timing"><span class="history-task-label">Session ${fmtTime(s.sessionStartedAt)} – ${fmtTime(s.sessionEndedAt)}</span>${rows}</div>`;
+      }
+    } else if (s.type === 'flow') {
+      const sections = [];
+      if (s.goal) {
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Goal</span><div class="history-flow-goal">${escapeHistoryHtml(s.goal)}</div></div>`);
+      }
+      if (Array.isArray(s.distractions) && s.distractions.length > 0) {
+        const fmtTime = (ts) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Distractions (${s.distractions.length})</span><ul class="history-task-list">${s.distractions.map(d => `<li>${escapeHistoryHtml(d.category)}${d.note ? ' — ' + escapeHistoryHtml(d.note) : ''} <span class="history-phase-time">${fmtTime(d.timestamp)}</span></li>`).join('')}</ul></div>`);
+      }
+      if (s.preBlockSkipped) {
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Pre-block checklist</span><div class="history-flow-goal">Skipped</div></div>`);
+      }
+      if (sections.length > 0) {
+        taskHtml = `<div class="history-tasks">${sections.join('')}</div>`;
       }
     }
 
