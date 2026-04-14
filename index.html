@@ -19,6 +19,7 @@
         <button class="mode-tab mode-tab-active" data-app-mode="stopwatch">Stopwatch</button>
         <button class="mode-tab" data-app-mode="timer">Timer</button>
         <button class="mode-tab" data-app-mode="pomodoro">Pomodoro</button>
+        <button class="mode-tab" data-app-mode="flow">Flow</button>
         <button class="mode-tab" data-app-mode="interval">Interval</button>
         <button class="mode-tab" data-app-mode="cooking">Cook</button>
       </div>
@@ -184,6 +185,58 @@
           <button class="pomo-distraction-cat" data-cat="other">Other</button>
         </div>
         <input type="text" id="pomo-distraction-note" placeholder="Optional note..." maxlength="60">
+      </div>
+    </div>
+
+    <!-- Flow Block mode (hidden by default) -->
+    <div id="flow-area" class="flow-area hidden">
+      <!-- Idle: setup view -->
+      <div id="flow-setup" class="flow-setup">
+        <div class="flow-duration-toggle" role="group" aria-label="Block duration">
+          <button class="flow-dur-btn" data-flow-dur="90">90 min</button>
+          <button class="flow-dur-btn" data-flow-dur="120">120 min</button>
+        </div>
+        <input type="text" id="flow-goal-input" class="flow-goal-input"
+               placeholder="What's the goal for this block?" maxlength="120">
+        <div class="flow-checklist">
+          <div class="flow-checklist-label">Pre-block checklist</div>
+          <div id="flow-checklist-items"></div>
+          <button id="flow-skip-checklist" class="offset-link">Skip checklist</button>
+        </div>
+      </div>
+      <!-- Running: phase label + distraction button -->
+      <div id="flow-running" class="flow-running hidden">
+        <div class="flow-phase-label">
+          <span id="flow-phase-text">Focus</span>
+          <span id="flow-goal-display" class="flow-goal-display"></span>
+        </div>
+        <button id="flow-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
+        <div id="flow-distraction-picker" class="pomo-distraction-picker hidden">
+          <div class="pomo-distraction-cats">
+            <button class="flow-distraction-cat" data-cat="phone">Phone</button>
+            <button class="flow-distraction-cat" data-cat="email">Email</button>
+            <button class="flow-distraction-cat" data-cat="interrupted">Interrupted</button>
+            <button class="flow-distraction-cat" data-cat="self">Self-distracted</button>
+            <button class="flow-distraction-cat" data-cat="other">Other</button>
+          </div>
+          <input type="text" id="flow-distraction-note" placeholder="Optional note..." maxlength="60">
+        </div>
+      </div>
+      <!-- Focus complete: summary card -->
+      <div id="flow-summary" class="flow-summary hidden">
+        <div class="flow-summary-title">Block Complete</div>
+        <div id="flow-summary-body" class="flow-summary-body"></div>
+        <div class="flow-summary-actions">
+          <button id="flow-start-recovery" class="flow-action-btn flow-action-primary">Start Recovery (15m)</button>
+          <button id="flow-skip-recovery" class="flow-action-btn">Skip</button>
+        </div>
+      </div>
+      <!-- Recovery phase: suggestion card -->
+      <div id="flow-recovery" class="flow-recovery hidden">
+        <div class="flow-recovery-title">Recovery</div>
+        <div class="flow-recovery-text">
+          Stand up. Hydrate. Walk away from the screen.
+        </div>
       </div>
     </div>
 
@@ -425,6 +478,7 @@
           <label>Mode</label>
           <select id="log-past-mode">
             <option value="pomodoro">Pomodoro</option>
+            <option value="flow">Flow Block</option>
             <option value="stopwatch">Stopwatch</option>
             <option value="timer">Timer</option>
             <option value="interval">Interval</option>
@@ -489,6 +543,7 @@
   <script src="js/timer.js"></script>
   <script src="js/instance-manager.js"></script>
   <script src="js/pomodoro.js"></script>
+  <script src="js/flow.js"></script>
   <script src="js/interval.js"></script>
   <script src="js/persistence.js"></script>
   <script src="js/audio.js"></script>
@@ -502,6 +557,7 @@
   <script src="js/compare-ui.js"></script>
   <script src="js/timer-ui.js"></script>
   <script src="js/pomodoro-ui.js"></script>
+  <script src="js/flow-ui.js"></script>
   <script src="js/alert-ui.js"></script>
   <script src="js/bg-notify.js"></script>
   <script src="js/interval-ui.js"></script>
