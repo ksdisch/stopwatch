@@ -17,6 +17,9 @@
   --separator: #38383a;
   --lap-best: #30d158;
   --lap-worst: #ff453a;
+  --accent-tint: color-mix(in srgb, var(--green) 12%, transparent);
+  --accent-glow: color-mix(in srgb, var(--green) 22%, transparent);
+  --accent-red-tint: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
 @media (prefers-color-scheme: light) {
@@ -55,30 +58,6 @@ html, body {
   min-height: 100%;
   min-height: 100dvh;
   position: relative;
-}
-
-#app::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--green), transparent);
-  background-size: 200% 100%;
-  opacity: 0;
-  transition: opacity 0.3s;
-  z-index: 100;
-}
-
-#app.is-running::before {
-  opacity: 1;
-  animation: gradient-scroll 1.5s linear infinite;
-}
-
-@keyframes gradient-scroll {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
 }
 
 /* Focus styles */
@@ -442,28 +421,25 @@ input:focus:not(:focus-visible) {
   to { opacity: 1; transform: scale(1); }
 }
 
-#timer-display.is-running #time {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-  0%, 100% { text-shadow: none; }
-  50% { text-shadow: 0 0 18px rgba(48, 209, 88, 0.4); }
-}
 
 #time {
   font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Mono', monospace;
   font-size: clamp(3.2rem, 14vw, 5.5rem);
-  font-weight: 200;
+  font-weight: 250;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   white-space: nowrap;
+  font-variation-settings: "wght" 250;
 }
 
 .centiseconds {
-  font-size: 0.65em;
-  opacity: 0.85;
-  letter-spacing: 0.02em;
+  display: inline-block;
+  min-width: 1.6ch;
+  font-size: 0.58em;
+  opacity: 0.55;
+  letter-spacing: -0.02em;
+  margin-left: 0.08em;
+  vertical-align: baseline;
 }
 
 /* Analog Display */
@@ -808,7 +784,7 @@ input:focus:not(:focus-visible) {
 
 .btn-start {
   border-color: var(--green);
-  background: var(--green-dark);
+  background: var(--accent-tint);
   color: var(--green);
 }
 
@@ -817,12 +793,12 @@ input:focus:not(:focus-visible) {
 }
 
 .btn-start:active {
-  box-shadow: 0 0 20px rgba(48, 209, 88, 0.3);
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 
 .btn-stop {
   border-color: var(--red);
-  background: var(--red-dark);
+  background: var(--accent-red-tint);
   color: var(--red);
 }
 
@@ -831,7 +807,7 @@ input:focus:not(:focus-visible) {
 }
 
 .btn-stop:active {
-  box-shadow: 0 0 20px rgba(255, 69, 58, 0.3);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--red) 30%, transparent);
 }
 
 .btn-lap {
@@ -1139,13 +1115,13 @@ input:focus:not(:focus-visible) {
 
 .compare-btn-start {
   border-color: var(--green);
-  background: var(--green-dark);
+  background: var(--accent-tint);
   color: var(--green);
 }
 
 .compare-btn-stop {
   border-color: var(--red);
-  background: var(--red-dark);
+  background: var(--accent-red-tint);
   color: var(--red);
 }
 
@@ -2393,7 +2369,7 @@ input:focus:not(:focus-visible) {
 .interval-add-btn {
   width: 32px;
   height: 32px;
-  background: var(--green-dark);
+  background: var(--accent-tint);
   border: 1px solid var(--green);
   border-radius: 8px;
   color: var(--green);
@@ -2599,13 +2575,13 @@ input:focus:not(:focus-visible) {
 
 .cooking-ctrl-start {
   border-color: var(--green);
-  background: var(--green-dark);
+  background: var(--accent-tint);
   color: var(--green);
 }
 
 .cooking-ctrl-stop {
   border-color: var(--red);
-  background: var(--red-dark);
+  background: var(--accent-red-tint);
   color: var(--red);
 }
 
@@ -3313,6 +3289,13 @@ input:focus:not(:focus-visible) {
 
   #lap-section {
     max-height: 400px;
+  }
+}
+
+/* Reduced motion: suppress lap-entering slide */
+@media (prefers-reduced-motion: reduce) {
+  .lap-entering {
+    animation: none;
   }
 }
 
