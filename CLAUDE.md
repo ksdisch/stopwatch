@@ -15,36 +15,50 @@ Vanilla HTML + CSS + JS. No framework, no build step. The entire app is a static
 
 ```
 index.html                      — App shell, all HTML structure
-css/styles.css (~1400 lines)    — All styling, dark/light themes, responsive, animations, a11y
+css/styles.css (~3300 lines)    — All styling, dark/light themes, responsive, animations, a11y
 js/utils.js                     — Utils.formatMs(ms) shared time formatting
+js/dom-utils.js                 — escapeHtml(str) shared HTML-escape helper
 js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall-clock timing. Alerts.
 js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.
 js/instance-manager.js          — InstanceManager: manages multiple stopwatch/timer instances (up to 5 each), primary tracking, persistence.
 js/pomodoro.js                  — Pomodoro engine. Work/break cycle state machine.
 js/flow.js                      — Flow Block engine. Single 90/120-min focus block + 15-min recovery. Ultradian rhythm.
+js/interval.js                  — Interval engine. Phase-based rounds (Tabata / HIIT / Custom).
 js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
-js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files).
+js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files). Multiple sound profiles.
 js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
-js/history.js                   — History module. Session storage in localStorage (last 100). Tags, notes.
-js/export.js                    — Export module. Clipboard, CSV download, Web Share API.
+js/history.js                   — History module. Session storage in IndexedDB (db: stopwatch_history_db, store: sessions). Tags, notes. Migrates legacy localStorage entries.
+js/export.js                    — Export module. Clipboard, CSV download, Web Share API, full-data JSON export/import.
 js/analog.js                    — Analog clock face. SVG with 60 ticks, numbers, rotating hands.
 js/offset-input.js              — "Start with time already elapsed" input UI + presets.
-js/ui.js (~300 lines)           — Main UI: render loop (RAF), button state machine, lap list, swipe-to-delete, a11y announcements.
+js/ui.js (~490 lines)           — Main UI: render loop (RAF), button state machine, lap list, swipe-to-delete, vibration intervals, a11y announcements.
 js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
+js/compare-ui.js                — Compare view: split-screen two-instance comparison.
 js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
-js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, session checklist.
+js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, focus/break/actual-work checklists, saved tasks, templates, distraction log, timeline.
+js/pomodoro-stats.js            — Pomodoro stats engine (streaks, daily/weekly aggregates).
 js/flow-ui.js                   — Flow Block UI: pre-block checklist, distraction log, summary card, recovery phase.
 js/alert-ui.js                  — Alert UI: add/remove/render threshold alerts for stopwatch.
-js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing.
-js/app.js (~240 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
+js/bg-notify.js                 — Background notification bridge via service worker (for backgrounded tabs).
+js/interval-ui.js               — Interval mode UI: phase list, templates, rounds, run info.
+js/cooking-ui.js                — Cooking mode UI: multiple named short timers with suggestions.
+js/sequence.js                  — Sequence engine (linear phase chain, sub-mode of Timer).
+js/sequence-ui.js               — Sequence UI: phase setup, run info.
+js/analytics.js                 — Analytics engine: aggregates history sessions by day/type.
+js/analytics-ui.js              — Analytics dashboard UI panel.
+js/focus-ui.js                  — Focus / ambient display mode (distraction-free full-screen view).
+js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
+js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
+js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
+js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
 sw.js                           — Service worker, cache-first, version-bumped on deploys.
-manifest.json                   — PWA manifest, standalone display.
+manifest.json                   — PWA manifest, standalone display, shortcuts.
 icons/                          — 192px and 512px PNG icons.
 ```
 
 ### Script Load Order
 ```
-utils → stopwatch → timer → instance-manager → pomodoro → flow → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → history-ui → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → app
 ```
 
 ### Key Design Decisions
@@ -55,7 +69,7 @@ utils → stopwatch → timer → instance-manager → pomodoro → flow → per
 - **RAF render loop:** `requestAnimationFrame` for smooth 60fps updates. Only updates the current in-progress lap's text node (not full DOM rebuild). Self-starts on start(), self-stops on pause()/reset(). Mode guards prevent cross-mode interference.
 - **Module naming:** `SFX` (not `Audio`) to avoid conflicting with the browser's native `Audio` constructor.
 - **No build step:** Script load order in index.html is the dependency graph. Engine modules must load before UI modules which must load before app.js.
-- **Shared button handlers:** All three modes (stopwatch, timer, pomodoro) register addEventListener on the same btn-left/btn-right elements. Each handler has an `appMode` guard to short-circuit when not active. Pomodoro also has a click debounce lock.
+- **Shared button handlers:** All modes (stopwatch, timer, pomodoro, flow, interval, cooking) register addEventListener on the same btn-left/btn-right elements. Each handler has an `appMode` guard to short-circuit when not active. Pomodoro also has a click debounce lock.
 - **Collapsed panels:** `.offset-input[data-collapsed]` uses a data attribute (not `.hidden` class) to enable CSS max-height transitions.
 
 ### State Model
@@ -65,7 +79,16 @@ utils → stopwatch → timer → instance-manager → pomodoro → flow → per
 **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs }`
 **Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
 
-All instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` and `pomodoro_config`. Flow Block persists under `flow_state` and `flow_config`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
+All stopwatch/timer instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` / `pomodoro_config`. Flow Block persists under `flow_state` / `flow_config`. Interval persists under `interval_state`. Sequence persists under `sequence_state` / `sequence_templates`. Cooking timers under `cooking_timers`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
+
+Session history persists to IndexedDB (db `stopwatch_history_db`, store `sessions`). Legacy `stopwatch_history` localStorage entries are migrated into IndexedDB on first load.
+
+Additional localStorage keys used for UI/config preferences:
+- `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`
+- `sound_muted`, `sound_profile`, `theme`
+- `offset_presets`, `quick_presets`, `presets_seeded`
+- `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`
+- `flow_distractions`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
 
 ## What Has Been Built
 
@@ -136,9 +159,8 @@ All instances persist to localStorage via `InstanceManager.saveAll()` under key 
 
 ### Remaining Tech Debt
 
-- **Session history uses localStorage:** For 100+ sessions with lap arrays, could migrate to IndexedDB (async, no size limit). Current limit is 100 sessions. Low urgency.
 - **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in timer-ui.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
-- **Engine tests only:** 74 tests cover stopwatch/timer/pomodoro engines. No UI/integration tests yet.
+- **Engine tests only:** 138 tests cover stopwatch (29), timer (21), pomodoro (27), and interval (61) engines. No UI/integration tests yet.
 - **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Low impact for typical lap counts.
 
 ### If Migrating to ES Modules
