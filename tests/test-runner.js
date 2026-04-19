@@ -21,6 +21,10 @@ function it(name, fn) {
   }
 }
 
+it.skip = function (name, _fn) {
+  _output.push(`    ⊘ ${name} (pending)`);
+};
+
 function assert(condition, msg) {
   if (!condition) throw new Error(msg || 'Assertion failed');
 }
