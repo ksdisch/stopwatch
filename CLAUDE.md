@@ -46,6 +46,7 @@ js/sequence.js                  — Sequence engine (linear phase chain, sub-mod
 js/sequence-ui.js               — Sequence UI: phase setup, run info.
 js/analytics.js                 — Analytics engine: aggregates history sessions by day/type.
 js/analytics-ui.js              — Analytics dashboard UI panel.
+js/lap-chart.js                 — Lap chart (SCAFFOLD): inline SVG bar chart of lap durations below lap list. Color-coded best/worst.
 js/focus-ui.js                  — Focus / ambient display mode (distraction-free full-screen view).
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
@@ -58,7 +59,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → lap-chart → presets → presets-ui → app
 ```
 
 ### Key Design Decisions
@@ -146,16 +147,19 @@ Additional localStorage keys used for UI/config preferences:
 
 ## What's Next — Planned Improvements
 
+### In Flight
+
+- **Lap data visualization** *(scaffold, pending human design review)* — Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. Scaffold files: `js/lap-chart.js` (stub `LapChart.render/clear/computeStats`), `tests/lap-chart.test.js` (pending `it.skip` stubs), DOM hook `#lap-chart` already exists in `index.html`. Wired into script load order and `sw.js` ASSETS. Implementation not started.
+
 ### Feature Backlog
 
 | Priority | Feature | Impact | Effort | Notes |
 |----------|---------|--------|--------|-------|
-| 1 | **Lap data visualization** | Medium | Medium | Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. |
-| 2 | **Split-screen timer comparison** | Medium | High | Side-by-side two timers. Requires significant layout rework. |
-| 3 | **Voice control** | Low | Medium | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
-| 4 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
-| 5 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
-| 6 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
+| 1 | **Split-screen timer comparison** | Medium | High | Side-by-side two timers. Requires significant layout rework. |
+| 2 | **Voice control** | Low | Medium | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
+| 3 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
+| 4 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
+| 5 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
 
 ### Remaining Tech Debt
 
