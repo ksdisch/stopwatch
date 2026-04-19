@@ -1,9 +1,11 @@
-const CACHE_NAME = 'stopwatch-v39';
+const CACHE_NAME = 'stopwatch-v40-tempo';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
+  './css/tempo-shell.css',
   './js/utils.js',
+  './js/tempo-nav.js',
   './js/stopwatch.js',
   './js/timer.js',
   './js/instance-manager.js',
@@ -63,7 +65,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    // ignoreSearch:true so `?v=N` cache-bust query strings on asset
+    // references (see index.html's tempo-shell.css / tempo-nav.js links)
+    // still hit the pre-cached entry instead of falling through to the
+    // network every time.
+    caches.match(event.request, { ignoreSearch: true })
+      .then((cached) => cached || fetch(event.request))
   );
 });
 

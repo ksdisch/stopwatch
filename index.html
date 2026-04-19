@@ -9,44 +9,97 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
-  <title>Stopwatch</title>
+  <link rel="stylesheet" href="css/tempo-shell.css?v=1">
+  <title>Tempo</title>
 </head>
 <body>
   <div id="app">
-    <!-- Top bar: mode selector + settings -->
-    <div class="top-bar">
-      <div class="mode-selector">
-        <button class="mode-tab mode-tab-active" data-app-mode="stopwatch">Stopwatch</button>
-        <button class="mode-tab" data-app-mode="timer">Timer</button>
-        <button class="mode-tab" data-app-mode="pomodoro">Pomodoro</button>
-        <button class="mode-tab" data-app-mode="flow">Flow</button>
-        <button class="mode-tab" data-app-mode="interval">Interval</button>
-        <button class="mode-tab" data-app-mode="cooking">Cook</button>
+    <!-- Tempo shell: top bar + sub-nav.
+         Replaces the legacy mode selector. Wordmark on the left, History
+         and Settings icons on the right. Settings opens a drawer that
+         consolidates the secondary controls (theme, sound, presets, log
+         past session, focus mode) — each keeps its legacy ID so the
+         wiring in app.js continues to work unchanged. -->
+    <header class="tempo-topbar">
+      <div class="tempo-wordmark" aria-label="Tempo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="13" r="9" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M10 3 L14 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M12 8 L12 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M8.5 8 L15.5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span>Tempo</span>
       </div>
-      <div class="top-actions">
-        <button id="sound-toggle" class="icon-btn" aria-label="Toggle sound">
-          <span id="sound-icon">&#x1F50A;</span>
+      <div class="tempo-topbar-actions">
+        <button id="history-toggle" class="tempo-iconbtn" aria-label="Session history">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="5" y="3" width="14" height="18" rx="2"/>
+            <path d="M9 7 L15 7"/><path d="M9 11 L15 11"/><path d="M9 15 L13 15"/>
+          </svg>
         </button>
-        <button id="theme-toggle" class="icon-btn" aria-label="Theme settings">
-          <span>&#x2699;</span>
-        </button>
-        <button id="presets-toggle" class="icon-btn" aria-label="Presets">
-          <span>&#x2B50;</span>
-        </button>
-        <button id="log-session-toggle" class="icon-btn" aria-label="Log past session">
-          <span>&#x270D;</span>
-        </button>
-        <button id="analytics-toggle" class="icon-btn" aria-label="Analytics">
-          <span>&#x1F4CA;</span>
-        </button>
-        <button id="focus-toggle" class="icon-btn" aria-label="Focus mode">
-          <span>&#x26F6;</span>
-        </button>
-        <button id="history-toggle" class="icon-btn" aria-label="Session history">
-          <span>&#x1F4CB;</span>
+        <button id="tempo-settings-toggle" class="tempo-iconbtn"
+                aria-label="Settings" aria-haspopup="menu" aria-expanded="false">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
         </button>
       </div>
-    </div>
+      <div id="tempo-settings-drawer" class="tempo-settings-drawer hidden"
+           role="menu" aria-label="Settings">
+        <button id="theme-toggle" class="tempo-settings-item" role="menuitem" aria-label="Theme settings">
+          <span class="tempo-settings-item-icon">&#x2699;</span>
+          <span class="tempo-settings-item-label">Theme</span>
+        </button>
+        <button id="sound-toggle" class="tempo-settings-item" role="menuitem" aria-label="Toggle sound">
+          <span class="tempo-settings-item-icon"><span id="sound-icon">&#x1F50A;</span></span>
+          <span class="tempo-settings-item-label">Sound</span>
+          <span class="tempo-settings-item-meta">Hold for profile</span>
+        </button>
+        <button id="presets-toggle" class="tempo-settings-item" role="menuitem" aria-label="Presets">
+          <span class="tempo-settings-item-icon">&#x2B50;</span>
+          <span class="tempo-settings-item-label">Presets</span>
+        </button>
+        <button id="log-session-toggle" class="tempo-settings-item" role="menuitem" aria-label="Log past session">
+          <span class="tempo-settings-item-icon">&#x270D;</span>
+          <span class="tempo-settings-item-label">Log past session</span>
+        </button>
+        <button id="focus-toggle" class="tempo-settings-item" role="menuitem" aria-label="Focus mode">
+          <span class="tempo-settings-item-icon">&#x26F6;</span>
+          <span class="tempo-settings-item-label">Focus mode</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Sub-nav (horizontal-scrollable segmented strip). Only the active
+         pillar's buttons render (CSS toggles visibility based on
+         data-pillar). Timers buttons keep the legacy .mode-tab class and
+         data-app-mode attribute so initAppMode() in app.js finds them. -->
+    <nav class="tempo-subnav" data-pillar="timers" aria-label="Mode">
+      <div class="tempo-subnav-scroll">
+        <div data-subnav-for="timers">
+          <button class="mode-tab mode-tab-active" data-app-mode="stopwatch" data-subnav-key="">Stopwatch</button>
+          <button class="mode-tab" data-app-mode="timer" data-subnav-key="countdown">Timer</button>
+          <button class="mode-tab" data-app-mode="pomodoro" data-subnav-key="pomodoro">Pomodoro</button>
+          <button class="mode-tab" data-app-mode="flow" data-subnav-key="flow">Flow</button>
+          <button class="mode-tab" data-app-mode="interval" data-subnav-key="interval">Interval</button>
+          <button class="mode-tab" data-app-mode="cooking" data-subnav-key="cook">Cook</button>
+        </div>
+        <div data-subnav-for="wellness">
+          <button class="tempo-subnav-btn is-active" data-subnav-key="meds">Meds</button>
+          <button class="tempo-subnav-btn" data-subnav-key="exercise">Exercise</button>
+          <button class="tempo-subnav-btn" data-subnav-key="mindful">Mindful</button>
+          <button class="tempo-subnav-btn" data-subnav-key="cooking">Cooking</button>
+          <button class="tempo-subnav-btn" data-subnav-key="recovery">Recovery</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- analytics-toggle still needs to exist in the DOM so js/analytics-ui.js
+         can bind its handler at init; the Analytics pillar tab opens it. -->
+    <button id="analytics-toggle" class="hidden" hidden aria-label="Analytics open"></button>
 
     <!-- Theme picker (hidden by default) -->
     <div id="theme-picker" class="theme-picker hidden"></div>
@@ -68,6 +121,12 @@
     </div>
 
     <div id="sr-announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <!-- ── Timers pillar ── Wraps the existing Stopwatch / Timer / Pomodoro /
+         Flow / Interval / Cooking content. display:contents on [data-active]
+         means the wrapper doesn't create its own box — the flex layout of
+         #app continues to work against its great-grandchildren unchanged. -->
+    <section class="tempo-pillar" data-pillar-id="timers" data-active="true">
     <div id="timer-display" role="timer" aria-label="Elapsed time">
       <div id="auto-advance-overlay" class="auto-advance-overlay hidden"></div>
       <span id="time">00:00<span class="centiseconds">.00</span></span>
@@ -433,6 +492,134 @@
     <div id="lap-section" aria-label="Lap times">
       <div id="lap-list" role="list"></div>
     </div>
+    </section><!-- / timers pillar -->
+
+    <!-- ── Wellness pillar ── Placeholder surfaces for the five sub-nav
+         items (Meds / Exercise / Mindful / Cooking / Recovery). Each
+         surface is hidden by default; tempo-nav.js toggles `hidden` on
+         the one matching data-wellness-sub. -->
+    <section class="tempo-pillar" data-pillar-id="wellness" data-active="false">
+      <div class="tempo-placeholder" data-wellness-sub="meds">
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="6" y="3" width="12" height="18" rx="3"/>
+            <path d="M12 7 L12 17"/><path d="M8 12 L16 12"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Medications</div>
+        <div class="tempo-placeholder-body">
+          Track doses with countdown timers tied to your meds schedule.
+          This pillar ships in a later phase of the Tempo rebrand.
+        </div>
+        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:">
+          Back to Timers
+        </button>
+      </div>
+      <div class="tempo-placeholder" data-wellness-sub="exercise" hidden>
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12 L6 12"/><path d="M18 12 L21 12"/>
+            <rect x="6" y="8" width="3" height="8" rx="1"/>
+            <rect x="15" y="8" width="3" height="8" rx="1"/>
+            <path d="M9 12 L15 12"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Exercise</div>
+        <div class="tempo-placeholder-body">
+          Workout timers, sets, rest intervals, and exercise history.
+        </div>
+        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:interval">
+          Use Interval mode
+        </button>
+      </div>
+      <div class="tempo-placeholder" data-wellness-sub="mindful" hidden>
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Mindfulness</div>
+        <div class="tempo-placeholder-body">
+          Guided breathing and meditation timers with gentle chimes.
+        </div>
+      </div>
+      <div class="tempo-placeholder" data-wellness-sub="cooking" hidden>
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 10 L19 10 L18 20 L6 20 Z"/>
+            <path d="M9 10 L9 6"/><path d="M12 10 L12 6"/><path d="M15 10 L15 6"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Cooking</div>
+        <div class="tempo-placeholder-body">
+          Dedicated cooking view with named prep and bake timers.
+        </div>
+        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:cook">
+          Open Cook in Timers
+        </button>
+      </div>
+      <div class="tempo-placeholder" data-wellness-sub="recovery" hidden>
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 21 C 4 15 4 9 8 6 C 10 4.5 12 5.5 12 7 C 12 5.5 14 4.5 16 6 C 20 9 20 15 12 21 Z"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Recovery</div>
+        <div class="tempo-placeholder-body">
+          Post-block cooldown timers, stretching prompts, and rest tracking.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Rhythm pillar ── Single placeholder surface, no sub-nav. -->
+    <section class="tempo-pillar" data-pillar-id="rhythm" data-active="false">
+      <div class="tempo-placeholder">
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 18 L4 10"/><path d="M9 18 L9 6"/>
+            <path d="M14 18 L14 13"/><path d="M19 18 L19 8"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Rhythm</div>
+        <div class="tempo-placeholder-body">
+          Your day at a glance — ultradian blocks, breaks, and energy zones.
+          This pillar ships in a later phase of the Tempo rebrand.
+        </div>
+        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:flow">
+          Start a Flow block
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Analytics pillar ── The existing Analytics slide-up panel is the
+         main surface. Selecting this pillar opens it; closing it returns
+         to the previous Timers mode. -->
+    <section class="tempo-pillar" data-pillar-id="analytics" data-active="false">
+      <div class="tempo-placeholder">
+        <div class="tempo-placeholder-mark">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 16 L9 10 L13 14 L20 6"/>
+            <path d="M20 11 L20 6 L15 6"/>
+          </svg>
+        </div>
+        <div class="tempo-placeholder-title">Analytics</div>
+        <div class="tempo-placeholder-body">
+          Session trends, daily totals, and streaks across every pillar.
+        </div>
+        <button class="tempo-placeholder-cta" type="button"
+                onclick="document.getElementById('analytics-toggle').click()">
+          Open dashboard
+        </button>
+      </div>
+    </section>
 
     <!-- Pomodoro stats panel (slide-up overlay) -->
     <div id="analytics-panel" class="analytics-panel hidden">
@@ -537,6 +724,46 @@
     </div>
   </div>
 
+  <!-- Bottom pillar tab bar. Sticky on mobile; becomes a left sidebar on
+       desktop (>= 768 px) via tempo-shell.css. Each tab has
+       data-pillar-target; tempo-nav.js sets aria-current + switches the
+       visible pillar. -->
+  <nav class="tempo-tabbar" aria-label="Primary">
+    <button class="tempo-tab" data-pillar-target="timers" aria-current="page" aria-label="Timers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="13" r="8"/>
+        <path d="M10 3 L14 3"/>
+        <path d="M12 3 L12 5"/>
+        <path d="M12 9 L12 13 L15.5 14.5"/>
+      </svg>
+      <span>Timers</span>
+    </button>
+    <button class="tempo-tab" data-pillar-target="wellness" aria-label="Wellness">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 13 L8 13 L10 9 L13 17 L15 13 L20.5 13"/>
+      </svg>
+      <span>Wellness</span>
+    </button>
+    <button class="tempo-tab" data-pillar-target="rhythm" aria-label="Rhythm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 18 L4 10"/><path d="M9 18 L9 6"/>
+        <path d="M14 18 L14 13"/><path d="M19 18 L19 8"/>
+      </svg>
+      <span>Rhythm</span>
+    </button>
+    <button class="tempo-tab" data-pillar-target="analytics" aria-label="Analytics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 16 L9 10 L13 14 L20 6"/>
+        <path d="M20 11 L20 6 L15 6"/>
+      </svg>
+      <span>Analytics</span>
+    </button>
+  </nav>
+
   <script src="js/utils.js"></script>
   <script src="js/dom-utils.js"></script>
   <script src="js/stopwatch.js"></script>
@@ -571,6 +798,7 @@
   <script src="js/analytics-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>
+  <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

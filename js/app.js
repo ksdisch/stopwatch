@@ -48,16 +48,15 @@ initAnalyticsPanel();
 initExportButton();
 document.getElementById('focus-toggle').addEventListener('click', () => FocusUI.enter());
 
-// ── PWA shortcut query param ──
-const urlParams = new URLSearchParams(window.location.search);
-const modeParam = urlParams.get('mode');
-if (modeParam && ['stopwatch', 'timer', 'pomodoro', 'flow', 'interval', 'cooking'].includes(modeParam) && modeParam !== appMode) {
-  appMode = modeParam;
-  localStorage.setItem('app_mode', modeParam);
-  applyAppMode();
-  // Clean up URL
-  window.history.replaceState({}, '', window.location.pathname);
-}
+// Tempo shell navigation (pillars + sub-nav + hash routing).
+// Must run AFTER initAppMode — the sub-nav buttons are the old .mode-tab
+// elements, already wired to switchAppMode, and TempoNav only decorates
+// them. PWA `?mode=X` shortcuts are remapped inside
+// TempoNav.migrateLegacyQuery, so the legacy handler that lived here has
+// moved out. switchAppMode is exposed on window so TempoNav can dispatch
+// mode changes when a hash route is applied.
+window.switchAppMode = switchAppMode;
+TempoNav.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {
@@ -78,7 +77,7 @@ function showInstallBanner() {
   banner.id = 'install-banner';
   banner.className = 'install-banner';
   banner.innerHTML = `
-    <span>Install Stopwatch for quick access</span>
+    <span>Install Tempo for quick access</span>
     <button id="install-btn" class="install-btn">Install</button>
     <button id="install-dismiss" class="install-dismiss">&times;</button>
   `;

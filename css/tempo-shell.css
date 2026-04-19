@@ -1,0 +1,450 @@
+/* ==========================================================================
+   Tempo Shell — navigation scaffold (top bar · sub-nav · pillar tab bar).
+   Loaded AFTER css/styles.css so pillar tokens and shell chrome override
+   the legacy Stopwatch-only top bar.
+
+   Design reference: docs/TEMPO-PLAN.md §10/§11 and the handoff bundle
+   at tempo/Tempo Shell.html (six shippable artboards).
+   ========================================================================== */
+
+/* ---------- Pillar tokens ------------------------------------------------- */
+:root {
+  --productivity-accent:      #007aff;
+  --productivity-accent-dim:  #0a2a5e;
+  --wellness-accent:          #30d158;
+  --wellness-accent-dim:      #0a3d1a;
+
+  /* Default active accent — overridden per pillar below */
+  --active-accent:      var(--productivity-accent);
+  --active-accent-dim:  var(--productivity-accent-dim);
+  --active-accent-tint: color-mix(in srgb, var(--active-accent) 12%, transparent);
+  --active-accent-glow: color-mix(in srgb, var(--active-accent) 22%, transparent);
+
+  --tempo-tabbar-h: 56px;
+  --tempo-topbar-h: 52px;
+  --tempo-subnav-h: 44px;
+}
+
+[data-pillar="productivity"] {
+  --active-accent:      var(--productivity-accent);
+  --active-accent-dim:  var(--productivity-accent-dim);
+  --active-accent-tint: color-mix(in srgb, var(--productivity-accent) 12%, transparent);
+  --active-accent-glow: color-mix(in srgb, var(--productivity-accent) 22%, transparent);
+}
+[data-pillar="wellness"] {
+  --active-accent:      var(--wellness-accent);
+  --active-accent-dim:  var(--wellness-accent-dim);
+  --active-accent-tint: color-mix(in srgb, var(--wellness-accent) 12%, transparent);
+  --active-accent-glow: color-mix(in srgb, var(--wellness-accent) 22%, transparent);
+}
+
+/* ---------- Hide the legacy Stopwatch top bar ---------------------------- */
+/* The shell markup in index.html still carries the old .top-bar for git
+   diff readability. We neutralize it here rather than delete, so the
+   rebrand can be reverted by removing this one stylesheet. */
+#app > .top-bar { display: none; }
+
+/* ---------- App container tweaks ----------------------------------------- */
+/* Reserve space for the sticky bottom tab bar so the last element of the
+   content isn't eaten by it. env() + fallback covers Android and iOS Safari. */
+#app {
+  padding-bottom: calc(
+    var(--tempo-tabbar-h) + env(safe-area-inset-bottom, 16px) + 8px
+  );
+}
+
+/* ---------- Top bar ------------------------------------------------------ */
+.tempo-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px 6px;
+  min-height: var(--tempo-topbar-h);
+  /* Sit above the pillar content but below any overlays. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+}
+
+.tempo-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+.tempo-wordmark svg { color: var(--active-accent); }
+
+.tempo-topbar-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.tempo-iconbtn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-color, 150ms) ease,
+              background-color var(--dur-color, 150ms) ease;
+}
+.tempo-iconbtn:hover { color: var(--text); }
+.tempo-iconbtn:active { background: var(--btn-bg); }
+
+/* ---------- Sub-nav (horizontal scrollable segmented strip) -------------- */
+.tempo-subnav {
+  position: sticky;
+  top: var(--tempo-topbar-h);
+  z-index: 9;
+  background: var(--bg);
+  padding: 2px 0 8px;
+}
+.tempo-subnav-scroll {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x proximity;
+}
+.tempo-subnav-scroll::-webkit-scrollbar { display: none; }
+
+/* The sub-nav button also carries .mode-tab so existing JS in app.js
+   (`document.querySelectorAll('.mode-tab')`) still wires up correctly,
+   but the visual comes from here — NOT from the legacy .mode-tab rule. */
+.tempo-subnav-scroll .mode-tab,
+.tempo-subnav-scroll .tempo-subnav-btn {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: -0.1px;
+  scroll-snap-align: start;
+  transition: background-color var(--dur-color, 150ms) ease,
+              color var(--dur-color, 150ms) ease,
+              border-color var(--dur-color, 150ms) ease;
+}
+.tempo-subnav-scroll .mode-tab.mode-tab-active,
+.tempo-subnav-scroll .tempo-subnav-btn.is-active {
+  background: var(--btn-bg);
+  color: var(--text);
+  border-color: var(--btn-border);
+  /* Kill the legacy filled-pill look from styles.css so Tempo's outlined
+     chip wins inside the sub-nav. Same selector specificity as the
+     legacy rule; order of stylesheets makes this rule last-wins. */
+  font-weight: 500;
+}
+
+/* Pillar-specific sub-nav visibility: only the active pillar's buttons
+   render. Set via data-pillar on .tempo-subnav. */
+.tempo-subnav [data-subnav-for] { display: none; }
+.tempo-subnav[data-pillar="timers"]    [data-subnav-for="timers"]    { display: contents; }
+.tempo-subnav[data-pillar="wellness"]  [data-subnav-for="wellness"]  { display: contents; }
+.tempo-subnav[data-pillar="rhythm"]    [data-subnav-for="rhythm"]    { display: contents; }
+.tempo-subnav[data-pillar="analytics"] [data-subnav-for="analytics"] { display: contents; }
+
+/* Hide whole sub-nav when the active pillar has no sub-items. */
+.tempo-subnav[data-empty="true"] { display: none; }
+
+/* ---------- Pillar content switching ------------------------------------- */
+/* The Timers pillar wraps the existing Stopwatch/Timer/etc UI; the other
+   pillars show placeholder surfaces. Switching happens by toggling
+   [data-active] on each pillar region. */
+.tempo-pillar { display: none; }
+.tempo-pillar[data-active="true"] { display: contents; }
+
+.tempo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 48px 16px 32px;
+  text-align: center;
+  color: var(--text-secondary);
+  min-height: 360px;
+}
+/* The class rule above out-specifies the UA default for [hidden] —
+   restore the hide behaviour so non-active Wellness sub placeholders
+   stay collapsed. */
+.tempo-placeholder[hidden] { display: none; }
+.tempo-placeholder-mark {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--separator);
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+}
+.tempo-placeholder-title {
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.tempo-placeholder-body {
+  max-width: 320px;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+.tempo-placeholder-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+  border: 1px solid var(--active-accent-dim);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tempo-placeholder-cta:hover { filter: brightness(1.15); }
+
+/* ---------- Settings drawer (consolidates sound/theme/presets/log/focus) */
+.tempo-settings-drawer {
+  position: absolute;
+  top: calc(var(--tempo-topbar-h) - 2px);
+  right: 4px;
+  z-index: 20;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  padding: 6px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tempo-settings-drawer.hidden { display: none; }
+.tempo-settings-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tempo-settings-item:hover { background: rgba(255, 255, 255, 0.05); }
+.tempo-settings-item-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tempo-settings-item-label { flex: 1; }
+.tempo-settings-item-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ---------- Bottom tab bar (sticky pillar nav) --------------------------- */
+.tempo-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tempo-tabbar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--separator);
+  display: flex;
+  align-items: stretch;
+  z-index: 100;
+}
+.tempo-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  padding: 6px 2px 8px;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--dur-color, 150ms) ease;
+}
+.tempo-tab:hover { color: var(--text); }
+.tempo-tab[aria-current="page"] { color: var(--active-accent); }
+
+/* Active tab indicator — 2px underline (NEVER a filled pill). */
+.tempo-tab[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--active-accent);
+}
+
+/* Tab icon intrinsic sizing */
+.tempo-tab svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+/* ---------- Desktop sidebar (>= 768 px) ---------------------------------- */
+/* Per the design spec: on desktop the bottom tab bar moves to a left
+   sidebar; the 2-px pillar indicator rotates to a vertical line on the
+   row's left edge. Container grows 420 → 720. Secondary actions
+   (History, Settings) sit at the sidebar footer. */
+@media (min-width: 768px) {
+  #app {
+    padding-left: 240px;
+    padding-bottom: 32px;
+    max-width: none;
+  }
+
+  .tempo-topbar,
+  .tempo-subnav {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  /* Wrap the content column. #app already has max-width 720 at this bp. */
+  .tempo-topbar,
+  .tempo-subnav,
+  #timer-display,
+  #offset-area,
+  #vibrate-area,
+  #alert-area,
+  #controls,
+  #pomodoro-area,
+  #pomodoro-lists,
+  #flow-area,
+  #interval-area,
+  #cooking-area,
+  #seq-mode-area,
+  #sequence-area,
+  #timer-set-area,
+  #instance-cards,
+  #lap-stats,
+  #lap-chart,
+  #lap-section,
+  #export-area,
+  .tempo-pillar-placeholder {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Show sidebar, hide bottom tabbar */
+  .tempo-tabbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: 220px;
+    height: 100vh;
+    padding: 16px 12px 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    border-top: none;
+    border-right: 0.5px solid var(--separator);
+    background: color-mix(in srgb, var(--bg) 98%, transparent);
+  }
+
+  /* Desktop brand at the top of the sidebar */
+  .tempo-tabbar::before {
+    content: "Tempo";
+    display: flex;
+    align-items: center;
+    padding: 4px 10px 16px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .tempo-tab {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .tempo-tab[aria-current="page"] {
+    background: var(--active-accent-tint);
+  }
+  .tempo-tab[aria-current="page"]::after {
+    left: 0;
+    bottom: 10px;
+    top: 10px;
+    width: 2px;
+    height: auto;
+    transform: none;
+  }
+  .tempo-tab svg { width: 18px; height: 18px; }
+}
+
+/* ---------- Accessibility + reduced motion ------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .tempo-tabbar,
+  .tempo-iconbtn,
+  .tempo-subnav-scroll .mode-tab,
+  .tempo-tab {
+    transition: none;
+  }
+}
+
+/* ---------- Light theme tweaks ------------------------------------------- */
+/* The existing @media (prefers-color-scheme: light) in styles.css already
+   swaps the base palette. Tempo tabs inherit via --active-accent so they
+   behave correctly; we only need to soften the sub-nav background. */
+@media (prefers-color-scheme: light) {
+  .tempo-tabbar {
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+  }
+}

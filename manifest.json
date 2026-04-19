@@ -1,8 +1,8 @@
 {
-  "name": "Stopwatch",
-  "short_name": "Stopwatch",
-  "description": "A stopwatch that can start with time already elapsed",
-  "start_url": "./index.html",
+  "name": "Tempo",
+  "short_name": "Tempo",
+  "description": "Productivity and wellness timers — Tempo shell rebrand (feature branch)",
+  "start_url": "./index.html#/timers",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
@@ -22,31 +22,37 @@
     {
       "name": "Stopwatch",
       "short_name": "Stopwatch",
-      "url": "./?mode=stopwatch",
+      "url": "./index.html#/timers",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Timer",
       "short_name": "Timer",
-      "url": "./?mode=timer",
+      "url": "./index.html#/timers/countdown",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Pomodoro",
       "short_name": "Pomodoro",
-      "url": "./?mode=pomodoro",
+      "url": "./index.html#/timers/pomodoro",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Flow",
+      "short_name": "Flow",
+      "url": "./index.html#/timers/flow",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Interval",
       "short_name": "Interval",
-      "url": "./?mode=interval",
+      "url": "./index.html#/timers/interval",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Cooking",
       "short_name": "Cook",
-      "url": "./?mode=cooking",
+      "url": "./index.html#/timers/cook",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
