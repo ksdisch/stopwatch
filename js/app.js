@@ -46,6 +46,7 @@ initSequenceUI();
 initHistoryPanel();
 initAnalyticsPanel();
 initExportButton();
+Voice.init();
 document.getElementById('focus-toggle').addEventListener('click', () => FocusUI.enter());
 
 // ── PWA shortcut query param ──

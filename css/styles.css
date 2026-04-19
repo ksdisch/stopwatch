@@ -139,6 +139,16 @@ input:focus:not(:focus-visible) {
   opacity: 0.6;
 }
 
+.icon-btn.voice-active {
+  color: var(--red);
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* Theme Picker */
 .theme-picker {
   display: flex;
