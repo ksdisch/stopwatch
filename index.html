@@ -499,22 +499,63 @@
          surface is hidden by default; tempo-nav.js toggles `hidden` on
          the one matching data-wellness-sub. -->
     <section class="tempo-pillar" data-pillar-id="wellness" data-active="false">
-      <div class="tempo-placeholder" data-wellness-sub="meds">
-        <div class="tempo-placeholder-mark">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="6" y="3" width="12" height="18" rx="3"/>
-            <path d="M12 7 L12 17"/><path d="M8 12 L16 12"/>
-          </svg>
+      <div class="meds-surface" data-wellness-sub="meds">
+        <header class="meds-surface-header">
+          <div class="meds-surface-heading">
+            <svg class="meds-surface-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="6" y="3" width="12" height="18" rx="3"/>
+              <path d="M12 7 L12 17"/><path d="M8 12 L16 12"/>
+            </svg>
+            <h2 class="meds-surface-title">Medications</h2>
+          </div>
+          <button id="meds-add-btn" class="meds-add-btn" type="button">+ Add</button>
+        </header>
+
+        <div id="meds-add-form" class="meds-form" hidden>
+          <h3 class="meds-form-title" data-form-title>Add medication</h3>
+          <div class="meds-form-row">
+            <label class="meds-form-label">
+              <span>Name</span>
+              <input type="text" data-field-name maxlength="60" placeholder="e.g. Ibuprofen">
+            </label>
+          </div>
+          <div class="meds-form-row">
+            <label class="meds-form-label">
+              <span>Schedule</span>
+              <select data-field-schedule-type>
+                <option value="interval">Every N hours</option>
+                <option value="times">At specific times of day</option>
+              </select>
+            </label>
+          </div>
+          <div class="meds-form-row" data-field-interval-row>
+            <label class="meds-form-label">
+              <span>Interval (hours)</span>
+              <input type="number" data-field-interval min="0.25" step="0.25" value="6">
+            </label>
+          </div>
+          <div class="meds-form-row" data-field-times-row hidden>
+            <label class="meds-form-label">
+              <span>Times (HH:MM, comma-separated)</span>
+              <input type="text" data-field-times placeholder="08:00, 20:00">
+            </label>
+          </div>
+          <div class="meds-form-actions">
+            <button type="button" class="meds-btn meds-btn-primary" data-form-save>Save</button>
+            <button type="button" class="meds-btn meds-btn-ghost" data-form-cancel>Cancel</button>
+          </div>
         </div>
-        <div class="tempo-placeholder-title">Medications</div>
-        <div class="tempo-placeholder-body">
-          Track doses with countdown timers tied to your meds schedule.
-          This pillar ships in a later phase of the Tempo rebrand.
+
+        <div id="meds-empty" class="meds-empty">
+          <div class="meds-empty-mark" aria-hidden="true">💊</div>
+          <p class="meds-empty-title">No medications yet</p>
+          <p class="meds-empty-body">
+            Add one to track doses with live countdowns and due-time reminders.
+          </p>
         </div>
-        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:">
-          Back to Timers
-        </button>
+
+        <div id="meds-list" class="meds-list"></div>
       </div>
       <div class="tempo-placeholder" data-wellness-sub="exercise" hidden>
         <div class="tempo-placeholder-mark">
@@ -798,6 +839,8 @@
   <script src="js/analytics-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>
+  <script src="js/meds.js"></script>
+  <script src="js/meds-ui.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>

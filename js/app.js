@@ -57,6 +57,7 @@ document.getElementById('focus-toggle').addEventListener('click', () => FocusUI.
 // mode changes when a hash route is applied.
 window.switchAppMode = switchAppMode;
 TempoNav.init();
+MedsUI.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {
