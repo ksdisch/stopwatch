@@ -582,18 +582,43 @@
           <div id="exercise-recent" class="exercise-recent"></div>
         </section>
       </div>
-      <div class="tempo-placeholder" data-wellness-sub="mindful" hidden>
-        <div class="tempo-placeholder-mark">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-        </div>
-        <div class="tempo-placeholder-title">Mindfulness</div>
-        <div class="tempo-placeholder-body">
-          Guided breathing and meditation timers with gentle chimes.
-        </div>
+      <div class="mindful-surface" data-wellness-sub="mindful" hidden>
+        <header class="mindful-surface-header">
+          <div class="mindful-surface-heading">
+            <svg class="mindful-surface-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <h2 class="mindful-surface-title">Mindful</h2>
+          </div>
+        </header>
+
+        <section class="mindful-section">
+          <h3 class="mindful-section-title">Breathing</h3>
+
+          <div id="mindful-patterns" class="mindful-patterns"></div>
+
+          <div id="mindful-runner" class="mindful-runner" hidden>
+            <div class="mindful-runner-header">
+              <span id="mindful-pattern-name" class="mindful-runner-name"></span>
+              <span id="mindful-cycle-count" class="mindful-runner-cycles">0 cycles</span>
+            </div>
+            <div class="mindful-circle-wrap">
+              <div id="mindful-circle" class="mindful-circle" aria-hidden="true"></div>
+              <div class="mindful-circle-text">
+                <div id="mindful-phase-label" class="mindful-phase-label">—</div>
+                <div id="mindful-phase-count" class="mindful-phase-count">—</div>
+              </div>
+            </div>
+            <button id="mindful-stop-btn" class="mindful-btn mindful-btn-ghost" type="button">Stop</button>
+          </div>
+        </section>
+
+        <section class="mindful-section">
+          <h3 class="mindful-section-title">Meditation</h3>
+          <div id="mindful-med-presets" class="mindful-med-grid"></div>
+        </section>
       </div>
       <div class="tempo-placeholder" data-wellness-sub="cooking" hidden>
         <div class="tempo-placeholder-mark">
@@ -849,6 +874,7 @@
   <script src="js/meds.js"></script>
   <script src="js/meds-ui.js"></script>
   <script src="js/exercise-ui.js"></script>
+  <script src="js/mindful-ui.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>

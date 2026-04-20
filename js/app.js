@@ -59,6 +59,7 @@ window.switchAppMode = switchAppMode;
 TempoNav.init();
 MedsUI.init();
 ExerciseUI.init();
+MindfulUI.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {
