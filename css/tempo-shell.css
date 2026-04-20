@@ -448,3 +448,348 @@
     background: color-mix(in srgb, var(--bg) 92%, transparent);
   }
 }
+
+/* ---------- Wellness › Meds surface -------------------------------------- */
+/* Reuses --active-accent tokens so it picks up the wellness-green palette
+   automatically when data-pillar="wellness" is active on the app root. */
+
+.meds-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 16px 96px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+.meds-surface[hidden] { display: none; }
+
+.meds-surface-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.meds-surface-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+.meds-surface-icon {
+  color: var(--active-accent);
+}
+.meds-surface-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.meds-add-btn {
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+  border: 1px solid var(--active-accent-dim);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.meds-add-btn:hover { filter: brightness(1.15); }
+.meds-add-btn[hidden] { display: none; }
+
+/* Empty state */
+.meds-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--separator);
+  border-radius: 14px;
+}
+.meds-empty[hidden] { display: none; }
+.meds-empty-mark { font-size: 2rem; }
+.meds-empty-title {
+  color: var(--text);
+  font-weight: 600;
+  margin: 4px 0 0;
+}
+.meds-empty-body {
+  max-width: 320px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Add/Edit form */
+.meds-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+}
+.meds-form[hidden] { display: none; }
+.meds-form-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.meds-form-row { display: flex; flex-direction: column; gap: 6px; }
+.meds-form-row[hidden] { display: none; }
+.meds-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.meds-form-label > span { padding-left: 2px; }
+.meds-form-label input,
+.meds-form-label select {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  outline: none;
+}
+.meds-form-label input:focus,
+.meds-form-label select:focus {
+  border-color: var(--active-accent);
+  box-shadow: 0 0 0 3px var(--active-accent-glow);
+}
+.med-input-invalid {
+  border-color: var(--red, #ff453a) !important;
+  animation: medShake 0.25s ease-in-out;
+}
+@keyframes medShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.meds-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.meds-btn {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid transparent;
+}
+.meds-btn-primary {
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+  border-color: var(--active-accent-dim);
+}
+.meds-btn-primary:hover { filter: brightness(1.15); }
+.meds-btn-ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  border-color: var(--separator);
+}
+.meds-btn-ghost:hover { color: var(--text); }
+
+/* List / cards */
+.meds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.med-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.med-card-is-due {
+  border-color: var(--active-accent);
+  box-shadow: 0 0 0 3px var(--active-accent-glow);
+}
+.med-card-flash {
+  animation: medCardFlash 0.6s ease-out;
+}
+@keyframes medCardFlash {
+  0%   { background: var(--active-accent-tint); }
+  100% { background: var(--btn-bg); }
+}
+
+.med-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.med-card-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.med-card-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.med-card-schedule {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.med-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.med-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.med-icon-btn:hover {
+  color: var(--text);
+  background: var(--separator);
+}
+
+.med-card-countdown {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.med-card-countdown-due {
+  color: var(--active-accent);
+}
+.med-card-countdown-overdue {
+  color: var(--red, #ff453a);
+}
+.med-card-countdown-empty {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+.med-card-since {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.med-card-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.med-btn {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid transparent;
+}
+.med-btn-primary {
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+  border-color: var(--active-accent-dim);
+}
+.med-btn-primary:hover { filter: brightness(1.15); }
+.med-btn-secondary {
+  color: var(--text);
+  background: var(--btn-bg);
+  border-color: var(--btn-border);
+}
+.med-btn-secondary:hover { border-color: var(--active-accent); }
+.med-btn-ghost {
+  color: var(--text-secondary);
+  background: transparent;
+  border-color: var(--separator);
+}
+.med-btn-ghost:hover { color: var(--text); }
+
+/* Offset input (reveals below the card buttons) */
+.med-offset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+}
+.med-offset[hidden] { display: none; }
+.med-offset-row {
+  display: flex;
+  gap: 8px;
+}
+.med-offset-row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.med-offset-row input {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 8px 10px;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  outline: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  box-sizing: border-box;
+}
+.med-offset-row input:focus {
+  border-color: var(--active-accent);
+  box-shadow: 0 0 0 3px var(--active-accent-glow);
+}
+.med-offset-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Wellness pillar uses its own accent for the whole meds surface via the
+   token system. No explicit [data-pillar="wellness"] rules needed here —
+   tempo-nav sets data-pillar on body/app and the tokens at top of this
+   file remap --active-accent. */
