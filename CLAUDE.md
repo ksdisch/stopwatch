@@ -50,6 +50,9 @@ js/focus-ui.js                  — Focus / ambient display mode (distraction-fr
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
+js/meds.js                      — Medications engine. createMed(id) factory + MedsManager singleton. Interval or time-of-day schedules. Dose logging with optional offset ("took it ~30 min ago").
+js/meds-ui.js                   — Wellness › Meds UI: med cards with live countdown + "since last dose", add/edit form, dose logging, due-time notifications.
+js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards (Tabata, HIIT 30/30, HIIT 40/20, EMOM 12, AMRAP 15, Steady 20). Tap applies to the Interval engine and routes to Timers › Interval. Recent Activity reads from History filtered by type='interval'.
 js/mindful-ui.js                — Wellness › Mindful UI. Breathing exercises (Box / 4-7-8 / Coherence 5-5 / Calm 6-2-6) with an inline animated circle (per-step CSS transition). Meditation duration presets (3/5/10/15/20 min) that apply to the Timer engine and auto-start on Timers › Timer.
 js/tempo-nav.js                 — Tempo shell: pillar tabs, sub-nav, hash routing, settings drawer.
 js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
@@ -60,7 +63,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → mindful-ui → tempo-nav → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -80,6 +83,7 @@ utils → dom-utils → stopwatch → timer → instance-manager → pomodoro �
 **Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
 **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs }`
 **Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
+**Medication:** `{ id, name, scheduleType: 'interval'|'times', intervalMs, times[] (HH:MM local strings), lastTakenAt, doseLog[], notificationsEnabled, dueNotified }`. Managed by `MedsManager` singleton; all meds persist to localStorage under `wellness_meds`.
 
 All stopwatch/timer instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` / `pomodoro_config`. Flow Block persists under `flow_state` / `flow_config`. Interval persists under `interval_state`. Sequence persists under `sequence_state` / `sequence_templates`. Cooking timers under `cooking_timers`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
 
@@ -146,8 +150,11 @@ Additional localStorage keys used for UI/config preferences:
 ### Phase 7: Flow Block Mode
 - **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). End-of-block summary card shows duration, goal, and distraction breakdown. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
 
-### Phase 8: Wellness › Mindful
-- **Mindful pillar:** Two sections. **Breathing** — four patterns (Box 4-4-4-4, 4-7-8, Coherence 5-5, Calm 6-2-6) with an inline animated circle. Tapping a pattern shows a runner: the circle scales via CSS `transform: scale()` with `transition-duration` set per step, so inhale/hold/exhale drive a smooth tween; a live countdown number and phase label track inside the circle, and a cycle counter increments each full loop. Auto-stops when the user leaves the surface (hashchange or `visibilitychange`). Honors `prefers-reduced-motion` by freezing the circle. **Meditation** — five duration presets (3/5/10/15/20 min). Tap → `Timer.setDuration(...)` + route to Timers › Timer, auto-started. No new engine — breathing is pure DOM animation + setTimeout, meditation reuses the Timer engine.
+### Phase 8: Tempo Rebrand + Wellness Suite (Meds, Exercise, Mindful)
+- **Tempo navigation shell** (`js/tempo-nav.js` + `css/tempo-shell.css`): Four-pillar architecture — Timers / Wellness / Rhythm / Analytics. Hash-based routing (`#/timers/pomodoro`, `#/wellness/meds`, etc.) with legacy `?mode=X` migration. Wellness sub-nav has 5 tabs (Meds, Exercise, Mindful, Cooking, Recovery). Pillar accent tokens: productivity blue (`#007aff`), wellness green (`#30d158`) — auto-applied via `data-pillar` attribute on body/app.
+- **Meds module (Wellness › Meds):** Multi-medication tracking (up to 10). Each med has name + schedule (every N hours, or specific HH:MM times of day). Per-med card shows live-updating "Next dose in 4h 12m" countdown, "2h 15m since last dose" secondary line, and two log actions: **Log dose now** (immediate) or **Took it ~** (offset input — hours/minutes ago, reuses the app's core USP). Edit/delete per med. Browser notifications + vibration + SFX.playAlarm fire once when a dose becomes due (gated by `dueNotified` latch, resets on next logDose). Persists to `wellness_meds` localStorage key. Clock-skew guard on loadState drops far-future `lastTakenAt`. **38 engine tests** (tests/meds.test.js).
+- **Exercise pillar (Wellness › Exercise):** Workout launcher. Six built-in presets: Tabata, HIIT 30/30, HIIT 40/20, EMOM 12, AMRAP 15, Steady 20. Tapping a preset applies its program to the existing `Interval` engine (`Interval.setProgram(...)`) and routes to `#/timers/interval` so the existing Interval UI runs the workout. A `+ Custom` button routes to the same Interval screen with a blank program for user customization. Below the grid, **Recent Activity** reads `History.getSessions()`, filters by `type === 'interval'`, and shows the 5 most recent sessions (name, "Today / Yesterday / date", duration). Interval sessions now include `programName` in the history record so the log shows the actual workout name. No new engine — Exercise is a launcher + log that delegates timing to `js/interval.js`.
+- **Mindful pillar (Wellness › Mindful):** Two sections. **Breathing** — four patterns (Box 4-4-4-4, 4-7-8, Coherence 5-5, Calm 6-2-6) with an inline animated circle. Tapping a pattern shows a runner: the circle scales via CSS `transform: scale()` with `transition-duration` set per step, so inhale/hold/exhale drive a smooth tween; a live countdown number and phase label track inside the circle, and a cycle counter increments each full loop. Auto-stops when the user leaves the surface (hashchange or `visibilitychange`). Honors `prefers-reduced-motion` by freezing the circle. **Meditation** — five duration presets (3/5/10/15/20 min). Tap → `Timer.setDuration(...)` + route to Timers › Timer, auto-started. No new engine — breathing is pure DOM animation + setTimeout, meditation reuses the Timer engine.
 
 ## What's Next — Planned Improvements
 
@@ -165,7 +172,7 @@ Additional localStorage keys used for UI/config preferences:
 ### Remaining Tech Debt
 
 - **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in timer-ui.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
-- **Engine tests only:** 138 tests cover stopwatch (29), timer (21), pomodoro (27), and interval (61) engines. No UI/integration tests yet.
+- **Engine tests only:** 114 tests cover stopwatch (30), timer (21), pomodoro (25), and meds (38) engines — run via `tests/index.html` in a browser. No UI/integration tests yet. Flow and Interval engine tests live on feature branches but haven't been merged to main.
 - **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Low impact for typical lap counts.
 
 ### If Migrating to ES Modules
