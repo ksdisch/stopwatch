@@ -517,28 +517,23 @@
           <div class="meds-form-row">
             <label class="meds-form-label">
               <span>Name</span>
-              <input type="text" data-field-name maxlength="60" placeholder="e.g. Ibuprofen">
+              <input type="text" data-field-name maxlength="60" placeholder="e.g. Vyvanse">
             </label>
           </div>
           <div class="meds-form-row">
             <label class="meds-form-label">
-              <span>Schedule</span>
-              <select data-field-schedule-type>
-                <option value="interval">Every N hours</option>
-                <option value="times">At specific times of day</option>
+              <span>Dose (optional)</span>
+              <input type="text" data-field-dose maxlength="40" placeholder="e.g. 60 mg">
+            </label>
+          </div>
+          <div class="meds-form-row">
+            <label class="meds-form-label">
+              <span>Frequency</span>
+              <select data-field-frequency>
+                <option value="once-daily">Once daily</option>
+                <option value="twice-daily">Twice daily</option>
+                <option value="as-needed">As-needed</option>
               </select>
-            </label>
-          </div>
-          <div class="meds-form-row" data-field-interval-row>
-            <label class="meds-form-label">
-              <span>Interval (hours)</span>
-              <input type="number" data-field-interval min="0.25" step="0.25" value="6">
-            </label>
-          </div>
-          <div class="meds-form-row" data-field-times-row hidden>
-            <label class="meds-form-label">
-              <span>Times (HH:MM, comma-separated)</span>
-              <input type="text" data-field-times placeholder="08:00, 20:00">
             </label>
           </div>
           <div class="meds-form-actions">
@@ -551,7 +546,7 @@
           <div class="meds-empty-mark" aria-hidden="true">💊</div>
           <p class="meds-empty-title">No medications yet</p>
           <p class="meds-empty-body">
-            Add one to track doses with live countdowns and due-time reminders.
+            Add one to log doses as you take them.
           </p>
         </div>
 

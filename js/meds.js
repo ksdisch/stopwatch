@@ -1,170 +1,162 @@
-// Medications engine — dose tracking with two schedule types:
-//   - interval: every N hours after the last dose
-//   - times:    fixed local-time slots (e.g. 08:00, 20:00)
+// Medications engine — prescription-focused dose log.
 //
-// Each medication is a factory-created object. MedsManager is the
-// singleton that holds them, handles add/remove/persist, and is the API
-// surface used by meds-ui.js and app.js.
+// Each medication has a name, an optional dose string (e.g. "60 mg"), and
+// a frequency bucket: 'once-daily' | 'twice-daily' | 'as-needed'. The
+// engine tracks exactly *when* each dose was taken and derives "taken
+// today" status from the doseLog. No schedules, no countdowns — logging
+// is always the user's explicit action (Took it now / Took it ~X ago).
 //
-// Storage key: wellness_meds (single JSON blob, same pattern as
-// multi_state used by InstanceManager).
+// Factory + manager pattern mirrors stopwatch/timer. Storage key stays
+// 'wellness_meds' and migrates legacy V1 records (schedule-based) into
+// V2 by defaulting frequency='as-needed' and dropping schedule fields.
+
+const MED_FREQUENCIES = ['once-daily', 'twice-daily', 'as-needed'];
 
 function createMed(id) {
   let name = 'Medication';
-  let scheduleType = 'interval';                 // 'interval' | 'times'
-  let intervalMs = 6 * 60 * 60 * 1000;           // default every 6h
-  let times = [];                                 // HH:MM local strings
-  let lastTakenAt = null;                         // ms timestamp or null
-  let doseLog = [];                               // [{ takenAt }]
-  let notificationsEnabled = true;
-  let dueNotified = false;                        // reset on each logDose
+  let dose = '';
+  let frequency = 'once-daily';
+  let lastTakenAt = null;          // ms timestamp, convenience mirror of doseLog tail
+  let doseLog = [];                 // [{ takenAt: ms }], append-only, sorted ascending
 
-  function getId()    { return id; }
-  function getName()  { return name; }
-  function setName(n) { name = (n || 'Medication').toString().slice(0, 60); }
+  // ── Accessors ───────────────────────────────────────────────────────
 
-  function getScheduleType() { return scheduleType; }
-  function getIntervalMs()   { return intervalMs; }
-  function getTimes()        { return times.slice(); }
-
-  function setIntervalSchedule(ms) {
-    scheduleType = 'interval';
-    intervalMs = Math.max(60000, Math.floor(ms) || 0);
-    dueNotified = false;
-  }
-
-  function setTimesSchedule(hhmmList) {
-    scheduleType = 'times';
-    times = (hhmmList || [])
-      .filter(s => typeof s === 'string' && /^\d{1,2}:\d{2}$/.test(s.trim()))
-      .map(s => {
-        const [h, m] = s.trim().split(':').map(n => parseInt(n, 10));
-        const hh = String(Math.max(0, Math.min(23, h))).padStart(2, '0');
-        const mm = String(Math.max(0, Math.min(59, m))).padStart(2, '0');
-        return `${hh}:${mm}`;
-      })
-      .sort();
-    dueNotified = false;
-  }
-
+  function getId()   { return id; }
+  function getName() { return name; }
+  function getDose() { return dose; }
+  function getFrequency() { return frequency; }
   function getLastTakenAt() { return lastTakenAt; }
-  function getDoseLog()     { return doseLog.slice(); }
+  function getDoseLog() { return doseLog.slice(); }
 
-  function getNotificationsEnabled()  { return notificationsEnabled; }
-  function setNotificationsEnabled(b) { notificationsEnabled = !!b; dueNotified = false; }
+  function setName(n) {
+    name = (n == null ? '' : String(n)).trim().slice(0, 60) || 'Medication';
+  }
+
+  function setDose(d) {
+    dose = (d == null ? '' : String(d)).trim().slice(0, 40);
+  }
+
+  function setFrequency(f) {
+    frequency = MED_FREQUENCIES.includes(f) ? f : 'once-daily';
+  }
+
+  // ── Dose logging ────────────────────────────────────────────────────
 
   function logDose(takenAt) {
-    const when = typeof takenAt === 'number' && !isNaN(takenAt)
+    const when = (typeof takenAt === 'number' && !isNaN(takenAt))
       ? takenAt
       : Date.now();
-    lastTakenAt = when;
     doseLog.push({ takenAt: when });
-    if (doseLog.length > 100) doseLog.splice(0, doseLog.length - 100);
-    dueNotified = false;
+    // Keep log sorted so getDosesToday() / getLastTakenAt() stay consistent
+    // even if the user logs an earlier dose via "Took it ~" after a newer one.
+    doseLog.sort((a, b) => a.takenAt - b.takenAt);
+    if (doseLog.length > 200) doseLog.splice(0, doseLog.length - 200);
+    lastTakenAt = doseLog[doseLog.length - 1].takenAt;
   }
 
   function undoLastDose() {
     if (doseLog.length === 0) return false;
     doseLog.pop();
     lastTakenAt = doseLog.length > 0 ? doseLog[doseLog.length - 1].takenAt : null;
-    dueNotified = false;
     return true;
   }
 
-  // ── Schedule math ───────────────────────────────────────────────────
-
-  function getNextDoseAt() {
-    if (scheduleType === 'interval') {
-      // No dose yet → due immediately so the user can log right away.
-      if (lastTakenAt === null) return Date.now();
-      return lastTakenAt + intervalMs;
-    }
-    // scheduleType === 'times'
-    if (times.length === 0) return null;
-    const ref = lastTakenAt !== null ? lastTakenAt : Date.now() - 1;
-    return getNextScheduledTimeAfter(ref);
-  }
-
-  function getNextScheduledTimeAfter(referenceMs) {
-    // Find the next HH:MM slot strictly after referenceMs, in local time.
-    // Walks today and tomorrow — if nothing matches, returns null (shouldn't
-    // happen because the list is sorted and tomorrow's first slot is always
-    // later than any reference).
-    const ref = new Date(referenceMs);
-    for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
-      for (const t of times) {
-        const [h, m] = t.split(':').map(Number);
-        const candidate = new Date(
-          ref.getFullYear(), ref.getMonth(), ref.getDate() + dayOffset,
-          h, m, 0, 0
-        );
-        if (candidate.getTime() > referenceMs) return candidate.getTime();
-      }
-    }
-    return null;
-  }
-
-  function getTimeUntilNextDoseMs() {
-    const next = getNextDoseAt();
-    if (next === null) return null;
-    return next - Date.now();
-  }
+  // ── Derived queries ─────────────────────────────────────────────────
 
   function getTimeSinceLastDoseMs() {
     if (lastTakenAt === null) return null;
     return Date.now() - lastTakenAt;
   }
 
-  function isDue() {
-    const untilNext = getTimeUntilNextDoseMs();
-    return untilNext !== null && untilNext <= 0;
+  function startOfToday() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
   }
 
-  function shouldFireDueNotification() {
-    return notificationsEnabled && !dueNotified && isDue();
+  function getDosesToday() {
+    const cutoff = startOfToday();
+    let count = 0;
+    for (let i = doseLog.length - 1; i >= 0; i--) {
+      if (doseLog[i].takenAt >= cutoff) count++;
+      else break; // log is sorted ascending; earlier entries are older
+    }
+    return count;
   }
 
-  function markDueNotified() { dueNotified = true; }
+  function getExpectedDosesToday() {
+    if (frequency === 'once-daily') return 1;
+    if (frequency === 'twice-daily') return 2;
+    return null;
+  }
+
+  function getStatusToday() {
+    const expected = getExpectedDosesToday();
+    const takenToday = getDosesToday();
+    if (expected === null) {
+      return { kind: 'na', takenToday, expected: null };
+    }
+    if (takenToday >= expected) return { kind: 'done',    takenToday, expected };
+    if (takenToday > 0)         return { kind: 'partial', takenToday, expected };
+    return                             { kind: 'none',    takenToday, expected };
+  }
 
   // ── Serialization ───────────────────────────────────────────────────
 
   function getState() {
     return {
-      id, name, scheduleType, intervalMs,
-      times: times.slice(),
+      id, name, dose, frequency,
       lastTakenAt,
       doseLog: doseLog.slice(),
-      notificationsEnabled, dueNotified,
     };
   }
 
   function loadState(state) {
-    if (!state) return;
-    name = typeof state.name === 'string' ? state.name : 'Medication';
-    scheduleType = state.scheduleType === 'times' ? 'times' : 'interval';
-    intervalMs = typeof state.intervalMs === 'number' && state.intervalMs > 0
-      ? state.intervalMs : (6 * 60 * 60 * 1000);
-    times = Array.isArray(state.times) ? state.times.slice() : [];
-    lastTakenAt = typeof state.lastTakenAt === 'number' ? state.lastTakenAt : null;
-    doseLog = Array.isArray(state.doseLog) ? state.doseLog.slice() : [];
-    notificationsEnabled = state.notificationsEnabled !== false;
-    dueNotified = !!state.dueNotified;
+    if (!state || typeof state !== 'object') return;
 
-    // Clock-skew guard: lastTakenAt in the far future makes no sense.
-    if (lastTakenAt !== null && lastTakenAt > Date.now() + 60000) {
+    name = typeof state.name === 'string' ? state.name : 'Medication';
+    dose = typeof state.dose === 'string' ? state.dose : '';
+
+    // V2 frequency. If missing, migrate from V1: legacy records had
+    // `scheduleType`/`intervalMs`/`times[]` but never `frequency`.
+    if (typeof state.frequency === 'string' && MED_FREQUENCIES.includes(state.frequency)) {
+      frequency = state.frequency;
+    } else {
+      // Safe default: as-needed. Doesn't manufacture a daily obligation
+      // for records the user never explicitly declared as daily.
+      frequency = 'as-needed';
+    }
+
+    lastTakenAt = typeof state.lastTakenAt === 'number' ? state.lastTakenAt : null;
+    doseLog = Array.isArray(state.doseLog)
+      ? state.doseLog
+          .filter(e => e && typeof e.takenAt === 'number')
+          .map(e => ({ takenAt: e.takenAt }))
+          .sort((a, b) => a.takenAt - b.takenAt)
+      : [];
+
+    // Reconcile lastTakenAt with the log (the log is the source of truth).
+    if (doseLog.length > 0) {
+      lastTakenAt = doseLog[doseLog.length - 1].takenAt;
+    } else {
       lastTakenAt = null;
+    }
+
+    // Clock-skew guard: if the freshest dose is far in the future (>1 min),
+    // drop future entries. Preserves old data without misrepresenting "today".
+    const now = Date.now();
+    if (lastTakenAt !== null && lastTakenAt > now + 60000) {
+      doseLog = doseLog.filter(e => e.takenAt <= now + 60000);
+      lastTakenAt = doseLog.length > 0 ? doseLog[doseLog.length - 1].takenAt : null;
     }
   }
 
   return {
-    getId, getName, setName,
-    getScheduleType, getIntervalMs, getTimes,
-    setIntervalSchedule, setTimesSchedule,
+    getId, getName, getDose, getFrequency,
+    setName, setDose, setFrequency,
     getLastTakenAt, getDoseLog,
-    getNotificationsEnabled, setNotificationsEnabled,
     logDose, undoLastDose,
-    getNextDoseAt, getTimeUntilNextDoseMs, getTimeSinceLastDoseMs,
-    isDue, shouldFireDueNotification, markDueNotified,
+    getTimeSinceLastDoseMs,
+    getDosesToday, getExpectedDosesToday, getStatusToday,
     getState, loadState,
   };
 }
@@ -176,11 +168,11 @@ const MedsManager = (() => {
   const MAX_MEDS = 10;
   let meds = [];
 
-  function all()     { return meds.slice(); }
-  function get(id)   { return meds.find(m => m.getId() === id) || null; }
-  function count()   { return meds.length; }
-  function canAdd()  { return meds.length < MAX_MEDS; }
-  function clear()   { meds = []; }
+  function all()    { return meds.slice(); }
+  function get(id)  { return meds.find(m => m.getId() === id) || null; }
+  function count()  { return meds.length; }
+  function canAdd() { return meds.length < MAX_MEDS; }
+  function clear()  { meds = []; }
 
   function add(config) {
     if (!canAdd()) return null;
@@ -188,12 +180,8 @@ const MedsManager = (() => {
     const m = createMed(id);
     if (config) {
       if (config.name) m.setName(config.name);
-      if (config.scheduleType === 'times' && Array.isArray(config.times)) {
-        m.setTimesSchedule(config.times);
-      } else if (typeof config.intervalMs === 'number') {
-        m.setIntervalSchedule(config.intervalMs);
-      }
-      if (config.notificationsEnabled === false) m.setNotificationsEnabled(false);
+      if (config.dose !== undefined) m.setDose(config.dose);
+      if (config.frequency) m.setFrequency(config.frequency);
     }
     meds.push(m);
     return m;
