@@ -50,6 +50,8 @@ js/focus-ui.js                  — Focus / ambient display mode (distraction-fr
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
+js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards (Tabata, HIIT 30/30, HIIT 40/20, EMOM 12, AMRAP 15, Steady 20). Tap applies to the Interval engine and routes to Timers › Interval. Recent Activity reads from History filtered by type='interval'.
+js/tempo-nav.js                 — Tempo shell: pillar tabs, sub-nav, hash routing, settings drawer.
 js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
 sw.js                           — Service worker, cache-first, version-bumped on deploys.
 manifest.json                   — PWA manifest, standalone display, shortcuts.
@@ -58,7 +60,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → exercise-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -143,6 +145,9 @@ Additional localStorage keys used for UI/config preferences:
 
 ### Phase 7: Flow Block Mode
 - **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). End-of-block summary card shows duration, goal, and distraction breakdown. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
+
+### Phase 8: Wellness › Exercise
+- **Exercise pillar:** Replaces the Wellness › Exercise placeholder with a workout launcher. Six built-in presets: Tabata, HIIT 30/30, HIIT 40/20, EMOM 12, AMRAP 15, Steady 20. Tapping a preset applies its program to the existing `Interval` engine (`Interval.setProgram(...)`) and routes to `#/timers/interval` so the existing Interval UI runs the workout. A `+ Custom` button routes to the same Interval screen with a blank program for user customization. Below the grid, **Recent Activity** reads `History.getSessions()`, filters by `type === 'interval'`, and shows the 5 most recent sessions (name, "Today / Yesterday / date", duration). Interval sessions now include `programName` in the history record so the log shows the actual workout name. No new engine — Exercise is a launcher + log that delegates timing to `js/interval.js`.
 
 ## What's Next — Planned Improvements
 

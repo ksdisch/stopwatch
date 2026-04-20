@@ -516,23 +516,30 @@
           Back to Timers
         </button>
       </div>
-      <div class="tempo-placeholder" data-wellness-sub="exercise" hidden>
-        <div class="tempo-placeholder-mark">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 12 L6 12"/><path d="M18 12 L21 12"/>
-            <rect x="6" y="8" width="3" height="8" rx="1"/>
-            <rect x="15" y="8" width="3" height="8" rx="1"/>
-            <path d="M9 12 L15 12"/>
-          </svg>
-        </div>
-        <div class="tempo-placeholder-title">Exercise</div>
-        <div class="tempo-placeholder-body">
-          Workout timers, sets, rest intervals, and exercise history.
-        </div>
-        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:interval">
-          Use Interval mode
-        </button>
+      <div class="exercise-surface" data-wellness-sub="exercise" hidden>
+        <header class="exercise-surface-header">
+          <div class="exercise-surface-heading">
+            <svg class="exercise-surface-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12 L6 12"/><path d="M18 12 L21 12"/>
+              <rect x="6" y="8" width="3" height="8" rx="1"/>
+              <rect x="15" y="8" width="3" height="8" rx="1"/>
+              <path d="M9 12 L15 12"/>
+            </svg>
+            <h2 class="exercise-surface-title">Exercise</h2>
+          </div>
+          <button id="exercise-custom-btn" class="exercise-custom-btn" type="button">+ Custom</button>
+        </header>
+
+        <section class="exercise-section">
+          <h3 class="exercise-section-title">Workouts</h3>
+          <div id="exercise-presets" class="exercise-grid"></div>
+        </section>
+
+        <section class="exercise-section">
+          <h3 class="exercise-section-title">Recent activity</h3>
+          <div id="exercise-recent" class="exercise-recent"></div>
+        </section>
       </div>
       <div class="tempo-placeholder" data-wellness-sub="mindful" hidden>
         <div class="tempo-placeholder-mark">
@@ -775,7 +782,7 @@
   <script src="js/persistence.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>
-  <script src="js/history.js"></script>
+  <script src="js/history.js?v=2"></script>
   <script src="js/export.js"></script>
   <script src="js/analog.js"></script>
   <script src="js/offset-input.js"></script>
@@ -787,7 +794,7 @@
   <script src="js/flow-ui.js"></script>
   <script src="js/alert-ui.js"></script>
   <script src="js/bg-notify.js"></script>
-  <script src="js/interval-ui.js"></script>
+  <script src="js/interval-ui.js?v=2"></script>
   <script src="js/cooking-ui.js"></script>
   <script src="js/pomodoro-stats.js"></script>
   <script src="js/history-ui.js"></script>
@@ -798,6 +805,7 @@
   <script src="js/analytics-ui.js"></script>
   <script src="js/presets.js"></script>
   <script src="js/presets-ui.js"></script>
+  <script src="js/exercise-ui.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>
