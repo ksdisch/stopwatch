@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v40-tempo';
+const CACHE_NAME = 'stopwatch-v41-mindful';
 const ASSETS = [
   './',
   './index.html',
@@ -39,6 +39,7 @@ const ASSETS = [
   './js/analytics-ui.js',
   './js/presets.js',
   './js/presets-ui.js',
+  './js/mindful-ui.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',

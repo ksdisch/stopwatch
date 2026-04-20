@@ -50,6 +50,8 @@ js/focus-ui.js                  — Focus / ambient display mode (distraction-fr
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
+js/mindful-ui.js                — Wellness › Mindful UI. Breathing exercises (Box / 4-7-8 / Coherence 5-5 / Calm 6-2-6) with an inline animated circle (per-step CSS transition). Meditation duration presets (3/5/10/15/20 min) that apply to the Timer engine and auto-start on Timers › Timer.
+js/tempo-nav.js                 — Tempo shell: pillar tabs, sub-nav, hash routing, settings drawer.
 js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
 sw.js                           — Service worker, cache-first, version-bumped on deploys.
 manifest.json                   — PWA manifest, standalone display, shortcuts.
@@ -58,7 +60,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → mindful-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -143,6 +145,9 @@ Additional localStorage keys used for UI/config preferences:
 
 ### Phase 7: Flow Block Mode
 - **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). End-of-block summary card shows duration, goal, and distraction breakdown. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
+
+### Phase 8: Wellness › Mindful
+- **Mindful pillar:** Two sections. **Breathing** — four patterns (Box 4-4-4-4, 4-7-8, Coherence 5-5, Calm 6-2-6) with an inline animated circle. Tapping a pattern shows a runner: the circle scales via CSS `transform: scale()` with `transition-duration` set per step, so inhale/hold/exhale drive a smooth tween; a live countdown number and phase label track inside the circle, and a cycle counter increments each full loop. Auto-stops when the user leaves the surface (hashchange or `visibilitychange`). Honors `prefers-reduced-motion` by freezing the circle. **Meditation** — five duration presets (3/5/10/15/20 min). Tap → `Timer.setDuration(...)` + route to Timers › Timer, auto-started. No new engine — breathing is pure DOM animation + setTimeout, meditation reuses the Timer engine.
 
 ## What's Next — Planned Improvements
 
