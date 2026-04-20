@@ -628,10 +628,6 @@
   border-radius: 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
-.med-card-is-due {
-  border-color: var(--active-accent);
-  box-shadow: 0 0 0 3px var(--active-accent-glow);
-}
 .med-card-flash {
   animation: medCardFlash 0.6s ease-out;
 }
@@ -656,8 +652,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.med-card-schedule {
-  font-size: 0.8rem;
+.med-card-dose {
+  font-size: 0.82rem;
   color: var(--text-secondary);
 }
 .med-card-actions {
@@ -684,28 +680,24 @@
   background: var(--separator);
 }
 
-.med-card-countdown {
-  font-size: 1.6rem;
+/* "Today" status — primary line of each card. Color depends on kind. */
+.med-card-status {
+  font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: -0.3px;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.med-card-countdown-due {
-  color: var(--active-accent);
-}
-.med-card-countdown-overdue {
-  color: var(--red, #ff453a);
-}
-.med-card-countdown-empty {
-  color: var(--text-secondary);
-  font-size: 1rem;
-  font-weight: 500;
-}
-.med-card-since {
-  font-size: 0.85rem;
+.med-status-done      { color: var(--active-accent); }
+.med-status-partial   { color: #ff9f0a; }
+.med-status-none      { color: var(--text-secondary); font-weight: 500; font-size: 1.1rem; }
+.med-status-asneeded  { color: var(--text); font-weight: 500; font-size: 1.1rem; }
+
+.med-card-last {
+  font-size: 0.82rem;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+  min-height: 1em;
 }
 
 .med-card-buttons {

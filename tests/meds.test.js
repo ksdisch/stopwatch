@@ -1,154 +1,107 @@
 describe('Meds — creation and defaults', () => {
-  it('creates with expected defaults', () => {
+  it('creates with sensible defaults', () => {
     const m = createMed('t1');
     assertEqual(m.getId(), 't1');
     assertEqual(m.getName(), 'Medication');
-    assertEqual(m.getScheduleType(), 'interval');
+    assertEqual(m.getDose(), '');
+    assertEqual(m.getFrequency(), 'once-daily');
     assertEqual(m.getLastTakenAt(), null);
     assertEqual(m.getDoseLog().length, 0);
-    assert(m.getIntervalMs() > 0, 'Default interval should be positive');
   });
 
-  it('allows setting name', () => {
+  it('setName trims and clamps', () => {
     const m = createMed('t2');
-    m.setName('Ibuprofen');
-    assertEqual(m.getName(), 'Ibuprofen');
-  });
+    m.setName('  Vyvanse  ');
+    assertEqual(m.getName(), 'Vyvanse');
 
-  it('truncates long names to 60 chars', () => {
-    const m = createMed('t3');
-    m.setName('x'.repeat(200));
+    m.setName('x'.repeat(120));
     assertEqual(m.getName().length, 60);
   });
-});
 
-describe('Meds — interval schedule', () => {
-  it('setIntervalSchedule changes type and value', () => {
-    const m = createMed('ti1');
-    m.setIntervalSchedule(4 * 3600000);
-    assertEqual(m.getScheduleType(), 'interval');
-    assertEqual(m.getIntervalMs(), 4 * 3600000);
+  it('setName falls back to default on empty input', () => {
+    const m = createMed('t3');
+    m.setName('');
+    assertEqual(m.getName(), 'Medication');
+    m.setName('   ');
+    assertEqual(m.getName(), 'Medication');
   });
 
-  it('clamps interval below 1 minute up to 1 minute', () => {
-    const m = createMed('ti2');
-    m.setIntervalSchedule(1000);
-    assertEqual(m.getIntervalMs(), 60000);
+  it('setDose trims and clamps', () => {
+    const m = createMed('t4');
+    m.setDose(' 60 mg ');
+    assertEqual(m.getDose(), '60 mg');
+
+    m.setDose('x'.repeat(100));
+    assertEqual(m.getDose().length, 40);
   });
 
-  it('next dose is roughly now when never taken', () => {
-    const m = createMed('ti3');
-    m.setIntervalSchedule(6 * 3600000);
-    const next = m.getNextDoseAt();
-    assertClose(next, Date.now(), 200, 'Next dose should be ≈ now');
-  });
-
-  it('next dose = lastTakenAt + interval', () => {
-    const m = createMed('ti4');
-    m.setIntervalSchedule(4 * 3600000);
-    const taken = Date.now() - 3600000; // 1h ago
-    m.logDose(taken);
-    assertEqual(m.getNextDoseAt(), taken + 4 * 3600000);
-  });
-
-  it('isDue true after interval has passed', () => {
-    const m = createMed('ti5');
-    m.setIntervalSchedule(3600000);
-    m.logDose(Date.now() - 2 * 3600000); // 2h ago, but interval 1h
-    assert(m.isDue(), 'Should be due');
-  });
-
-  it('isDue false within interval', () => {
-    const m = createMed('ti6');
-    m.setIntervalSchedule(3600000);
-    m.logDose(Date.now());
-    assert(!m.isDue(), 'Should not be due');
+  it('setDose accepts empty string', () => {
+    const m = createMed('t5');
+    m.setDose('10 mg');
+    m.setDose('');
+    assertEqual(m.getDose(), '');
   });
 });
 
-describe('Meds — time-of-day schedule', () => {
-  it('setTimesSchedule normalizes and sorts times', () => {
-    const m = createMed('tt1');
-    m.setTimesSchedule(['20:00', '8:00', '14:30']);
-    const times = m.getTimes();
-    assertEqual(times.length, 3);
-    assertEqual(times[0], '08:00');
-    assertEqual(times[1], '14:30');
-    assertEqual(times[2], '20:00');
+describe('Meds — frequency', () => {
+  it('setFrequency accepts all three valid values', () => {
+    const m = createMed('f1');
+    m.setFrequency('once-daily');   assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency('twice-daily');  assertEqual(m.getFrequency(), 'twice-daily');
+    m.setFrequency('as-needed');    assertEqual(m.getFrequency(), 'as-needed');
   });
 
-  it('filters non-HH:MM strings; clamps numeric out-of-range', () => {
-    const m = createMed('tt2');
-    m.setTimesSchedule(['08:00', 'abc', '25:99', '14:30', '']);
-    // 'abc' and '' fail the regex. '25:99' passes the shape then clamps to 23:59.
-    const times = m.getTimes();
-    assertEqual(times.length, 3);
-    assert(times.includes('08:00'), 'kept 08:00');
-    assert(times.includes('14:30'), 'kept 14:30');
-    assert(times.includes('23:59'), 'clamped 25:99 → 23:59');
+  it('setFrequency falls back to once-daily on invalid input', () => {
+    const m = createMed('f2');
+    m.setFrequency('hourly');
+    assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency(null);
+    assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency(undefined);
+    assertEqual(m.getFrequency(), 'once-daily');
   });
 
-  it('clamps out-of-range values into valid 24h ranges', () => {
-    const m = createMed('tt3');
-    m.setTimesSchedule(['25:70']);
-    assertEqual(m.getTimes()[0], '23:59');
-  });
-
-  it('next dose is in the future', () => {
-    const m = createMed('tt4');
-    m.setTimesSchedule(['08:00', '20:00']);
-    const next = m.getNextDoseAt();
-    assert(next > Date.now(), 'Next scheduled time should be in the future');
-  });
-
-  it('next dose picks later slot on the same day when last dose was earlier', () => {
-    const m = createMed('tt5');
-    m.setTimesSchedule(['08:00', '20:00']);
-    const now = new Date();
-    const taken = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 5).getTime();
-    m.logDose(taken);
-    const next = new Date(m.getNextDoseAt());
-    assertEqual(next.getHours(), 20);
-    assertEqual(next.getMinutes(), 0);
-  });
-
-  it('next dose rolls to tomorrow when all today slots passed', () => {
-    const m = createMed('tt6');
-    m.setTimesSchedule(['08:00']);
-    const now = new Date();
-    const taken = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0).getTime();
-    m.logDose(taken);
-    const next = new Date(m.getNextDoseAt());
-    // 8am the following day (relative to 9am today)
-    assertEqual(next.getHours(), 8);
-    assertEqual(next.getDate(), now.getDate() + 1 - (now.getDate() + 1 > new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() ? 0 : 0));
-  });
-
-  it('returns null getNextDoseAt when no times configured', () => {
-    const m = createMed('tt7');
-    m.setTimesSchedule([]);
-    assertEqual(m.getNextDoseAt(), null);
+  it('getExpectedDosesToday reflects frequency', () => {
+    const m = createMed('f3');
+    m.setFrequency('once-daily');  assertEqual(m.getExpectedDosesToday(), 1);
+    m.setFrequency('twice-daily'); assertEqual(m.getExpectedDosesToday(), 2);
+    m.setFrequency('as-needed');   assertEqual(m.getExpectedDosesToday(), null);
   });
 });
 
 describe('Meds — dose logging', () => {
-  it('logDose updates lastTakenAt and appends to log', () => {
-    const m = createMed('td1');
+  it('logDose without argument uses Date.now()', () => {
+    const m = createMed('l1');
+    const before = Date.now();
     m.logDose();
-    assert(m.getLastTakenAt() !== null, 'lastTakenAt should be set');
+    const after = Date.now();
+    const t = m.getLastTakenAt();
+    assert(t >= before && t <= after, 'lastTakenAt should be ~now');
     assertEqual(m.getDoseLog().length, 1);
   });
 
-  it('logDose accepts a custom timestamp for offset logging', () => {
-    const m = createMed('td2');
-    const t = Date.now() - 30 * 60 * 1000;
-    m.logDose(t);
-    assertEqual(m.getLastTakenAt(), t);
+  it('logDose accepts a specific timestamp for retroactive logs', () => {
+    const m = createMed('l2');
+    const ts = Date.now() - 2 * 3600000;
+    m.logDose(ts);
+    assertEqual(m.getLastTakenAt(), ts);
+    assertEqual(m.getDoseLog()[0].takenAt, ts);
   });
 
-  it('undoLastDose rolls back to previous dose', () => {
-    const m = createMed('td3');
-    const t1 = Date.now() - 60000;
+  it('logDose keeps the log sorted even if an older dose is added later', () => {
+    const m = createMed('l3');
+    const now = Date.now();
+    m.logDose(now);
+    m.logDose(now - 3600000);  // retroactive after live log
+    const log = m.getDoseLog();
+    assertEqual(log.length, 2);
+    assert(log[0].takenAt < log[1].takenAt, 'Log should be ascending');
+    assertEqual(m.getLastTakenAt(), now);
+  });
+
+  it('undoLastDose removes the most recent entry', () => {
+    const m = createMed('l4');
+    const t1 = Date.now() - 7200000;
     const t2 = Date.now();
     m.logDose(t1);
     m.logDose(t2);
@@ -157,100 +110,216 @@ describe('Meds — dose logging', () => {
     assertEqual(m.getDoseLog().length, 1);
   });
 
-  it('undoLastDose when no doses returns false', () => {
-    const m = createMed('td4');
+  it('undoLastDose returns false when log is empty', () => {
+    const m = createMed('l5');
     assertEqual(m.undoLastDose(), false);
   });
 
-  it('time-since-last-dose reflects elapsed time', () => {
-    const m = createMed('td5');
-    m.logDose(Date.now() - 120000);
+  it('getTimeSinceLastDoseMs reflects elapsed time', () => {
+    const m = createMed('l6');
+    m.logDose(Date.now() - 300000);
     const since = m.getTimeSinceLastDoseMs();
-    assert(since >= 120000 - 100, 'Time since should be ≥ 2 minutes');
+    assert(since >= 300000 - 100 && since <= 300000 + 100,
+      'Elapsed should be ~5 minutes');
+  });
+
+  it('getTimeSinceLastDoseMs is null when never logged', () => {
+    const m = createMed('l7');
+    assertEqual(m.getTimeSinceLastDoseMs(), null);
   });
 });
 
-describe('Meds — notifications', () => {
-  it('shouldFireDueNotification true when due and not yet notified', () => {
-    const m = createMed('tn1');
-    m.setIntervalSchedule(3600000);
-    m.logDose(Date.now() - 2 * 3600000);
-    assert(m.shouldFireDueNotification(), 'Should want to notify');
+describe('Meds — today status', () => {
+  function todayAt(h, min) {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, min, 0, 0).getTime();
+  }
+  function yesterdayAt(h, min) {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, h, min, 0, 0).getTime();
+  }
+
+  it('no doses → status.kind = none (for daily freq)', () => {
+    const m = createMed('s1');
+    m.setFrequency('once-daily');
+    const s = m.getStatusToday();
+    assertEqual(s.kind, 'none');
+    assertEqual(s.takenToday, 0);
+    assertEqual(s.expected, 1);
   });
 
-  it('markDueNotified prevents re-fires until next logDose', () => {
-    const m = createMed('tn2');
-    m.setIntervalSchedule(3600000);
-    m.logDose(Date.now() - 2 * 3600000);
-    m.markDueNotified();
-    assert(!m.shouldFireDueNotification(), 'Should not re-fire');
+  it('no doses → status.kind = na for as-needed', () => {
+    const m = createMed('s2');
+    m.setFrequency('as-needed');
+    const s = m.getStatusToday();
+    assertEqual(s.kind, 'na');
+    assertEqual(s.expected, null);
   });
 
-  it('logDose resets the dueNotified latch', () => {
-    const m = createMed('tn3');
-    m.setIntervalSchedule(3600000);
-    m.logDose(Date.now() - 2 * 3600000);
-    m.markDueNotified();
-    m.logDose(Date.now() - 2 * 3600000); // another "past" dose
-    assert(m.shouldFireDueNotification(), 'New logDose should allow notifying again');
+  it('once-daily: 1 dose today → done', () => {
+    const m = createMed('s3');
+    m.setFrequency('once-daily');
+    m.logDose(todayAt(8, 0));
+    assertEqual(m.getStatusToday().kind, 'done');
+    assertEqual(m.getDosesToday(), 1);
   });
 
-  it('notifications disabled → never fires', () => {
-    const m = createMed('tn4');
-    m.setIntervalSchedule(3600000);
-    m.setNotificationsEnabled(false);
-    m.logDose(Date.now() - 2 * 3600000);
-    assert(!m.shouldFireDueNotification(), 'Should not fire when disabled');
+  it('twice-daily: 1 dose today → partial', () => {
+    const m = createMed('s4');
+    m.setFrequency('twice-daily');
+    m.logDose(todayAt(8, 0));
+    const s = m.getStatusToday();
+    assertEqual(s.kind, 'partial');
+    assertEqual(s.takenToday, 1);
+    assertEqual(s.expected, 2);
+  });
+
+  it('twice-daily: 2 doses today → done', () => {
+    const m = createMed('s5');
+    m.setFrequency('twice-daily');
+    m.logDose(todayAt(8, 0));
+    m.logDose(todayAt(20, 0));
+    assertEqual(m.getStatusToday().kind, 'done');
+  });
+
+  it('yesterday dose does not count toward today', () => {
+    const m = createMed('s6');
+    m.setFrequency('once-daily');
+    m.logDose(yesterdayAt(22, 0));
+    assertEqual(m.getDosesToday(), 0);
+    assertEqual(m.getStatusToday().kind, 'none');
+  });
+
+  it('mixed yesterday+today doses: today-only counts', () => {
+    const m = createMed('s7');
+    m.setFrequency('twice-daily');
+    m.logDose(yesterdayAt(9, 0));
+    m.logDose(yesterdayAt(21, 0));
+    m.logDose(todayAt(7, 30));
+    assertEqual(m.getDosesToday(), 1);
+    assertEqual(m.getStatusToday().kind, 'partial');
   });
 });
 
 describe('Meds — serialization', () => {
-  it('getState returns complete snapshot', () => {
-    const m = createMed('ts1');
-    m.setName('Vitamin D');
-    m.setIntervalSchedule(8 * 3600000);
-    m.logDose(1000000);
+  it('getState returns the new schema', () => {
+    const m = createMed('r1');
+    m.setName('Vyvanse');
+    m.setDose('60 mg');
+    m.setFrequency('once-daily');
+    m.logDose(1700000000000);
     const state = m.getState();
-    assertEqual(state.id, 'ts1');
-    assertEqual(state.name, 'Vitamin D');
-    assertEqual(state.intervalMs, 8 * 3600000);
-    assertEqual(state.lastTakenAt, 1000000);
+    assertEqual(state.id, 'r1');
+    assertEqual(state.name, 'Vyvanse');
+    assertEqual(state.dose, '60 mg');
+    assertEqual(state.frequency, 'once-daily');
+    assertEqual(state.lastTakenAt, 1700000000000);
     assertEqual(state.doseLog.length, 1);
+    assertEqual(state.doseLog[0].takenAt, 1700000000000);
+    // V1 schedule fields are not emitted
+    assert(state.scheduleType === undefined, 'No legacy scheduleType');
+    assert(state.intervalMs === undefined, 'No legacy intervalMs');
   });
 
-  it('loadState restores name, schedule, history', () => {
-    const a = createMed('ts2');
-    a.setName('Metformin');
-    a.setTimesSchedule(['09:00', '21:00']);
-    a.logDose(1234567);
+  it('loadState round-trips name/dose/frequency/doseLog', () => {
+    const a = createMed('r2');
+    a.setName('Trazodone');
+    a.setDose('50 mg');
+    a.setFrequency('once-daily');
+    a.logDose(1700000100000);
     const state = a.getState();
 
-    const b = createMed('ts3');
+    const b = createMed('r3');
     b.loadState(state);
-    assertEqual(b.getName(), 'Metformin');
-    assertEqual(b.getScheduleType(), 'times');
-    assertEqual(b.getTimes().length, 2);
-    assertEqual(b.getLastTakenAt(), 1234567);
+    assertEqual(b.getName(), 'Trazodone');
+    assertEqual(b.getDose(), '50 mg');
+    assertEqual(b.getFrequency(), 'once-daily');
+    assertEqual(b.getLastTakenAt(), 1700000100000);
+    assertEqual(b.getDoseLog().length, 1);
   });
 
   it('loadState tolerates partial/empty state', () => {
-    const m = createMed('ts4');
+    const m = createMed('r4');
     m.loadState({});
     assertEqual(m.getName(), 'Medication');
-    assertEqual(m.getScheduleType(), 'interval');
+    assertEqual(m.getDose(), '');
+    // Empty state migrates to as-needed (safest default for untouched rows)
+    assertEqual(m.getFrequency(), 'as-needed');
     assertEqual(m.getLastTakenAt(), null);
   });
 
-  it('loadState drops far-future lastTakenAt (clock skew)', () => {
-    const m = createMed('ts5');
-    m.loadState({ lastTakenAt: Date.now() + 999999999 });
+  it('loadState drops far-future dose entries (clock skew)', () => {
+    const m = createMed('r5');
+    const future = Date.now() + 999999999;
+    m.loadState({ doseLog: [{ takenAt: future }] });
+    assertEqual(m.getLastTakenAt(), null);
+    assertEqual(m.getDoseLog().length, 0);
+  });
+
+  it('loadState uses doseLog tail as lastTakenAt (log is source of truth)', () => {
+    const m = createMed('r6');
+    m.loadState({
+      lastTakenAt: 100,  // intentionally stale
+      doseLog: [{ takenAt: 500 }, { takenAt: 200 }],  // unsorted
+    });
+    assertEqual(m.getLastTakenAt(), 500);
+    const log = m.getDoseLog();
+    assertEqual(log.length, 2);
+    assert(log[0].takenAt < log[1].takenAt, 'Log sorted ascending on load');
+  });
+});
+
+describe('Meds — V1→V2 migration', () => {
+  it('legacy interval schedule migrates to as-needed', () => {
+    const m = createMed('mg1');
+    m.loadState({
+      id: 'mg1',
+      name: 'Legacy',
+      scheduleType: 'interval',
+      intervalMs: 6 * 3600000,
+      lastTakenAt: 1700000000000,
+      doseLog: [{ takenAt: 1700000000000 }],
+      notificationsEnabled: true,
+      dueNotified: false,
+    });
+    assertEqual(m.getName(), 'Legacy');
+    assertEqual(m.getFrequency(), 'as-needed');
+    assertEqual(m.getDose(), '');
+    assertEqual(m.getLastTakenAt(), 1700000000000);
+    assertEqual(m.getDoseLog().length, 1);
+    const out = m.getState();
+    assert(out.scheduleType === undefined, 'Legacy scheduleType dropped');
+    assert(out.intervalMs === undefined, 'Legacy intervalMs dropped');
+    assert(out.notificationsEnabled === undefined, 'Legacy notificationsEnabled dropped');
+  });
+
+  it('legacy times-of-day schedule migrates to as-needed', () => {
+    const m = createMed('mg2');
+    m.loadState({
+      id: 'mg2',
+      name: 'Bedtime Med',
+      scheduleType: 'times',
+      times: ['08:00', '21:00'],
+      lastTakenAt: null,
+      doseLog: [],
+    });
+    assertEqual(m.getFrequency(), 'as-needed');
+    assertEqual(m.getDose(), '');
     assertEqual(m.getLastTakenAt(), null);
   });
 
-  it('loadState preserves notificationsEnabled=false', () => {
-    const m = createMed('ts6');
-    m.loadState({ notificationsEnabled: false });
-    assertEqual(m.getNotificationsEnabled(), false);
+  it('legacy record without frequency preserves name + lastTakenAt', () => {
+    const m = createMed('mg3');
+    m.loadState({
+      id: 'mg3',
+      name: 'Vitamin D 1000 IU',
+      scheduleType: 'interval',
+      intervalMs: 24 * 3600000,
+      lastTakenAt: 1700001000000,
+      doseLog: [{ takenAt: 1700001000000 }],
+    });
+    assertEqual(m.getName(), 'Vitamin D 1000 IU');
+    assertEqual(m.getLastTakenAt(), 1700001000000);
   });
 });
 
@@ -258,22 +327,23 @@ describe('MedsManager', () => {
   it('starts empty after clear', () => {
     MedsManager.clear();
     assertEqual(MedsManager.count(), 0);
-    assertEqual(MedsManager.all().length, 0);
   });
 
-  it('add creates a med with config', () => {
+  it('add creates a med with name/dose/frequency config', () => {
     MedsManager.clear();
-    const m = MedsManager.add({ name: 'Added', intervalMs: 60000 });
-    assert(m !== null, 'add() should return the new med');
+    const m = MedsManager.add({ name: 'Vyvanse', dose: '60 mg', frequency: 'once-daily' });
+    assert(m !== null, 'add() returns the new med');
     assertEqual(MedsManager.count(), 1);
-    assertEqual(m.getName(), 'Added');
+    assertEqual(m.getName(), 'Vyvanse');
+    assertEqual(m.getDose(), '60 mg');
+    assertEqual(m.getFrequency(), 'once-daily');
   });
 
-  it('add with times config creates time-of-day med', () => {
+  it('add defaults dose to "" and frequency to once-daily', () => {
     MedsManager.clear();
-    const m = MedsManager.add({ name: 'Timed', scheduleType: 'times', times: ['08:00', '20:00'] });
-    assertEqual(m.getScheduleType(), 'times');
-    assertEqual(m.getTimes().length, 2);
+    const m = MedsManager.add({ name: 'Simple' });
+    assertEqual(m.getDose(), '');
+    assertEqual(m.getFrequency(), 'once-daily');
   });
 
   it('remove deletes a med', () => {
@@ -299,17 +369,19 @@ describe('MedsManager', () => {
   });
 
   it('saveAll / loadAll round-trips through localStorage', () => {
-    // Snapshot any real user data so the test doesn't clobber it.
     const prior = localStorage.getItem('wellness_meds');
     try {
       MedsManager.clear();
-      MedsManager.add({ name: 'Persisted', intervalMs: 4 * 3600000 });
+      MedsManager.add({ name: 'Persisted', dose: '10 mg', frequency: 'twice-daily' });
       MedsManager.saveAll();
       MedsManager.clear();
       assertEqual(MedsManager.count(), 0);
       MedsManager.loadAll();
       assertEqual(MedsManager.count(), 1);
-      assertEqual(MedsManager.all()[0].getName(), 'Persisted');
+      const m = MedsManager.all()[0];
+      assertEqual(m.getName(), 'Persisted');
+      assertEqual(m.getDose(), '10 mg');
+      assertEqual(m.getFrequency(), 'twice-daily');
     } finally {
       MedsManager.clear();
       if (prior !== null) localStorage.setItem('wellness_meds', prior);
