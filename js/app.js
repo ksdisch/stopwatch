@@ -58,6 +58,7 @@ document.getElementById('focus-toggle').addEventListener('click', () => FocusUI.
 window.switchAppMode = switchAppMode;
 TempoNav.init();
 MedsUI.init();
+ExerciseUI.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {

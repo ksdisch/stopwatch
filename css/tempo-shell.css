@@ -793,3 +793,180 @@
    token system. No explicit [data-pillar="wellness"] rules needed here —
    tempo-nav sets data-pillar on body/app and the tokens at top of this
    file remap --active-accent. */
+/* ---------- Wellness › Exercise surface ---------------------------------- */
+/* Launcher for workout presets. Tapping a preset applies it to the existing
+   Interval engine (js/interval.js) and routes to Timers › Interval so the
+   existing Interval UI runs the workout. No second engine. */
+
+.exercise-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 16px 96px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+.exercise-surface[hidden] { display: none; }
+
+.exercise-surface-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.exercise-surface-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+.exercise-surface-icon { color: var(--active-accent); }
+.exercise-surface-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.exercise-custom-btn {
+  color: var(--active-accent);
+  background: var(--active-accent-tint);
+  border: 1px solid var(--active-accent-dim);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.exercise-custom-btn:hover { filter: brightness(1.15); }
+
+.exercise-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.exercise-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0 2px;
+}
+
+/* Preset grid — two columns on mobile, three on wider viewports */
+.exercise-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 520px) {
+  .exercise-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.exercise-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  min-height: 128px;
+}
+.exercise-card:hover {
+  border-color: var(--active-accent);
+  background: color-mix(in srgb, var(--active-accent-tint) 40%, var(--btn-bg));
+}
+.exercise-card:active { transform: scale(0.98); }
+.exercise-card-emoji {
+  font-size: 1.4rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.exercise-card-name {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.exercise-card-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+.exercise-card-total {
+  margin-top: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--active-accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Recent Activity */
+.exercise-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 60px;
+}
+.exercise-recent-loading {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 8px 2px;
+}
+.exercise-recent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--separator);
+  border-radius: 14px;
+}
+.exercise-recent-empty p { margin: 0; font-size: 0.88rem; line-height: 1.4; }
+.exercise-recent-empty-mark { font-size: 1.4rem; }
+
+.exercise-recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+}
+.exercise-recent-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exercise-recent-row-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exercise-recent-row-when {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.exercise-recent-row-duration {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+}

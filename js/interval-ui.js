@@ -201,7 +201,7 @@ function onIntervalLeft() {
     const elapsed = Interval.getElapsedMs();
     if (elapsed > 1000) {
       const prog = Interval.getProgram();
-      History.addSession({ type: 'interval', duration: elapsed, laps: [] });
+      History.addSession({ type: 'interval', duration: elapsed, laps: [], programName: prog.name });
     }
     Interval.reset();
     BgNotify.cancel('interval');
@@ -234,7 +234,7 @@ function onIntervalRight() {
   } else if (status === 'done') {
     const prog = Interval.getProgram();
     const totalMs = prog.phases.reduce((s, p) => s + p.durationMs, 0) * (prog.rounds || 1);
-    History.addSession({ type: 'interval', duration: totalMs, laps: [] });
+    History.addSession({ type: 'interval', duration: totalMs, laps: [], programName: prog.name });
     Interval.reset();
     saveIntervalState();
     updateIntervalUI();

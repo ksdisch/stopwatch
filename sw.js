@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v41-meds';
+const CACHE_NAME = 'stopwatch-v42-meds-exercise';
 const ASSETS = [
   './',
   './index.html',
@@ -41,6 +41,7 @@ const ASSETS = [
   './js/presets-ui.js',
   './js/meds.js',
   './js/meds-ui.js',
+  './js/exercise-ui.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',

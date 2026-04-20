@@ -115,6 +115,8 @@ const History = (() => {
     if (session.goal) entry.goal = session.goal;
     if (session.blockDurationMs !== undefined) entry.blockDurationMs = session.blockDurationMs;
     if (session.preBlockSkipped !== undefined) entry.preBlockSkipped = session.preBlockSkipped;
+    // Interval / Exercise metadata
+    if (session.programName) entry.programName = session.programName;
 
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
