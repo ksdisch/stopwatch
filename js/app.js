@@ -60,6 +60,7 @@ TempoNav.init();
 MedsUI.init();
 ExerciseUI.init();
 MindfulUI.init();
+WellnessCookingUI.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {
