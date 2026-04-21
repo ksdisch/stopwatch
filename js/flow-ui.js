@@ -2,6 +2,7 @@
 let flowRafId = null;
 
 const FLOW_DISTRACTION_KEY = 'flow_distractions';
+const FLOW_BFRB_KEY = 'flow_bfrbs';
 const FLOW_CHECKLIST_STATE_KEY = 'flow_checklist_state';
 const FLOW_CHECKLIST_SKIPPED_KEY = 'flow_checklist_skipped';
 
@@ -22,6 +23,15 @@ function loadFlowDistractions() {
 
 function saveFlowDistractions(items) {
   localStorage.setItem(FLOW_DISTRACTION_KEY, JSON.stringify(items));
+}
+
+function loadFlowBFRBs() {
+  try { return JSON.parse(localStorage.getItem(FLOW_BFRB_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function saveFlowBFRBs(items) {
+  localStorage.setItem(FLOW_BFRB_KEY, JSON.stringify(items));
 }
 
 function loadFlowChecklistState() {
@@ -109,6 +119,9 @@ function initFlowUI() {
   // Distraction log
   initFlowDistractionLog();
 
+  // BFRB tally
+  initFlowBFRBLog();
+
   // Summary card buttons
   document.getElementById('flow-start-recovery').addEventListener('click', () => {
     if (Flow.getStatus() !== 'focusComplete') return;
@@ -129,6 +142,7 @@ function initFlowUI() {
     Flow.reset();
     resetFlowChecklistState();
     saveFlowDistractions([]);
+    saveFlowBFRBs([]);
     saveFlowState();
     updateFlowUI();
   });
@@ -172,6 +186,7 @@ function onFlowLeft() {
     Flow.reset();
     resetFlowChecklistState();
     saveFlowDistractions([]);
+    saveFlowBFRBs([]);
     saveFlowState();
     SFX.playReset();
     updateFlowUI();
@@ -188,6 +203,7 @@ function onFlowRight() {
     const goalInput = document.getElementById('flow-goal-input');
     if (goalInput) Flow.setGoal(goalInput.value);
     saveFlowDistractions([]);  // clear any stale entries
+    saveFlowBFRBs([]);
     Flow.start();
     BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', 'Focus block complete! Time for recovery.');
     saveFlowState();
@@ -226,6 +242,7 @@ function onFlowRight() {
     Flow.reset();
     resetFlowChecklistState();
     saveFlowDistractions([]);
+    saveFlowBFRBs([]);
     saveFlowState();
     updateFlowUI();
   }
@@ -288,6 +305,7 @@ function updateFlowUI() {
     const goalDisplay = document.getElementById('flow-goal-display');
     goalDisplay.textContent = Flow.getGoal() || '';
     updateFlowDistractionBtnVisibility();
+    updateFlowBFRBBtnVisibility();
   }
 
   // Format remaining time
@@ -461,12 +479,42 @@ function updateFlowDistractionBtnVisibility() {
   }
 }
 
+function initFlowBFRBLog() {
+  const btn = document.getElementById('flow-bfrb-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const items = loadFlowBFRBs();
+    items.push({ timestamp: Date.now(), phase: Flow.getPhase() });
+    saveFlowBFRBs(items);
+    renderFlowBFRBBtn();
+    btn.classList.add('flow-bfrb-pulse');
+    setTimeout(() => btn.classList.remove('flow-bfrb-pulse'), 150);
+    if (navigator.vibrate) navigator.vibrate(20);
+  });
+}
+
+function renderFlowBFRBBtn() {
+  const btn = document.getElementById('flow-bfrb-btn');
+  if (!btn) return;
+  const count = loadFlowBFRBs().length;
+  btn.textContent = count > 0 ? `BFRB ×${count}` : 'BFRB';
+}
+
+function updateFlowBFRBBtnVisibility() {
+  const btn = document.getElementById('flow-bfrb-btn');
+  if (!btn) return;
+  const show = Flow.getStatus() === 'running';
+  btn.classList.toggle('hidden', !show);
+  if (show) renderFlowBFRBBtn();
+}
+
 function renderFlowSummary() {
   const body = document.getElementById('flow-summary-body');
   if (!body) return;
   const durMin = Math.round(Flow.getFocusDurationMs() / 60000);
   const goal = Flow.getGoal();
   const distractions = loadFlowDistractions();
+  const bfrbs = loadFlowBFRBs();
 
   // Group distractions by category for a breakdown
   const counts = {};
@@ -494,6 +542,10 @@ function renderFlowSummary() {
       <span class="flow-summary-label">Distractions</span>
       <span class="flow-summary-value">${distractions.length}${breakdown ? ` <span class="flow-summary-sub">(${breakdown})</span>` : ''}</span>
     </div>
+    <div class="flow-summary-row">
+      <span class="flow-summary-label">BFRB catches</span>
+      <span class="flow-summary-value">${bfrbs.length}</span>
+    </div>
   `;
 }
 
@@ -508,6 +560,7 @@ function saveFlowSessionToHistory() {
 
   const durationMs = Flow.getFocusDurationMs();
   const distractions = loadFlowDistractions();
+  const bfrbs = loadFlowBFRBs();
   const sessionEndedAt = Flow.getFocusEndedAt() || Date.now();
 
   const session = {
@@ -521,6 +574,7 @@ function saveFlowSessionToHistory() {
     sessionEndedAt,
   };
   if (distractions.length > 0) session.distractions = distractions;
+  if (bfrbs.length > 0) session.bfrbs = bfrbs;
 
   History.addSession(session);
   localStorage.setItem(FLOW_LAST_SAVED_KEY, String(sessionStartedAt));
