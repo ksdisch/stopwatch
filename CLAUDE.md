@@ -94,7 +94,7 @@ Additional localStorage keys used for UI/config preferences:
 - `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`
 - `sound_muted`, `sound_profile`, `theme`
 - `offset_presets`, `quick_presets`, `presets_seeded`
-- `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`
+- `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`, `pomodoro_bfrbs`
 - `flow_distractions`, `flow_bfrbs`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
 
 ## What Has Been Built

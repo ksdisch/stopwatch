@@ -99,6 +99,7 @@ function initPomodoroUI() {
   initSavedTasksPanel();
   initTaskTemplates();
   initDistractionLog();
+  initPomoBFRBLog();
 
   // Stats panel
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
@@ -199,6 +200,7 @@ function onPomodoroLeft() {
     BgNotify.cancel('pomodoro');
     savePomodoroState();
     saveDistractions([]);
+    savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -262,6 +264,7 @@ function onPomodoroRight() {
     Pomodoro.reset();
     savePomodoroState();
     saveDistractions([]);
+    savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();
@@ -310,6 +313,7 @@ function updatePomodoroUI() {
   // Timeline and distraction button
   renderPomodoroTimeline();
   updateDistractionBtnVisibility();
+  updatePomoBFRBBtnVisibility();
 
   // Format remaining time
   const t = Utils.formatMs(remaining);
@@ -893,6 +897,53 @@ function updateDistractionBtnVisibility() {
   }
 }
 
+// ── BFRB Tally (Pomodoro) ──
+const POMO_BFRB_KEY = 'pomodoro_bfrbs';
+
+function loadPomoBFRBs() {
+  try { return JSON.parse(localStorage.getItem(POMO_BFRB_KEY)) || []; }
+  catch (e) { return []; }
+}
+
+function savePomoBFRBs(items) {
+  localStorage.setItem(POMO_BFRB_KEY, JSON.stringify(items));
+}
+
+function initPomoBFRBLog() {
+  const btn = document.getElementById('pomo-bfrb-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const items = loadPomoBFRBs();
+    items.push({
+      timestamp: Date.now(),
+      phase: Pomodoro.getPhase(),
+      cycleIndex: Pomodoro.getCycleIndex(),
+    });
+    savePomoBFRBs(items);
+    renderPomoBFRBBtn();
+    btn.classList.add('bfrb-pulse');
+    setTimeout(() => btn.classList.remove('bfrb-pulse'), 150);
+    if (navigator.vibrate) navigator.vibrate(20);
+  });
+}
+
+function renderPomoBFRBBtn() {
+  const btn = document.getElementById('pomo-bfrb-btn');
+  if (!btn) return;
+  const count = loadPomoBFRBs().length;
+  btn.textContent = count > 0 ? `BFRB ×${count}` : 'BFRB';
+}
+
+function updatePomoBFRBBtnVisibility() {
+  const btn = document.getElementById('pomo-bfrb-btn');
+  if (!btn) return;
+  const status = Pomodoro.getStatus();
+  const phase = Pomodoro.getPhase();
+  const show = status === 'running' && phase === 'work';
+  btn.classList.toggle('hidden', !show);
+  if (show) renderPomoBFRBBtn();
+}
+
 // ── Session Planning Timeline ──
 function renderPomodoroTimeline() {
   const el = document.getElementById('pomo-timeline');
@@ -995,6 +1046,8 @@ function gatherTaskData() {
   };
   const distractions = loadDistractions();
   if (distractions.length > 0) data.distractions = distractions;
+  const bfrbs = loadPomoBFRBs();
+  if (bfrbs.length > 0) data.bfrbs = bfrbs;
   return data;
 }
 
@@ -1074,6 +1127,7 @@ function initActionsDrawer() {
     Pomodoro.reset();
     savePomodoroState();
     saveDistractions([]);
+    savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();
     renderActualWork();

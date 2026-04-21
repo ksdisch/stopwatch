@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v47-fix-flow-gate';
+const CACHE_NAME = 'stopwatch-v48-pomo-bfrb';
 const ASSETS = [
   './',
   './index.html',
