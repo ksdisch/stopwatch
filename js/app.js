@@ -180,6 +180,10 @@ function applyAppMode() {
 
   document.getElementById('instance-cards').classList.toggle('hidden', isPomodoro || isFlow || isInterval || isCooking);
 
+  // Flow's pre-block checklist can leave btn-right disabled. When switching
+  // to any other mode, clear that state so Start/Pause isn't stuck.
+  if (!isFlow) document.getElementById('btn-right').disabled = false;
+
   if (isTimer) {
     updateTimerUI();
   } else if (isPomodoro) {
