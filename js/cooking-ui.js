@@ -104,7 +104,7 @@ function cookingTimerAlarm(timer, idx) {
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     new Notification(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
   }
-  History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [] });
+  History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [], programName: timer.getName() });
   saveCookingTimers();
   renderCookingTimers();
 }

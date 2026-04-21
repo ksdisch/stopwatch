@@ -1200,3 +1200,177 @@
 @media (prefers-reduced-motion: reduce) {
   .mindful-circle { transition: none !important; }
 }
+
+/* ---------- Wellness › Cooking surface ----------------------------------- */
+/* Quick-launch grid for cooking presets. Tapping a card spins up a named
+   timer in Timers › Cook (js/cooking-ui.js) and routes there. Recent
+   Activity reads History filtered by type='cooking'. */
+
+.wcook-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 16px 96px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wcook-surface[hidden] { display: none; }
+
+.wcook-surface-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wcook-surface-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+.wcook-surface-icon { color: var(--active-accent); }
+.wcook-surface-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.wcook-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wcook-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 0 2px;
+}
+
+.wcook-cap-notice {
+  padding: 10px 14px;
+  background: color-mix(in srgb, #ff9f0a 14%, var(--btn-bg));
+  border: 1px solid color-mix(in srgb, #ff9f0a 40%, transparent);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.wcook-cap-notice[hidden] { display: none; }
+
+/* Preset grid — two columns on mobile, four on wider viewports */
+.wcook-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 520px) {
+  .wcook-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.wcook-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  min-height: 102px;
+}
+.wcook-card:hover {
+  border-color: var(--active-accent);
+  background: color-mix(in srgb, var(--active-accent-tint) 40%, var(--btn-bg));
+}
+.wcook-card:active { transform: scale(0.98); }
+.wcook-card-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.wcook-card-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.wcook-card-duration {
+  margin-top: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--active-accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Recent Activity */
+.wcook-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 60px;
+}
+.wcook-recent-loading {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 8px 2px;
+}
+.wcook-recent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--separator);
+  border-radius: 14px;
+}
+.wcook-recent-empty p { margin: 0; font-size: 0.88rem; line-height: 1.4; }
+.wcook-recent-empty-mark { font-size: 1.4rem; }
+
+.wcook-recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+}
+.wcook-recent-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wcook-recent-row-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wcook-recent-row-when {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.wcook-recent-row-duration {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+}

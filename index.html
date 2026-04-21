@@ -615,21 +615,30 @@
           <div id="mindful-med-presets" class="mindful-med-grid"></div>
         </section>
       </div>
-      <div class="tempo-placeholder" data-wellness-sub="cooking" hidden>
-        <div class="tempo-placeholder-mark">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 10 L19 10 L18 20 L6 20 Z"/>
-            <path d="M9 10 L9 6"/><path d="M12 10 L12 6"/><path d="M15 10 L15 6"/>
-          </svg>
-        </div>
-        <div class="tempo-placeholder-title">Cooking</div>
-        <div class="tempo-placeholder-body">
-          Dedicated cooking view with named prep and bake timers.
-        </div>
-        <button class="tempo-placeholder-cta" type="button" data-cta-route="timers:cook">
-          Open Cook in Timers
-        </button>
+      <div class="wcook-surface" data-wellness-sub="cooking" hidden>
+        <header class="wcook-surface-header">
+          <div class="wcook-surface-heading">
+            <svg class="wcook-surface-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 10 L19 10 L18 20 L6 20 Z"/>
+              <path d="M9 10 L9 6"/><path d="M12 10 L12 6"/><path d="M15 10 L15 6"/>
+            </svg>
+            <h2 class="wcook-surface-title">Cooking</h2>
+          </div>
+        </header>
+
+        <section class="wcook-section">
+          <h3 class="wcook-section-title">Quick timers</h3>
+          <div id="wellness-cooking-presets" class="wcook-grid"></div>
+          <div id="wellness-cooking-cap-notice" class="wcook-cap-notice" hidden>
+            You have 8 cooking timers already. Finish or remove one first.
+          </div>
+        </section>
+
+        <section class="wcook-section">
+          <h3 class="wcook-section-title">Recent</h3>
+          <div id="wellness-cooking-recent" class="wcook-recent"></div>
+        </section>
       </div>
       <div class="tempo-placeholder" data-wellness-sub="recovery" hidden>
         <div class="tempo-placeholder-mark">
@@ -870,6 +879,7 @@
   <script src="js/meds-ui.js"></script>
   <script src="js/exercise-ui.js"></script>
   <script src="js/mindful-ui.js"></script>
+  <script src="js/wellness-cooking-ui.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>
