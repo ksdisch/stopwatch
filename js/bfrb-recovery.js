@@ -44,6 +44,9 @@ const BFRBRecovery = (() => {
         btn.style.removeProperty('--bfrb-recovery-progress');
         btn.textContent = baseLabelFn();
         if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+        // Two-note ascending chime — short but noticeable. Respects the
+        // user's global mute toggle via the SFX module.
+        if (typeof SFX !== 'undefined') SFX.playPhaseChange();
         return;
       }
       const progress = remaining / DURATION_MS; // 1 → 0
