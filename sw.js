@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v49-bfrb-recovery';
+const CACHE_NAME = 'stopwatch-v50-bfrb-recovery-sound';
 const ASSETS = [
   './',
   './index.html',
