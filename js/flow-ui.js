@@ -491,8 +491,8 @@ function initFlowBFRBLog() {
     items.push({ timestamp: Date.now(), phase: Flow.getPhase() });
     saveFlowBFRBs(items);
     renderFlowBFRBBtn();
-    btn.classList.add('flow-bfrb-pulse');
-    setTimeout(() => btn.classList.remove('flow-bfrb-pulse'), 150);
+    btn.classList.add('bfrb-pulse');
+    setTimeout(() => btn.classList.remove('bfrb-pulse'), 150);
     if (navigator.vibrate) navigator.vibrate(20);
   });
 }

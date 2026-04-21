@@ -1944,15 +1944,15 @@ input:focus:not(:focus-visible) {
   border-color: var(--red);
 }
 
-/* BFRB tally button (Flow mode) */
-.flow-log-btn-row {
+/* BFRB tally button (Flow & Pomodoro) */
+.log-btn-row {
   display: flex;
   gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
 }
 
-.flow-bfrb-btn {
+.bfrb-btn {
   background: none;
   border: 1px solid #ff9f0a;
   border-radius: 8px;
@@ -1964,11 +1964,11 @@ input:focus:not(:focus-visible) {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
-.flow-bfrb-btn:active {
+.bfrb-btn:active {
   opacity: 0.6;
 }
 
-.flow-bfrb-btn.flow-bfrb-pulse {
+.bfrb-btn.bfrb-pulse {
   transform: scale(1.12);
   background: color-mix(in srgb, #ff9f0a 16%, transparent);
 }
