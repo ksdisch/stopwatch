@@ -95,7 +95,7 @@ Additional localStorage keys used for UI/config preferences:
 - `sound_muted`, `sound_profile`, `theme`
 - `offset_presets`, `quick_presets`, `presets_seeded`
 - `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`
-- `flow_distractions`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
+- `flow_distractions`, `flow_bfrbs`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
 
 ## What Has Been Built
 
@@ -149,7 +149,7 @@ Additional localStorage keys used for UI/config preferences:
 - **Clock skew no-op removed:** `accumulatedMs += 0` removed from stopwatch loadState.
 
 ### Phase 7: Flow Block Mode
-- **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). End-of-block summary card shows duration, goal, and distraction breakdown. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
+- **Flow Block mode:** Ultradian-rhythm-based deep-work timer. Single 90- or 120-minute focus block (fixed presets) followed by optional 15-minute recovery countdown. Pre-block checklist (5 fixed items: DND, notifications, tabs, water, goal) gates the Start button — can be skipped. Session goal text input. Distraction log (Phone/Email/Interrupted/Self/Other with optional note — separate storage from Pomodoro). **BFRB tally** — one-tap button next to Distraction for logging body-focused repetitive behaviors caught in the moment (cheek chewing, nail biting/picking, skin picking, etc.). Label increments live as `BFRB ×N`, persists to `flow_bfrbs`, clears alongside distractions on session start/reset/complete, and shows as a "BFRB catches" count in both the summary card and the saved history session (`session.bfrbs`). End-of-block summary card shows duration, goal, distraction breakdown, and BFRB count. Recovery phase shows encouragement text. Sessions saved to history with `type: 'flow'`. Persists to `flow_state` / `flow_config` in localStorage. Handles tab-close mid-block (loadState recovery + deduped history save).
 
 ### Phase 8: Tempo Rebrand + Wellness Suite (Meds, Exercise, Mindful)
 - **Tempo navigation shell** (`js/tempo-nav.js` + `css/tempo-shell.css`): Four-pillar architecture — Timers / Wellness / Rhythm / Analytics. Hash-based routing (`#/timers/pomodoro`, `#/wellness/meds`, etc.) with legacy `?mode=X` migration. Wellness sub-nav has 5 tabs (Meds, Exercise, Mindful, Cooking, Recovery). Pillar accent tokens: productivity blue (`#007aff`), wellness green (`#30d158`) — auto-applied via `data-pillar` attribute on body/app.

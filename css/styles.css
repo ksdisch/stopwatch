@@ -1944,6 +1944,35 @@ input:focus:not(:focus-visible) {
   border-color: var(--red);
 }
 
+/* BFRB tally button (Flow mode) */
+.flow-log-btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.flow-bfrb-btn {
+  background: none;
+  border: 1px solid #ff9f0a;
+  border-radius: 8px;
+  color: #ff9f0a;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.flow-bfrb-btn:active {
+  opacity: 0.6;
+}
+
+.flow-bfrb-btn.flow-bfrb-pulse {
+  transform: scale(1.12);
+  background: color-mix(in srgb, #ff9f0a 16%, transparent);
+}
+
 /* ── Flow Block Mode ── */
 .flow-area {
   display: flex;
