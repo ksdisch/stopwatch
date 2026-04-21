@@ -430,6 +430,10 @@ function renderFlowChecklist() {
 }
 
 function updateFlowChecklistGate() {
+  // Flow shares btn-right with every other mode. If Flow isn't the active
+  // mode, never touch the button — otherwise an unchecked Flow checklist
+  // disables Start for Pomodoro/Timer/Interval/etc.
+  if (appMode !== 'flow') return;
   const btnRight = document.getElementById('btn-right');
   if (Flow.getStatus() !== 'idle') return;
   btnRight.disabled = !canStartFlow();
