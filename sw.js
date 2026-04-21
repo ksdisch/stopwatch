@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v48-pomo-bfrb';
+const CACHE_NAME = 'stopwatch-v49-bfrb-recovery';
 const ASSETS = [
   './',
   './index.html',
@@ -22,6 +22,7 @@ const ASSETS = [
   './js/cards-ui.js',
   './js/compare-ui.js',
   './js/timer-ui.js',
+  './js/bfrb-recovery.js',
   './js/pomodoro-ui.js',
   './js/flow-ui.js',
   './js/alert-ui.js',

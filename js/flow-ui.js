@@ -490,18 +490,24 @@ function initFlowBFRBLog() {
     const items = loadFlowBFRBs();
     items.push({ timestamp: Date.now(), phase: Flow.getPhase() });
     saveFlowBFRBs(items);
-    renderFlowBFRBBtn();
-    btn.classList.add('bfrb-pulse');
-    setTimeout(() => btn.classList.remove('bfrb-pulse'), 150);
     if (navigator.vibrate) navigator.vibrate(20);
+    // Kick off (or reset) the 1-min competing-response recovery countdown.
+    // The helper renders the countdown text itself; once it finishes, the
+    // button reverts to its base label (BFRB ×N) via the callback.
+    BFRBRecovery.start('flow-bfrb-btn', () => flowBFRBLabel());
   });
+}
+
+function flowBFRBLabel() {
+  const count = loadFlowBFRBs().length;
+  return count > 0 ? `BFRB ×${count}` : 'BFRB';
 }
 
 function renderFlowBFRBBtn() {
   const btn = document.getElementById('flow-bfrb-btn');
   if (!btn) return;
-  const count = loadFlowBFRBs().length;
-  btn.textContent = count > 0 ? `BFRB ×${count}` : 'BFRB';
+  if (BFRBRecovery.isActive('flow-bfrb-btn')) return;
+  btn.textContent = flowBFRBLabel();
 }
 
 function updateFlowBFRBBtnVisibility() {
@@ -510,6 +516,7 @@ function updateFlowBFRBBtnVisibility() {
   const show = Flow.getStatus() === 'running';
   btn.classList.toggle('hidden', !show);
   if (show) renderFlowBFRBBtn();
+  else BFRBRecovery.cancel('flow-bfrb-btn');
 }
 
 function renderFlowSummary() {

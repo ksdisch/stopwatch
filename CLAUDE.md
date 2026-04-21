@@ -35,6 +35,7 @@ js/ui.js (~490 lines)           — Main UI: render loop (RAF), button state mac
 js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
 js/compare-ui.js                — Compare view: split-screen two-instance comparison.
 js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
+js/bfrb-recovery.js             — BFRBRecovery helper: shared 60s in-button countdown for the competing-response routine triggered on any BFRB catch in Flow or Pomodoro.
 js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, focus/break/actual-work checklists, saved tasks, templates, distraction log, timeline.
 js/pomodoro-stats.js            — Pomodoro stats engine (streaks, daily/weekly aggregates).
 js/flow-ui.js                   — Flow Block UI: pre-block checklist, distraction log, summary card, recovery phase.
@@ -64,7 +65,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → tempo-nav → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
