@@ -920,18 +920,22 @@ function initPomoBFRBLog() {
       cycleIndex: Pomodoro.getCycleIndex(),
     });
     savePomoBFRBs(items);
-    renderPomoBFRBBtn();
-    btn.classList.add('bfrb-pulse');
-    setTimeout(() => btn.classList.remove('bfrb-pulse'), 150);
     if (navigator.vibrate) navigator.vibrate(20);
+    // Kick off (or reset) the 1-min competing-response recovery countdown.
+    BFRBRecovery.start('pomo-bfrb-btn', () => pomoBFRBLabel());
   });
+}
+
+function pomoBFRBLabel() {
+  const count = loadPomoBFRBs().length;
+  return count > 0 ? `BFRB ×${count}` : 'BFRB';
 }
 
 function renderPomoBFRBBtn() {
   const btn = document.getElementById('pomo-bfrb-btn');
   if (!btn) return;
-  const count = loadPomoBFRBs().length;
-  btn.textContent = count > 0 ? `BFRB ×${count}` : 'BFRB';
+  if (BFRBRecovery.isActive('pomo-bfrb-btn')) return;
+  btn.textContent = pomoBFRBLabel();
 }
 
 function updatePomoBFRBBtnVisibility() {
@@ -942,6 +946,7 @@ function updatePomoBFRBBtnVisibility() {
   const show = status === 'running' && phase === 'work';
   btn.classList.toggle('hidden', !show);
   if (show) renderPomoBFRBBtn();
+  else BFRBRecovery.cancel('pomo-bfrb-btn');
 }
 
 // ── Session Planning Timeline ──

@@ -1973,6 +1973,39 @@ input:focus:not(:focus-visible) {
   background: color-mix(in srgb, #ff9f0a 16%, transparent);
 }
 
+/* Recovery countdown: button fills with an amber bar that drains from 100%
+   (fresh catch) to 0% (1 min elapsed). The --bfrb-recovery-progress custom
+   property is updated by JS every 250ms while the routine runs. */
+.bfrb-btn.bfrb-recovery-active {
+  position: relative;
+  overflow: hidden;
+  --bfrb-recovery-progress: 1;
+  min-width: 60px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bfrb-btn.bfrb-recovery-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, #ff9f0a 22%, transparent);
+  transform-origin: left;
+  transform: scaleX(var(--bfrb-recovery-progress, 1));
+  transition: transform 0.25s linear;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bfrb-btn.bfrb-recovery-active {
+  /* Push text above the fill */
+  color: #ff9f0a;
+}
+
+.bfrb-btn.bfrb-recovery-active > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* ── Flow Block Mode ── */
 .flow-area {
   display: flex;
