@@ -186,6 +186,65 @@ function renderDistractions(dist) {
   `;
 }
 
+function renderActualWorkLog(aw) {
+  const { days, total, top10 } = aw;
+  if (!top10 || top10.length === 0) return '';
+
+  const windowLabel = days === 7 ? 'LAST 7 DAYS' : `LAST ${days} DAYS`;
+  const rows = top10.map(row => `
+    <li class="analytics-aw-row">
+      <span class="analytics-aw-text">${escapeHtml(row.display)}</span>
+      <span class="analytics-aw-count">${row.count}</span>
+    </li>
+  `).join('');
+
+  return `
+    <section class="analytics-aw-card" aria-label="Actual work log">
+      <div class="analytics-aw-header-row">
+        <div class="analytics-aw-header">ACTUAL WORK</div>
+        <div class="analytics-aw-window">${windowLabel}</div>
+      </div>
+      <div class="analytics-aw-meta">${total} log entr${total === 1 ? 'y' : 'ies'} across Pomodoros</div>
+      <ol class="analytics-aw-list">${rows}</ol>
+    </section>
+  `;
+}
+
+const PHASE_LABELS = {
+  work: 'Work',
+  shortBreak: 'Short break',
+  longBreak: 'Long break',
+};
+
+function renderPhaseRestarts(pr) {
+  const { days, total, byPhase } = pr;
+  if (total === 0) return '';
+
+  const breakdown = Object.entries(byPhase)
+    .filter(([, count]) => count > 0)
+    .map(([phase, count]) => `<span class="analytics-pr-seg"><span class="analytics-pr-count">${count}</span> ${PHASE_LABELS[phase] || phase}</span>`)
+    .join('<span class="analytics-pr-sep">·</span>');
+
+  // Tone: more-than-6 restarts in 30d is worth flagging; under that is normal
+  const tone = total >= 6
+    ? `You've restarted ${total} phase${total === 1 ? '' : 's'} in the last ${days} days. A shorter preset might help.`
+    : `${total} phase restart${total === 1 ? '' : 's'} in the last ${days} days.`;
+
+  return `
+    <section class="analytics-pr-card" aria-label="Phase restarts">
+      <div class="analytics-pr-header-row">
+        <div class="analytics-pr-header">PHASE RESTARTS</div>
+        <div class="analytics-pr-window">LAST ${days} DAYS</div>
+      </div>
+      <div class="analytics-pr-number-row">
+        <div class="analytics-pr-number">${total}</div>
+        <div class="analytics-pr-breakdown">${breakdown}</div>
+      </div>
+      <div class="analytics-pr-tone">${tone}</div>
+    </section>
+  `;
+}
+
 function renderMedAdherence(adh) {
   const { meds } = adh;
   if (!meds || meds.length === 0) return '';
@@ -462,7 +521,7 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh, actualWork, phaseRestarts] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
@@ -472,6 +531,8 @@ async function renderAnalytics() {
     Analytics.getDistractions(),
     Analytics.getBFRBTrend(bfrbTrendDays),
     Analytics.getMedAdherence(30),
+    Analytics.getActualWork(7),
+    Analytics.getPhaseRestarts(30),
   ]);
 
   let html = '';
@@ -495,6 +556,14 @@ async function renderAnalytics() {
 
   // Med adherence dot row (30d). Hidden when the user has no scheduled meds.
   html += renderMedAdherence(medAdh);
+
+  // Actual-work log — top-10 Pomodoro actual-work entries in last 7 days.
+  // Hidden when no actual-work items logged in window.
+  html += renderActualWorkLog(actualWork);
+
+  // Phase-restart count — how often the user bailed on a Pomo phase.
+  // Hidden when no restarts in window.
+  html += renderPhaseRestarts(phaseRestarts);
 
   // Summary cards
   const thisWeekMin = Math.round(trends.thisWeek.totalMs / 60000);

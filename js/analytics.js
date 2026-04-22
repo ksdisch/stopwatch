@@ -460,9 +460,70 @@ const Analytics = (() => {
     return { meds: out };
   }
 
+  // Actual-work log (ANALYTICS-PLAN § I). Surfaces what the user actually
+  // worked on during Pomodoro sessions in a recent window.
+  //
+  // Shape: `actualWork[]` on each pomodoro history record is an array of
+  // strings (see loadActualWork / saveActualWork in pomodoro-ui.js). We
+  // aggregate duplicates across sessions so the resulting list reads as
+  // "the tasks I kept coming back to this week."
+  //
+  // Case-insensitive grouping with whitespace normalization. The first
+  // observed casing wins for display.
+  async function getActualWork(days = 7) {
+    const sessions = await History.getSessions();
+    const cutoff = Date.now() - days * 86400000;
+    const counts = new Map(); // normalized → { display, count }
+    sessions.forEach(s => {
+      if (s.type !== 'pomodoro') return;
+      const t = new Date(s.date).getTime();
+      if (t < cutoff) return;
+      if (!Array.isArray(s.actualWork)) return;
+      s.actualWork.forEach(entry => {
+        if (typeof entry !== 'string') return;
+        const trimmed = entry.trim().replace(/\s+/g, ' ');
+        if (!trimmed) return;
+        const key = trimmed.toLowerCase();
+        const prior = counts.get(key);
+        if (prior) prior.count++;
+        else counts.set(key, { display: trimmed, count: 1 });
+      });
+    });
+    const all = Array.from(counts.values()).sort((a, b) => b.count - a.count);
+    return {
+      days,
+      total: all.reduce((a, b) => a + b.count, 0),
+      top10: all.slice(0, 10),
+    };
+  }
+
+  // Phase-restart count (ANALYTICS-PLAN § J). How often does the user bail
+  // on a Pomodoro phase? Counts entries in `phaseLog[]` with `restarted === true`.
+  // Breakdown by phase type so "bailing on breaks" vs "bailing on work" are
+  // distinguishable.
+  async function getPhaseRestarts(days = 30) {
+    const sessions = await History.getSessions();
+    const cutoff = Date.now() - days * 86400000;
+    const byPhase = { work: 0, shortBreak: 0, longBreak: 0 };
+    let total = 0;
+    sessions.forEach(s => {
+      if (s.type !== 'pomodoro') return;
+      const t = new Date(s.date).getTime();
+      if (t < cutoff) return;
+      if (!Array.isArray(s.phaseLog)) return;
+      s.phaseLog.forEach(p => {
+        if (!p || p.restarted !== true) return;
+        if (byPhase[p.phase] !== undefined) byPhase[p.phase]++;
+        total++;
+      });
+    });
+    return { days, total, byPhase };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
     getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
     getDistractions, getBFRBTrend, getMedAdherence,
+    getActualWork, getPhaseRestarts,
   };
 })();
