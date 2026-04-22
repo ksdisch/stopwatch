@@ -652,18 +652,9 @@
           <div id="wellness-cooking-recent" class="wcook-recent"></div>
         </section>
       </div>
-      <div class="tempo-placeholder" data-wellness-sub="recovery" hidden>
-        <div class="tempo-placeholder-mark">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 21 C 4 15 4 9 8 6 C 10 4.5 12 5.5 12 7 C 12 5.5 14 4.5 16 6 C 20 9 20 15 12 21 Z"/>
-          </svg>
-        </div>
-        <div class="tempo-placeholder-title">Recovery</div>
-        <div class="tempo-placeholder-body">
-          Post-block cooldown timers, stretching prompts, and rest tracking.
-        </div>
-      </div>
+      <!-- Wellness › Recovery: rest tracking dashboard.
+           Populated at runtime by RecoveryUI.init() (js/recovery-ui.js). -->
+      <div class="recovery-container" data-wellness-sub="recovery" hidden></div>
     </section>
 
     <!-- ── Rhythm pillar ── Single placeholder surface, no sub-nav. -->
@@ -893,6 +884,7 @@
   <script src="js/exercise-ui.js"></script>
   <script src="js/mindful-ui.js"></script>
   <script src="js/wellness-cooking-ui.js"></script>
+  <script src="js/recovery-ui.js"></script>
   <!-- Global BFRB tally + competing-response routine. Always visible,
        floats above all modes and pages. Tap or keyboard shortcut B
        triggers the tally and kicks off a 60s countdown. -->

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v52-flow-end-early';
+const CACHE_NAME = 'stopwatch-v53-recovery';
 const ASSETS = [
   './',
   './index.html',
@@ -45,6 +45,7 @@ const ASSETS = [
   './js/exercise-ui.js',
   './js/mindful-ui.js',
   './js/wellness-cooking-ui.js',
+  './js/recovery-ui.js',
   './js/global-bfrb.js',
   './js/app.js',
   './manifest.json',
