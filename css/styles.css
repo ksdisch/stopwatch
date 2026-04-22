@@ -1944,6 +1944,46 @@ input:focus:not(:focus-visible) {
   border-color: var(--red);
 }
 
+/* Flow running action row — side-by-side Distraction + End early buttons. */
+.flow-run-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.flow-run-actions .pomo-distraction-btn {
+  margin-top: 0;
+}
+
+/* End early — subtle secondary action. Muted border so it doesn't compete
+   with Distraction or the main Pause button. */
+.flow-end-early-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted, var(--text));
+  opacity: 0.78;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.12s ease, border-color 0.12s ease;
+}
+
+.flow-end-early-btn:hover,
+.flow-end-early-btn:focus-visible {
+  opacity: 1;
+  border-color: var(--text);
+  outline: none;
+}
+
+.flow-end-early-btn:active {
+  opacity: 0.6;
+}
+
 /* BFRB tally button (Flow & Pomodoro) */
 .log-btn-row {
   display: flex;

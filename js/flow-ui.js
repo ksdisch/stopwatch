@@ -119,6 +119,24 @@ function initFlowUI() {
   // Distraction log
   initFlowDistractionLog();
 
+  // End focus early — saves the block to history with actual elapsed time
+  // + endedEarly:true and routes into the normal focusComplete flow
+  // (summary card + recovery option).
+  document.getElementById('flow-end-early-btn')?.addEventListener('click', () => {
+    const st = Flow.getStatus();
+    if (st !== 'running' && st !== 'paused') return;
+    // Stop render loop + bg notification before the state transition so nothing
+    // races against the phase-complete callback that endFocusEarly fires.
+    stopFlowRenderLoop();
+    BgNotify.cancel('flow');
+    // endFocusEarly fires Flow.onPhaseComplete('focus'), which in turn calls
+    // saveFlowSessionToHistory via the callback wired in initFlowUI.
+    Flow.endFocusEarly();
+    saveFlowState();
+    SFX.playStop();
+    updateFlowUI();
+  });
+
   // BFRB tally — now handled by the global floating button (js/global-bfrb.js).
   // The button writes into flow_bfrbs when Flow is the active running session,
   // so saveFlowSessionToHistory still captures per-session catches below.
@@ -308,6 +326,12 @@ function updateFlowUI() {
     updateFlowDistractionBtnVisibility();
   }
 
+  // End-early button visibility: running or paused focus phase only.
+  const endEarlyBtn = document.getElementById('flow-end-early-btn');
+  if (endEarlyBtn) {
+    endEarlyBtn.classList.toggle('hidden', !isFocusActive);
+  }
+
   // Format remaining time
   let remaining;
   if (isFocusComplete) {
@@ -491,7 +515,11 @@ function updateFlowDistractionBtnVisibility() {
 function renderFlowSummary() {
   const body = document.getElementById('flow-summary-body');
   if (!body) return;
-  const durMin = Math.round(Flow.getFocusDurationMs() / 60000);
+  const plannedMs = Flow.getFocusDurationMs();
+  const elapsedMs = Flow.getFocusElapsedMs ? Flow.getFocusElapsedMs() : plannedMs;
+  const plannedMin = Math.round(plannedMs / 60000);
+  const elapsedMin = Math.round(elapsedMs / 60000);
+  const endedEarly = elapsedMs < plannedMs - 5000; // 5s fudge for float-rounding
   const goal = Flow.getGoal();
   const distractions = loadFlowDistractions();
   const bfrbs = loadFlowBFRBs();
@@ -512,7 +540,7 @@ function renderFlowSummary() {
   body.innerHTML = `
     <div class="flow-summary-row">
       <span class="flow-summary-label">Duration</span>
-      <span class="flow-summary-value">${durMin} min</span>
+      <span class="flow-summary-value">${elapsedMin} min${endedEarly ? ` <span class="flow-summary-sub">(of ${plannedMin} planned · ended early)</span>` : ''}</span>
     </div>
     ${goal ? `<div class="flow-summary-row">
       <span class="flow-summary-label">Goal</span>
@@ -538,21 +566,27 @@ function saveFlowSessionToHistory() {
   // tab after the block already completed, and again after clicking through).
   if (localStorage.getItem(FLOW_LAST_SAVED_KEY) === String(sessionStartedAt)) return;
 
-  const durationMs = Flow.getFocusDurationMs();
+  const plannedMs = Flow.getFocusDurationMs();
+  // Actual elapsed focus time. For naturally-completed blocks this equals
+  // plannedMs (the engine sets accumulatedMs to the full duration on
+  // completion). For blocks ended early, this is the real time the user spent.
+  const elapsedMs = Flow.getFocusElapsedMs ? Flow.getFocusElapsedMs() : plannedMs;
+  const endedEarly = elapsedMs < plannedMs;
   const distractions = loadFlowDistractions();
   const bfrbs = loadFlowBFRBs();
   const sessionEndedAt = Flow.getFocusEndedAt() || Date.now();
 
   const session = {
     type: 'flow',
-    duration: durationMs,
+    duration: elapsedMs,
     laps: [],
     goal: Flow.getGoal() || '',
-    blockDurationMs: durationMs,
+    blockDurationMs: plannedMs,
     preBlockSkipped: isFlowChecklistSkipped(),
     sessionStartedAt,
     sessionEndedAt,
   };
+  if (endedEarly) session.endedEarly = true;
   if (distractions.length > 0) session.distractions = distractions;
   if (bfrbs.length > 0) session.bfrbs = bfrbs;
 
