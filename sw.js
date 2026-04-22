@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v54-focus-streak';
+const CACHE_NAME = 'stopwatch-v55-flow-completion';
 const ASSETS = [
   './',
   './index.html',

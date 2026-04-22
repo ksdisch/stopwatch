@@ -83,17 +83,83 @@ function renderFocusStreak(streak) {
   `;
 }
 
+function renderFlowCompletion(comp) {
+  const { total, completed, endedEarly, completionRate, avgDurationPct } = comp;
+
+  // Hide the section entirely if no Flow sessions yet — nothing meaningful to show.
+  if (total === 0) return '';
+
+  const completionPct = Math.round(completionRate * 100);
+  const avgPct = Math.round(avgDurationPct * 100);
+
+  // SVG donut: a single ring showing "completed" as the filled portion and
+  // "ended early" as the remaining. Stroke-dashoffset is what draws the arc.
+  // Radius 40 → circumference ≈ 251.33. Dasharray uses that value for math.
+  const C = 2 * Math.PI * 40; // ≈ 251.33
+  const filled = C * completionRate;
+  const unfilled = C - filled;
+
+  const ruleLine = total === 1
+    ? '1 block · ' + (endedEarly ? 'ended early' : 'completed')
+    : `${completed} of ${total} completed · ${endedEarly} ended early`;
+
+  // Special-case copy for the extremes.
+  let tone = '';
+  if (total >= 3 && endedEarly === 0) {
+    tone = 'Never ended a block early — impressive.';
+  } else if (total >= 3 && completed === 0) {
+    tone = 'Every block ended early. Shorter preset next?';
+  }
+
+  return `
+    <section class="analytics-flow-card" aria-label="Flow completion rate">
+      <div class="analytics-flow-header">FLOW COMPLETION</div>
+      <div class="analytics-flow-body">
+        <div class="analytics-flow-donut-wrap" aria-hidden="true">
+          <svg class="analytics-flow-donut" viewBox="0 0 100 100" width="108" height="108">
+            <circle cx="50" cy="50" r="40" fill="none"
+                    stroke="var(--btn-border)" stroke-width="12"/>
+            <circle cx="50" cy="50" r="40" fill="none"
+                    stroke="var(--green)" stroke-width="12"
+                    stroke-dasharray="${filled.toFixed(2)} ${unfilled.toFixed(2)}"
+                    stroke-dashoffset="${(C / 4).toFixed(2)}"
+                    stroke-linecap="butt" transform="rotate(-90 50 50)"/>
+            <text x="50" y="50" class="analytics-flow-donut-label"
+                  text-anchor="middle" dominant-baseline="central">${completionPct}%</text>
+          </svg>
+        </div>
+        <dl class="analytics-flow-stats">
+          <div class="analytics-flow-stat-row">
+            <dt>Completed</dt>
+            <dd>${completed} of ${total} (${completionPct}%)</dd>
+          </div>
+          <div class="analytics-flow-stat-row">
+            <dt>Avg duration</dt>
+            <dd>${avgPct}% of planned</dd>
+          </div>
+          <div class="analytics-flow-stat-row">
+            <dt>Ended early</dt>
+            <dd>${endedEarly}</dd>
+          </div>
+        </dl>
+      </div>
+      <div class="analytics-flow-foot">${tone || ruleLine}</div>
+    </section>
+  `;
+}
+
 async function renderAnalytics() {
   const content = document.getElementById('analytics-content');
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
     Analytics.getActivityHeatmap(26),
     Analytics.getFocusStreak(),
+    Analytics.getFlowCompletion(),
   ]);
 
   let html = '';
@@ -101,6 +167,10 @@ async function renderAnalytics() {
   // Focus streak hero — flow + pomodoro days of a run. Ship-first analytic
   // because it's the biggest behavioral nudge and needs no new data.
   html += renderFocusStreak(streak);
+
+  // Flow completion rate — surfaces the new end-early signal alongside the
+  // avg % of planned duration. Hidden when the user has zero Flow sessions.
+  html += renderFlowCompletion(flowComp);
 
   // Summary cards
   const thisWeekMin = Math.round(trends.thisWeek.totalMs / 60000);

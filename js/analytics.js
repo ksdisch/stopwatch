@@ -198,8 +198,46 @@ const Analytics = (() => {
     return { current, longest, recent7, activeToday };
   }
 
+  // Flow completion rate (ANALYTICS-PLAN § D).
+  // For every saved Flow session, compare planned (blockDurationMs) to actual
+  // (duration) and check the endedEarly flag. Returns:
+  //   total, completed, endedEarly, completionRate (0–1),
+  //   avgDurationPct (0–1, avg of actual/planned across sessions that have both).
+  //
+  // Notes:
+  // - Flow sessions are only persisted once the focus phase completes or the
+  //   user clicks "End Early" — Flow.reset() on a paused abandoned block does
+  //   NOT write to History. So every session in this stream was a real attempt.
+  // - Pre-end-early sessions (merged before PR #22) lack endedEarly. Default
+  //   to `false` (they DID complete, that was the only path to history then).
+  // - Sessions lacking blockDurationMs (shouldn't happen, but defensive) are
+  //   skipped from avgDurationPct but still counted in totals.
+  async function getFlowCompletion() {
+    const sessions = await History.getSessions();
+    const flows = sessions.filter(s => s.type === 'flow');
+    const total = flows.length;
+    let endedEarly = 0;
+    let pctSum = 0;
+    let pctCount = 0;
+    flows.forEach(s => {
+      if (s.endedEarly === true) endedEarly++;
+      if (s.blockDurationMs && s.duration) {
+        pctSum += Math.min(1, s.duration / s.blockDurationMs);
+        pctCount++;
+      }
+    });
+    const completed = total - endedEarly;
+    return {
+      total,
+      completed,
+      endedEarly,
+      completionRate: total > 0 ? completed / total : 0,
+      avgDurationPct: pctCount > 0 ? pctSum / pctCount : 0,
+    };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
-    getPersonalBests, getTrends, getFocusStreak,
+    getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
   };
 })();
