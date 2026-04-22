@@ -115,6 +115,7 @@ const History = (() => {
     if (session.goal) entry.goal = session.goal;
     if (session.blockDurationMs !== undefined) entry.blockDurationMs = session.blockDurationMs;
     if (session.preBlockSkipped !== undefined) entry.preBlockSkipped = session.preBlockSkipped;
+    if (session.endedEarly !== undefined) entry.endedEarly = session.endedEarly;
     if (session.bfrbs) entry.bfrbs = session.bfrbs;
     // Interval / Exercise metadata
     if (session.programName) entry.programName = session.programName;

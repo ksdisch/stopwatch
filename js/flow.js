@@ -83,6 +83,33 @@ const Flow = (() => {
     status = 'recovery';
   }
 
+  // End the focus phase early. Captures actual elapsed time into
+  // accumulatedMs (so history records the real duration, not the planned
+  // blockDurationMs), then transitions to focusComplete and fires the
+  // phase-complete callback so the UI + history pipeline treats this the
+  // same as a naturally-completed block.
+  function endFocusEarly() {
+    if (phase !== 'focus') return;
+    if (status !== 'running' && status !== 'paused') return;
+    if (status === 'running' && startedAt) {
+      accumulatedMs += Date.now() - startedAt;
+    }
+    startedAt = null;
+    status = 'focusComplete';
+    focusEndedAt = Date.now();
+    if (phaseCallback) phaseCallback('focus');
+  }
+
+  // Elapsed time inside the focus phase. Returns accumulatedMs for all
+  // statuses except `running`, where it also includes the in-flight chunk
+  // since the last resume. Always bounded to the focus phase (returns 0 on
+  // recovery states).
+  function getFocusElapsedMs() {
+    if (phase !== 'focus') return 0;
+    const inFlight = status === 'running' && startedAt ? Date.now() - startedAt : 0;
+    return accumulatedMs + inFlight;
+  }
+
   function skipRecovery() {
     if (status !== 'focusComplete' && status !== 'recovery' && status !== 'recoveryPaused') return;
     status = 'done';
@@ -173,10 +200,10 @@ const Flow = (() => {
 
   return {
     start, pause, resume, reset,
-    startRecovery, skipRecovery,
+    startRecovery, skipRecovery, endFocusEarly,
     checkFinished, onPhaseComplete, configure,
     setGoal, getGoal,
-    getRemainingMs, getElapsedMs, getProgress,
+    getRemainingMs, getElapsedMs, getProgress, getFocusElapsedMs,
     getStatus, getPhase,
     getCurrentPhaseDurationMs, getFocusDurationMs, getRecoveryDurationMs,
     getSessionStartedAt, getFocusEndedAt, getConfig,

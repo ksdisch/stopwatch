@@ -245,6 +245,11 @@ async function renderHistory() {
       if (s.preBlockSkipped) {
         sections.push(`<div class="history-task-section"><span class="history-task-label">Pre-block checklist</span><div class="history-flow-goal">Skipped</div></div>`);
       }
+      if (s.endedEarly && s.blockDurationMs) {
+        const elapsedMin = Math.round((s.duration || 0) / 60000);
+        const plannedMin = Math.round(s.blockDurationMs / 60000);
+        sections.push(`<div class="history-task-section"><span class="history-task-label">Ended early</span><div class="history-flow-goal">${elapsedMin} of ${plannedMin} min</div></div>`);
+      }
       if (sections.length > 0) {
         taskHtml = `<div class="history-tasks">${sections.join('')}</div>`;
       }
