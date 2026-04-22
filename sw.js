@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v58-med-adherence';
+const CACHE_NAME = 'stopwatch-v59-bfrb-context';
 const ASSETS = [
   './',
   './index.html',
