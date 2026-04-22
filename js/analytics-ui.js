@@ -233,7 +233,7 @@ function renderMedAdherence(adh) {
 }
 
 function renderBFRBTrend(trend, selectedDays) {
-  const { days, series, total, focusHours, ratePerHour } = trend;
+  const { days, series, total, focusHours, ratePerHour, hourly, bySource } = trend;
 
   const windows = [14, 30, 90];
   const toggle = windows.map(d => {
@@ -298,10 +298,64 @@ function renderBFRBTrend(trend, selectedDays) {
     }
   }
 
-  // Empty state keeps the card shape intact but swaps the chart body.
+  // Empty state keeps the chart shape intact but swaps the chart body.
   const emptyOverlay = total === 0
     ? `<div class="analytics-bfrb-empty">No BFRB catches in the last ${days} day${days === 1 ? '' : 's'}.</div>`
     : '';
+
+  // § B — hour-of-day heat strip. 24 cells, amber intensity scales to max hour.
+  let hourSection = '';
+  if (total > 0 && hourly) {
+    const maxHour = Math.max(1, ...hourly);
+    const hourCells = hourly.map((count, h) => {
+      const intensity = count > 0 ? Math.max(0.18, count / maxHour) : 0;
+      const bg = intensity > 0
+        ? `rgba(255, 159, 10, ${intensity.toFixed(2)})`
+        : 'var(--btn-border)';
+      return `<div class="analytics-bfrb-hour" style="background:${bg}" title="${hourLabel(h)} — ${count}"></div>`;
+    }).join('');
+    let peakH = -1, peakC = 0;
+    hourly.forEach((c, h) => { if (c > peakC) { peakC = c; peakH = h; } });
+    const peakLabel = peakH >= 0 && peakC > 0
+      ? `<span class="analytics-bfrb-hour-peak">Peak: ${hourLabel(peakH)} (${peakC})</span>`
+      : '';
+    hourSection = `
+      <div class="analytics-bfrb-sub-title">BY HOUR OF DAY</div>
+      <div class="analytics-bfrb-hour-strip" role="img" aria-label="BFRB catches by hour of day">${hourCells}</div>
+      <div class="analytics-bfrb-hour-axis">
+        <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>11p</span>
+      </div>
+      ${peakLabel ? `<div class="analytics-bfrb-hour-peak-wrap">${peakLabel}</div>` : ''}
+    `;
+  }
+
+  // § C — source breakdown. Only renders when at least two sources have
+  // catches; a single-source bar isn't informative.
+  let sourceSection = '';
+  if (bySource) {
+    const sourceEntries = [
+      { key: 'flow',     label: 'Flow',     color: '#007aff', count: bySource.flow || 0 },
+      { key: 'pomodoro', label: 'Pomodoro', color: '#ff6b6b', count: bySource.pomodoro || 0 },
+      { key: 'idle',     label: 'Idle',     color: '#8e8e93', count: bySource.idle || 0 },
+    ];
+    const nonZero = sourceEntries.filter(s => s.count > 0);
+    if (nonZero.length >= 2) {
+      const srcTotal = nonZero.reduce((a, b) => a + b.count, 0);
+      const segs = nonZero.map(s => {
+        const pct = (s.count / srcTotal) * 100;
+        return `<div class="analytics-bfrb-source-seg" style="width:${pct.toFixed(1)}%;background:${s.color}" title="${s.label}: ${s.count}"></div>`;
+      }).join('');
+      const legend = nonZero.map(s => {
+        const pct = Math.round((s.count / srcTotal) * 100);
+        return `<span><span class="analytics-bfrb-source-dot" style="background:${s.color}"></span>${s.label} <span class="analytics-bfrb-source-count">${s.count} · ${pct}%</span></span>`;
+      }).join('');
+      sourceSection = `
+        <div class="analytics-bfrb-sub-title">BY SOURCE</div>
+        <div class="analytics-bfrb-source-bar">${segs}</div>
+        <div class="analytics-bfrb-source-legend">${legend}</div>
+      `;
+    }
+  }
 
   return `
     <section class="analytics-bfrb-card" aria-label="BFRB trend">
@@ -332,6 +386,8 @@ function renderBFRBTrend(trend, selectedDays) {
         <span>${hoursFmt} focus hour${hoursFmt === '1' ? '' : 's'} in window</span>
         ${trendNote ? `<span class="analytics-bfrb-trend-note">${trendNote}</span>` : ''}
       </div>
+      ${hourSection}
+      ${sourceSection}
     </section>
   `;
 }

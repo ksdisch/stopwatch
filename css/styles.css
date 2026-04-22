@@ -3693,6 +3693,84 @@ body.focus-mode .global-bfrb-fab {
   opacity: 0.85;
 }
 
+/* BFRB trend sub-sections (hour-of-day + by-source) */
+.analytics-bfrb-sub-title {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  opacity: 0.55;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.analytics-bfrb-hour-strip {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 2px;
+  height: 20px;
+}
+
+.analytics-bfrb-hour {
+  border-radius: 2px;
+  min-width: 0;
+}
+
+.analytics-bfrb-hour-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  color: var(--text);
+  opacity: 0.55;
+  padding: 0 2px;
+  margin-top: -2px;
+}
+
+.analytics-bfrb-hour-peak-wrap {
+  font-size: 0.74rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.analytics-bfrb-source-bar {
+  display: flex;
+  height: 12px;
+  background: var(--btn-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.analytics-bfrb-source-seg {
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.analytics-bfrb-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 0.74rem;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.analytics-bfrb-source-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analytics-bfrb-source-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.analytics-bfrb-source-count {
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Med adherence 30-day dot row per med */
 .analytics-adherence-card {
   background: var(--btn-bg);

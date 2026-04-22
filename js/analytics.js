@@ -318,37 +318,54 @@ const Analytics = (() => {
   async function getBFRBTrend(days = 30) {
     const sessions = await History.getSessions();
 
-    // Collect every BFRB timestamp from all four stores.
-    const stamps = [];
+    // Collect every BFRB timestamp with its source. Sources collapse to
+    // flow / pomodoro / idle — the latter is bfrbs_global, which is written
+    // only when no focus session is running.
+    const stamps = []; // { timestamp, source }
     sessions.forEach(s => {
       if (!Array.isArray(s.bfrbs)) return;
+      const src = s.type === 'flow' ? 'flow' : s.type === 'pomodoro' ? 'pomodoro' : null;
+      if (!src) return;
       s.bfrbs.forEach(b => {
-        if (typeof b.timestamp === 'number') stamps.push(b.timestamp);
+        if (typeof b.timestamp === 'number') stamps.push({ timestamp: b.timestamp, source: src });
       });
     });
-    ['flow_bfrbs', 'pomodoro_bfrbs', 'bfrbs_global'].forEach(key => {
+    const LIVE_SOURCES = {
+      flow_bfrbs:     'flow',
+      pomodoro_bfrbs: 'pomodoro',
+      bfrbs_global:   'idle',
+    };
+    Object.entries(LIVE_SOURCES).forEach(([key, src]) => {
       try {
         const arr = JSON.parse(localStorage.getItem(key)) || [];
         if (Array.isArray(arr)) {
           arr.forEach(b => {
-            if (b && typeof b.timestamp === 'number') stamps.push(b.timestamp);
+            if (b && typeof b.timestamp === 'number') stamps.push({ timestamp: b.timestamp, source: src });
           });
         }
       } catch (e) { /* malformed store — skip */ }
     });
 
-    // Build per-day buckets, oldest first, ending today.
+    // Window bounds + per-day buckets, oldest first.
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const windowStartMs = new Date(today).setDate(today.getDate() - (days - 1));
+    const windowEndMs = today.getTime() + 86400000;
+
     const series = [];
     const dayCounts = {};
-    stamps.forEach(t => {
-      if (t < windowStartMs) return;
-      if (t >= today.getTime() + 86400000) return; // future stamps are skipped
-      const d = new Date(t); d.setHours(0, 0, 0, 0);
-      const key = localDateKey(d);
-      dayCounts[key] = (dayCounts[key] || 0) + 1;
+    const hourly = new Array(24).fill(0);
+    const bySource = { flow: 0, pomodoro: 0, idle: 0 };
+
+    stamps.forEach(e => {
+      const t = e.timestamp;
+      if (t < windowStartMs || t >= windowEndMs) return;
+      const d = new Date(t);
+      const dayKey = localDateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+      dayCounts[dayKey] = (dayCounts[dayKey] || 0) + 1;
+      hourly[d.getHours()]++;
+      if (bySource[e.source] !== undefined) bySource[e.source]++;
     });
+
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today); d.setDate(d.getDate() - i);
       const key = localDateKey(d);
@@ -357,7 +374,6 @@ const Analytics = (() => {
 
     // Focus hours in the window: sum of Flow + Pomodoro session durations.
     let focusMs = 0;
-    const windowEndMs = today.getTime() + 86400000;
     sessions.forEach(s => {
       if (s.type !== 'flow' && s.type !== 'pomodoro') return;
       const t = new Date(s.date).getTime();
@@ -369,7 +385,7 @@ const Analytics = (() => {
     const total = series.reduce((sum, d) => sum + d.count, 0);
     const ratePerHour = focusHours > 0 ? total / focusHours : 0;
 
-    return { days, series, total, focusHours, ratePerHour };
+    return { days, series, total, focusHours, ratePerHour, hourly, bySource };
   }
 
   // Medication adherence (ANALYTICS-PLAN § H).
