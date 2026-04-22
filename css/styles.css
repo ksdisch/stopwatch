@@ -3328,6 +3328,83 @@ body.focus-mode .global-bfrb-fab {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 70%, transparent);
 }
 
+/* Flow completion rate card (Analytics › Flow section, after streak) */
+.analytics-flow-card {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.analytics-flow-header {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary, var(--text));
+  opacity: 0.6;
+  font-weight: 600;
+}
+
+.analytics-flow-body {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.analytics-flow-donut-wrap {
+  flex: 0 0 auto;
+}
+
+.analytics-flow-donut {
+  display: block;
+}
+
+.analytics-flow-donut-label {
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  fill: var(--green);
+}
+
+.analytics-flow-stats {
+  margin: 0;
+  padding: 0;
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.analytics-flow-stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
+.analytics-flow-stat-row dt {
+  color: var(--text);
+  opacity: 0.72;
+  margin: 0;
+}
+
+.analytics-flow-stat-row dd {
+  color: var(--text);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-flow-foot {
+  font-size: 0.78rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
 .analytics-section-title {
   font-size: 0.75rem;
   color: var(--text-secondary);
