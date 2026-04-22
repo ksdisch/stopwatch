@@ -2006,6 +2006,105 @@ input:focus:not(:focus-visible) {
   z-index: 1;
 }
 
+/* Global floating BFRB FAB — fixed bottom-right, always on top. Circular
+   enough to feel like a distinct action, big enough to hit reliably.
+   Bottom offset clears the mobile tempo tabbar (56px + safe area); on
+   desktop the tabbar is a sidebar, so the regular offset applies. */
+.global-bfrb-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 2000;
+  padding: 0;
+  min-width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--bg);
+  border: 2px solid #ff9f0a;
+  color: #ff9f0a;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.global-bfrb-fab:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(255, 159, 10, 0.35);
+}
+
+.global-bfrb-fab:active {
+  transform: translateY(0);
+  opacity: 0.85;
+}
+
+.global-bfrb-fab:focus-visible {
+  outline: 3px solid color-mix(in srgb, #ff9f0a 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* When recovery is running on the FAB, the progress fill ::before from
+   .bfrb-recovery-active above kicks in. Override its origin so the drain
+   looks centered on the round shape, and make the countdown text big. */
+.global-bfrb-fab.bfrb-recovery-active {
+  /* Override .bfrb-btn.bfrb-recovery-active which sets position: relative.
+     Fixed positioning is already a containing block for abs-positioned
+     descendants, so the ::before fill still anchors inside the button. */
+  position: fixed;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.global-bfrb-fab.bfrb-recovery-active::before {
+  border-radius: inherit;
+}
+
+@media (max-width: 480px) {
+  .global-bfrb-fab {
+    right: 12px;
+    bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 12px);
+    min-width: 48px;
+    height: 48px;
+    border-radius: 24px;
+  }
+}
+
+/* Desktop: tempo tabbar becomes a sidebar, so FAB returns to standard
+   bottom-right offset. */
+@media (min-width: 768px) {
+  .global-bfrb-fab {
+    bottom: 16px;
+  }
+}
+
+/* Hide the FAB when Focus Mode is on — Focus mode intentionally strips
+   chrome. Catches still have keyboard shortcut. */
+body.focus-mode .global-bfrb-fab {
+  display: none;
+}
+
+/* BFRB chime volume slider in the settings drawer. */
+.tempo-settings-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.tempo-settings-slider .tempo-settings-item-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.tempo-settings-slider input[type="range"] {
+  width: 100%;
+  accent-color: #ff9f0a;
+}
+
 /* ── Flow Block Mode ── */
 .flow-area {
   display: flex;

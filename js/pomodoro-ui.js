@@ -99,7 +99,9 @@ function initPomodoroUI() {
   initSavedTasksPanel();
   initTaskTemplates();
   initDistractionLog();
-  initPomoBFRBLog();
+  // BFRB tally now lives on the global floating button (js/global-bfrb.js).
+  // The helper still writes to pomodoro_bfrbs when Pomodoro work is running,
+  // so gatherTaskData() picks up per-session catches below.
 
   // Stats panel
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
@@ -313,7 +315,6 @@ function updatePomodoroUI() {
   // Timeline and distraction button
   renderPomodoroTimeline();
   updateDistractionBtnVisibility();
-  updatePomoBFRBBtnVisibility();
 
   // Format remaining time
   const t = Utils.formatMs(remaining);
@@ -909,45 +910,10 @@ function savePomoBFRBs(items) {
   localStorage.setItem(POMO_BFRB_KEY, JSON.stringify(items));
 }
 
-function initPomoBFRBLog() {
-  const btn = document.getElementById('pomo-bfrb-btn');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    const items = loadPomoBFRBs();
-    items.push({
-      timestamp: Date.now(),
-      phase: Pomodoro.getPhase(),
-      cycleIndex: Pomodoro.getCycleIndex(),
-    });
-    savePomoBFRBs(items);
-    if (navigator.vibrate) navigator.vibrate(20);
-    // Kick off (or reset) the 1-min competing-response recovery countdown.
-    BFRBRecovery.start('pomo-bfrb-btn', () => pomoBFRBLabel());
-  });
-}
-
-function pomoBFRBLabel() {
-  const count = loadPomoBFRBs().length;
-  return count > 0 ? `BFRB ×${count}` : 'BFRB';
-}
-
-function renderPomoBFRBBtn() {
-  const btn = document.getElementById('pomo-bfrb-btn');
-  if (!btn) return;
-  if (BFRBRecovery.isActive('pomo-bfrb-btn')) return;
-  btn.textContent = pomoBFRBLabel();
-}
-
-function updatePomoBFRBBtnVisibility() {
-  const btn = document.getElementById('pomo-bfrb-btn');
-  if (!btn) return;
-  const status = Pomodoro.getStatus();
-  const phase = Pomodoro.getPhase();
-  const show = status === 'running' && phase === 'work';
-  btn.classList.toggle('hidden', !show);
-  if (show) renderPomoBFRBBtn();
-  else BFRBRecovery.cancel('pomo-bfrb-btn');
-}
+// Per-mode BFRB button and init removed in favor of the global floating button
+// (js/global-bfrb.js). The loadPomoBFRBs/savePomoBFRBs helpers above are still
+// used by gatherTaskData (history session record), and by the global button
+// which writes into pomodoro_bfrbs when Pomodoro work phase is running.
 
 // ── Session Planning Timeline ──
 function renderPomodoroTimeline() {

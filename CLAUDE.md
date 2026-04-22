@@ -35,7 +35,8 @@ js/ui.js (~490 lines)           — Main UI: render loop (RAF), button state mac
 js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
 js/compare-ui.js                — Compare view: split-screen two-instance comparison.
 js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
-js/bfrb-recovery.js             — BFRBRecovery helper: shared 60s in-button countdown for the competing-response routine triggered on any BFRB catch in Flow or Pomodoro.
+js/bfrb-recovery.js             — BFRBRecovery helper: shared 60s in-button countdown for the competing-response routine triggered on any BFRB catch. Calls SFX.playBFRBEnd on completion (louder, separately-configurable chime).
+js/global-bfrb.js               — Global BFRB FAB: always-visible floating button + keyboard shortcut (B). Smart storage routing: writes to flow_bfrbs / pomodoro_bfrbs when those sessions are running, bfrbs_global otherwise. Wires the BFRB chime volume slider in the settings drawer.
 js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, focus/break/actual-work checklists, saved tasks, templates, distraction log, timeline.
 js/pomodoro-stats.js            — Pomodoro stats engine (streaks, daily/weekly aggregates).
 js/flow-ui.js                   — Flow Block UI: pre-block checklist, distraction log, summary card, recovery phase.
@@ -65,7 +66,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → tempo-nav → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → global-bfrb → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -93,7 +94,7 @@ Session history persists to IndexedDB (db `stopwatch_history_db`, store `session
 
 Additional localStorage keys used for UI/config preferences:
 - `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`
-- `sound_muted`, `sound_profile`, `theme`
+- `sound_muted`, `sound_profile`, `theme`, `bfrb_volume`, `bfrbs_global`
 - `offset_presets`, `quick_presets`, `presets_seeded`
 - `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`, `pomodoro_bfrbs`
 - `flow_distractions`, `flow_bfrbs`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`

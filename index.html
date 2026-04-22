@@ -70,6 +70,14 @@
           <span class="tempo-settings-item-icon">&#x26F6;</span>
           <span class="tempo-settings-item-label">Focus mode</span>
         </button>
+        <div class="tempo-settings-item tempo-settings-slider" role="group"
+             aria-label="BFRB chime volume">
+          <label for="bfrb-volume-slider" class="tempo-settings-item-label">
+            BFRB chime volume
+            <span id="bfrb-volume-value" class="tempo-settings-item-meta">55%</span>
+          </label>
+          <input id="bfrb-volume-slider" type="range" min="0" max="100" step="5" value="55">
+        </div>
       </div>
     </header>
 
@@ -234,10 +242,7 @@
       </div>
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
       <div id="pomo-timeline" class="pomo-timeline"></div>
-      <div class="log-btn-row">
-        <button id="pomo-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
-        <button id="pomo-bfrb-btn" class="bfrb-btn hidden" aria-label="Log BFRB">BFRB</button>
-      </div>
+      <button id="pomo-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
       <div id="pomo-distraction-picker" class="pomo-distraction-picker hidden">
         <div class="pomo-distraction-cats">
           <button class="pomo-distraction-cat" data-cat="phone">Phone</button>
@@ -272,10 +277,7 @@
           <span id="flow-phase-text">Focus</span>
           <span id="flow-goal-display" class="flow-goal-display"></span>
         </div>
-        <div class="log-btn-row">
-          <button id="flow-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
-          <button id="flow-bfrb-btn" class="bfrb-btn hidden" aria-label="Log BFRB">BFRB</button>
-        </div>
+        <button id="flow-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
         <div id="flow-distraction-picker" class="pomo-distraction-picker hidden">
           <div class="pomo-distraction-cats">
             <button class="flow-distraction-cat" data-cat="phone">Phone</button>
@@ -887,6 +889,13 @@
   <script src="js/exercise-ui.js"></script>
   <script src="js/mindful-ui.js"></script>
   <script src="js/wellness-cooking-ui.js"></script>
+  <!-- Global BFRB tally + competing-response routine. Always visible,
+       floats above all modes and pages. Tap or keyboard shortcut B
+       triggers the tally and kicks off a 60s countdown. -->
+  <button id="global-bfrb-fab" class="bfrb-btn global-bfrb-fab"
+          aria-label="Log BFRB (shortcut: B)" title="Log BFRB (B)">BFRB</button>
+
+  <script src="js/global-bfrb.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>
 </body>

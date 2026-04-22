@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v50-bfrb-recovery-sound';
+const CACHE_NAME = 'stopwatch-v51-global-bfrb';
 const ASSETS = [
   './',
   './index.html',
@@ -45,6 +45,7 @@ const ASSETS = [
   './js/exercise-ui.js',
   './js/mindful-ui.js',
   './js/wellness-cooking-ui.js',
+  './js/global-bfrb.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',
