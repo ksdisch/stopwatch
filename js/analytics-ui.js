@@ -186,6 +186,52 @@ function renderDistractions(dist) {
   `;
 }
 
+function renderMedAdherence(adh) {
+  const { meds } = adh;
+  if (!meds || meds.length === 0) return '';
+
+  const FREQ_LABEL = { 'once-daily': 'Once daily', 'twice-daily': 'Twice daily' };
+
+  const rows = meds.map(m => {
+    const doseStr = m.dose ? `${escapeHtml(m.dose)} · ` : '';
+    const freqLabel = FREQ_LABEL[m.frequency] || m.frequency;
+    const dots = m.dots.map(d => {
+      const label = `${d.date} — ${d.taken} of ${d.expected}`;
+      return `<div class="adherence-dot adherence-dot-${d.status}" title="${label}" aria-label="${label}"></div>`;
+    }).join('');
+    // Color-code the percentage so the user can scan at a glance.
+    let pctClass = 'adherence-pct-low';
+    if (m.adherencePct >= 90) pctClass = 'adherence-pct-high';
+    else if (m.adherencePct >= 70) pctClass = 'adherence-pct-mid';
+    return `
+      <div class="adherence-row">
+        <div class="adherence-row-header">
+          <div class="adherence-name">${escapeHtml(m.name)}</div>
+          <div class="adherence-meta">${doseStr}${freqLabel}</div>
+          <div class="adherence-pct ${pctClass}">${m.adherencePct}%</div>
+        </div>
+        <div class="adherence-dots" role="img"
+             aria-label="${m.name} adherence last 30 days">${dots}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <section class="analytics-adherence-card" aria-label="Medication adherence">
+      <div class="analytics-adherence-header-row">
+        <div class="analytics-adherence-header">MED ADHERENCE</div>
+        <div class="analytics-adherence-window-label">30 DAYS</div>
+      </div>
+      <div class="analytics-adherence-legend">
+        <span><span class="adherence-dot adherence-dot-full"></span>Taken</span>
+        <span><span class="adherence-dot adherence-dot-partial"></span>Partial</span>
+        <span><span class="adherence-dot adherence-dot-missed"></span>Missed</span>
+      </div>
+      <div class="analytics-adherence-body">${rows}</div>
+    </section>
+  `;
+}
+
 function renderBFRBTrend(trend, selectedDays) {
   const { days, series, total, focusHours, ratePerHour } = trend;
 
@@ -360,7 +406,7 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
@@ -369,6 +415,7 @@ async function renderAnalytics() {
     Analytics.getFlowCompletion(),
     Analytics.getDistractions(),
     Analytics.getBFRBTrend(bfrbTrendDays),
+    Analytics.getMedAdherence(30),
   ]);
 
   let html = '';
@@ -389,6 +436,9 @@ async function renderAnalytics() {
   // Distraction leaderboard + hour-of-day heatmap. Hidden if no distractions
   // have ever been logged.
   html += renderDistractions(distractions);
+
+  // Med adherence dot row (30d). Hidden when the user has no scheduled meds.
+  html += renderMedAdherence(medAdh);
 
   // Summary cards
   const thisWeekMin = Math.round(trends.thisWeek.totalMs / 60000);
