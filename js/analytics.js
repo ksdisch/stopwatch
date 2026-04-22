@@ -372,9 +372,81 @@ const Analytics = (() => {
     return { days, series, total, focusHours, ratePerHour };
   }
 
+  // Medication adherence (ANALYTICS-PLAN § H).
+  // Per-med dot row over the last N days against the user's declared
+  // frequency. 'as-needed' meds are skipped — no adherence concept.
+  //
+  // Reads localStorage directly (not the MedsManager singleton) so this is
+  // safe to call even before app.js finishes initializing meds.
+  //
+  // Score per day:
+  //   takenThatDay === 0                  → missed  (○)
+  //   0 < takenThatDay < expected         → partial (◐)
+  //   takenThatDay >= expected            → full    (●)
+  //
+  // Overall %: mean of per-day `min(1, taken / expected)` across the window.
+  async function getMedAdherence(days = 30) {
+    let state;
+    try {
+      state = JSON.parse(localStorage.getItem('wellness_meds'));
+    } catch (e) { state = null; }
+    if (!state || !Array.isArray(state.meds)) return { meds: [] };
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - (days - 1));
+    const windowStartMs = windowStart.getTime();
+    const todayEndMs = today.getTime() + 86400000;
+
+    const out = [];
+
+    state.meds.forEach(med => {
+      const freq = med.frequency || 'once-daily';
+      if (freq === 'as-needed') return;
+      const expected = freq === 'twice-daily' ? 2 : 1;
+      const doseLog = Array.isArray(med.doseLog) ? med.doseLog : [];
+
+      // Bucket each dose by its local-calendar day.
+      const byDay = {};
+      doseLog.forEach(d => {
+        if (!d || typeof d.takenAt !== 'number') return;
+        if (d.takenAt < windowStartMs || d.takenAt >= todayEndMs) return;
+        const stamp = new Date(d.takenAt); stamp.setHours(0, 0, 0, 0);
+        const key = localDateKey(stamp);
+        byDay[key] = (byDay[key] || 0) + 1;
+      });
+
+      const dots = [];
+      let scoreSum = 0;
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today); d.setDate(d.getDate() - i);
+        const key = localDateKey(d);
+        const taken = byDay[key] || 0;
+        let status;
+        if (taken === 0) status = 'missed';
+        else if (taken < expected) status = 'partial';
+        else status = 'full';
+        dots.push({ date: key, status, taken, expected });
+        scoreSum += Math.min(1, taken / expected);
+      }
+
+      out.push({
+        id: med.id || null,
+        name: med.name || 'Medication',
+        dose: med.dose || '',
+        frequency: freq,
+        expectedPerDay: expected,
+        adherencePct: Math.round((scoreSum / days) * 100),
+        dots,
+      });
+    });
+
+    return { meds: out };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
     getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
-    getDistractions, getBFRBTrend,
+    getDistractions, getBFRBTrend, getMedAdherence,
   };
 })();
