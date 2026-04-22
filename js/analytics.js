@@ -122,5 +122,84 @@ const Analytics = (() => {
     };
   }
 
-  return { getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap, getPersonalBests, getTrends };
+  // Local-date key (YYYY-MM-DD in the user's local timezone). The existing
+  // getDateStr uses UTC, which would mis-bucket evening sessions — fine for
+  // rough heatmap intensity, wrong for "did I focus today" streak math.
+  function localDateKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  // Focus streak: consecutive local-calendar days with at least one focus
+  // session (flow or pomodoro). Returns current streak, longest ever, and
+  // a 7-day "did I focus?" strip for the dashboard dots.
+  //
+  // "Current" has a 1-day grace: if today has no session yet but yesterday
+  // did, the streak is still alive (the user can still hit today before
+  // midnight). We expose `activeToday` so the UI can distinguish between
+  // "streak at 3 — locked in today" vs "streak at 3 — don't break it today."
+  async function getFocusStreak() {
+    const sessions = await History.getSessions();
+    const FOCUS_TYPES = new Set(['flow', 'pomodoro']);
+    const focusDays = new Set();
+    sessions.forEach(s => {
+      if (!FOCUS_TYPES.has(s.type)) return;
+      if (!s.date) return;
+      focusDays.add(localDateKey(new Date(s.date)));
+    });
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayKey = localDateKey(today);
+    const activeToday = focusDays.has(todayKey);
+
+    // Current streak: walk backward from today (or yesterday if today empty)
+    // while each day is a focus day.
+    let current = 0;
+    const cursor = new Date(today);
+    if (!activeToday) {
+      // 1-day grace: start from yesterday instead
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    while (focusDays.has(localDateKey(cursor))) {
+      current++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    // Longest streak: scan all focus days in chronological order.
+    const sortedDays = [...focusDays].sort();
+    let longest = 0;
+    let run = 0;
+    let prevKey = null;
+    for (const key of sortedDays) {
+      if (prevKey === null) { run = 1; }
+      else {
+        const diff = Math.round(
+          (new Date(key) - new Date(prevKey)) / 86400000
+        );
+        run = diff === 1 ? run + 1 : 1;
+      }
+      if (run > longest) longest = run;
+      prevKey = key;
+    }
+
+    // Recent 7 days, newest first. UI renders oldest-first as dots.
+    const recent7 = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      recent7.push({
+        date: localDateKey(d),
+        hasFocus: focusDays.has(localDateKey(d)),
+        isToday: i === 0,
+      });
+    }
+
+    return { current, longest, recent7, activeToday };
+  }
+
+  return {
+    getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
+    getPersonalBests, getTrends, getFocusStreak,
+  };
 })();

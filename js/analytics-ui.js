@@ -31,19 +31,76 @@ function fmtDuration(ms) {
   return `${mins}m`;
 }
 
+function renderFocusStreak(streak) {
+  const { current, longest, recent7, activeToday } = streak;
+
+  let heroNumber;
+  let heroLabel;
+  let sub;
+
+  if (current === 0) {
+    heroNumber = 'Start';
+    heroLabel = 'your streak today';
+    sub = longest > 0
+      ? `Longest: ${longest} day${longest === 1 ? '' : 's'}`
+      : 'Complete a Flow or Pomodoro session to begin';
+  } else {
+    heroNumber = String(current);
+    heroLabel = `day${current === 1 ? '' : 's'}`;
+    const longestLine = longest > current
+      ? ` · Longest: ${longest}`
+      : longest === current ? ' · Personal best!' : '';
+    sub = activeToday
+      ? `Locked in today ✓${longestLine}`
+      : `Don't break it — focus today to reach ${current + 1}${longestLine}`;
+  }
+
+  // Dots: render oldest → newest (left → right), which means reverse recent7
+  // (which is newest-first). Today is the rightmost dot, gets a ring style.
+  const dots = [...recent7].reverse().map(d => {
+    const cls = [
+      'analytics-streak-dot',
+      d.hasFocus ? 'analytics-streak-dot-on' : '',
+      d.isToday ? 'analytics-streak-dot-today' : '',
+    ].filter(Boolean).join(' ');
+    const dayLabel = d.isToday
+      ? 'Today'
+      : new Date(d.date).toLocaleDateString(undefined, { weekday: 'short' });
+    const status = d.hasFocus ? 'focused' : 'no focus session';
+    return `<div class="${cls}" title="${dayLabel} · ${status}" aria-label="${dayLabel}: ${status}"></div>`;
+  }).join('');
+
+  return `
+    <section class="analytics-streak-card" aria-label="Focus streak">
+      <div class="analytics-streak-header">FOCUS STREAK</div>
+      <div class="analytics-streak-hero">
+        <div class="analytics-streak-number">${heroNumber}</div>
+        <div class="analytics-streak-hero-label">${heroLabel}</div>
+      </div>
+      <div class="analytics-streak-sub">${sub}</div>
+      <div class="analytics-streak-dots" role="img" aria-label="Last 7 days of focus activity">${dots}</div>
+    </section>
+  `;
+}
+
 async function renderAnalytics() {
   const content = document.getElementById('analytics-content');
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
     Analytics.getActivityHeatmap(26),
+    Analytics.getFocusStreak(),
   ]);
 
   let html = '';
+
+  // Focus streak hero — flow + pomodoro days of a run. Ship-first analytic
+  // because it's the biggest behavioral nudge and needs no new data.
+  html += renderFocusStreak(streak);
 
   // Summary cards
   const thisWeekMin = Math.round(trends.thisWeek.totalMs / 60000);
