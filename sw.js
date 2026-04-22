@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v53-recovery';
+const CACHE_NAME = 'stopwatch-v54-focus-streak';
 const ASSETS = [
   './',
   './index.html',

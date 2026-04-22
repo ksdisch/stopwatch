@@ -3252,6 +3252,82 @@ body.focus-mode .global-bfrb-fab {
   margin-bottom: 16px;
 }
 
+/* Focus streak hero card (top of Analytics dashboard) */
+.analytics-streak-card {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  padding: 18px 20px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-streak-header {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary, var(--text));
+  opacity: 0.6;
+  font-weight: 600;
+}
+
+.analytics-streak-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.analytics-streak-number {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.analytics-streak-hero-label {
+  font-size: 1rem;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.analytics-streak-sub {
+  font-size: 0.82rem;
+  color: var(--text);
+  opacity: 0.72;
+}
+
+.analytics-streak-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 6px;
+}
+
+.analytics-streak-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--btn-border);
+  flex: 0 0 auto;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.analytics-streak-dot-on {
+  background: var(--green);
+}
+
+.analytics-streak-dot-today {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 45%, transparent);
+  transform: scale(1.12);
+}
+
+.analytics-streak-dot-today.analytics-streak-dot-on {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 70%, transparent);
+}
+
 .analytics-section-title {
   font-size: 0.75rem;
   color: var(--text-secondary);
