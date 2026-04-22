@@ -1,4 +1,9 @@
 // ── Analytics Dashboard UI ──
+
+// Selected BFRB-trend window in days. Module-level so it survives re-renders
+// when the user toggles 14 / 30 / 90.
+let bfrbTrendDays = 30;
+
 function initAnalyticsPanel() {
   const toggleBtn = document.getElementById('analytics-toggle');
   const panel = document.getElementById('analytics-panel');
@@ -13,6 +18,20 @@ function initAnalyticsPanel() {
   closeBtn?.addEventListener('click', () => {
     panel.classList.add('hidden');
   });
+
+  // Event delegation for the BFRB-trend window toggle. Content innerHTML is
+  // replaced on re-render but the #analytics-content element itself stays.
+  const content = document.getElementById('analytics-content');
+  if (content) {
+    content.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-bfrb-window]');
+      if (!btn) return;
+      const next = parseInt(btn.dataset.bfrbWindow, 10);
+      if (!Number.isFinite(next) || next === bfrbTrendDays) return;
+      bfrbTrendDays = next;
+      renderAnalytics();
+    });
+  }
 }
 
 const MODE_COLORS = {
@@ -167,6 +186,110 @@ function renderDistractions(dist) {
   `;
 }
 
+function renderBFRBTrend(trend, selectedDays) {
+  const { days, series, total, focusHours, ratePerHour } = trend;
+
+  const windows = [14, 30, 90];
+  const toggle = windows.map(d => {
+    const cls = d === selectedDays
+      ? 'analytics-bfrb-window analytics-bfrb-window-active'
+      : 'analytics-bfrb-window';
+    return `<button class="${cls}" data-bfrb-window="${d}">${d}d</button>`;
+  }).join('');
+
+  // SVG line-with-area chart. The chart always renders (even empty) so the
+  // window toggle doesn't jump around as the user flips between windows.
+  const W = 320, H = 88;
+  const PAD_L = 4, PAD_R = 4, PAD_T = 6, PAD_B = 14;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const maxCount = Math.max(1, ...series.map(d => d.count));
+
+  let chartBody = '';
+  if (series.length > 0) {
+    const points = series.map((d, i) => {
+      const x = PAD_L + (series.length === 1 ? innerW / 2 : (i * innerW) / (series.length - 1));
+      const y = PAD_T + innerH - (d.count / maxCount) * innerH;
+      return { x, y, count: d.count, date: d.date };
+    });
+    const poly = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const areaPoly = `${PAD_L},${PAD_T + innerH} ${poly} ${PAD_L + innerW},${PAD_T + innerH}`;
+    const dots = points
+      .filter(p => p.count > 0)
+      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#ff9f0a"><title>${p.date}: ${p.count}</title></circle>`)
+      .join('');
+    chartBody = `
+      <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
+      <polyline points="${poly}" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/>
+      ${dots}
+    `;
+  }
+
+  // Axis: oldest date on the left, today on the right
+  const firstLabel = series[0]?.date
+    ? new Date(series[0].date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : '';
+  const lastLabel = 'Today';
+
+  // Summary numbers
+  const rateFmt = ratePerHour > 0 ? ratePerHour.toFixed(2) : '—';
+  const hoursFmt = focusHours > 0
+    ? (focusHours >= 10 ? focusHours.toFixed(0) : focusHours.toFixed(1))
+    : '0';
+
+  // Trend direction: compare first half of window vs second half (raw counts).
+  // Enough signal only if the user has ≥ 4 catches across the window.
+  let trendNote = '';
+  if (total >= 4) {
+    const mid = Math.floor(series.length / 2);
+    const firstHalf = series.slice(0, mid).reduce((s, d) => s + d.count, 0);
+    const secondHalf = series.slice(mid).reduce((s, d) => s + d.count, 0);
+    if (firstHalf > 0) {
+      const pctChange = Math.round(((secondHalf - firstHalf) / firstHalf) * 100);
+      if (pctChange <= -15) trendNote = `↓ ${Math.abs(pctChange)}% vs first half — catching less`;
+      else if (pctChange >= 15) trendNote = `↑ ${pctChange}% vs first half — catching more`;
+      else trendNote = 'Roughly steady vs first half';
+    }
+  }
+
+  // Empty state keeps the card shape intact but swaps the chart body.
+  const emptyOverlay = total === 0
+    ? `<div class="analytics-bfrb-empty">No BFRB catches in the last ${days} day${days === 1 ? '' : 's'}.</div>`
+    : '';
+
+  return `
+    <section class="analytics-bfrb-card" aria-label="BFRB trend">
+      <div class="analytics-bfrb-header-row">
+        <div class="analytics-bfrb-header">BFRB TREND</div>
+        <div class="analytics-bfrb-toggle" role="radiogroup" aria-label="Window">${toggle}</div>
+      </div>
+      <div class="analytics-bfrb-numbers">
+        <div class="analytics-bfrb-primary">
+          <span class="analytics-bfrb-primary-value">${total}</span>
+          <span class="analytics-bfrb-primary-label">catches · last ${days}d</span>
+        </div>
+        <div class="analytics-bfrb-secondary">
+          <span class="analytics-bfrb-secondary-value">${rateFmt}</span>
+          <span class="analytics-bfrb-secondary-label">per focus-hour</span>
+        </div>
+      </div>
+      <div class="analytics-bfrb-chart-wrap">
+        <svg class="analytics-bfrb-chart" viewBox="0 0 ${W} ${H}"
+             preserveAspectRatio="none" width="100%" height="${H}">${chartBody}</svg>
+        ${emptyOverlay}
+      </div>
+      <div class="analytics-bfrb-axis">
+        <span>${firstLabel}</span>
+        <span>${lastLabel}</span>
+      </div>
+      <div class="analytics-bfrb-foot">
+        <span>${hoursFmt} focus hour${hoursFmt === '1' ? '' : 's'} in window</span>
+        ${trendNote ? `<span class="analytics-bfrb-trend-note">${trendNote}</span>` : ''}
+      </div>
+    </section>
+  `;
+}
+
 function renderFlowCompletion(comp) {
   const { total, completed, endedEarly, completionRate, avgDurationPct } = comp;
 
@@ -237,7 +360,7 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp, distractions] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
@@ -245,6 +368,7 @@ async function renderAnalytics() {
     Analytics.getFocusStreak(),
     Analytics.getFlowCompletion(),
     Analytics.getDistractions(),
+    Analytics.getBFRBTrend(bfrbTrendDays),
   ]);
 
   let html = '';
@@ -256,6 +380,11 @@ async function renderAnalytics() {
   // Flow completion rate — surfaces the new end-early signal alongside the
   // avg % of planned duration. Hidden when the user has zero Flow sessions.
   html += renderFlowCompletion(flowComp);
+
+  // BFRB trend — headline ADHD-adjacent analytic. Line chart of daily
+  // catches with 14 / 30 / 90 day window toggle and a catches-per-focus-hour
+  // secondary metric.
+  html += renderBFRBTrend(bfrbTrend, bfrbTrendDays);
 
   // Distraction leaderboard + hour-of-day heatmap. Hidden if no distractions
   // have ever been logged.

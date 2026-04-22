@@ -294,9 +294,87 @@ const Analytics = (() => {
     };
   }
 
+  // BFRB trend (ANALYTICS-PLAN § A). The headline user concern: is the
+  // competing-response routine helping them catch fewer over time?
+  //
+  // Merges four sources so every catch is represented exactly once:
+  //   - session history `bfrbs[]` on flow and pomodoro sessions (completed catches)
+  //   - localStorage `flow_bfrbs`     (in-flight catches for an active Flow block)
+  //   - localStorage `pomodoro_bfrbs` (in-flight catches for an active Pomo cycle)
+  //   - localStorage `bfrbs_global`   (catches outside any focus session)
+  //
+  // Safety: these stores never overlap at the same moment. When a focus
+  // session ends, its in-flight catches move into the session record and the
+  // localStorage slot is cleared. bfrbs_global is only written for catches
+  // logged when neither Flow nor Pomodoro is running. So a plain union is
+  // correct — no dedup needed.
+  //
+  // Returns:
+  //   days: the requested window
+  //   series[]: one entry per day (oldest → newest) with { date, count }
+  //   total: sum of counts in the window
+  //   focusHours: total focus time (Flow + Pomodoro) in the window
+  //   ratePerHour: total / focusHours (0 when focusHours === 0)
+  async function getBFRBTrend(days = 30) {
+    const sessions = await History.getSessions();
+
+    // Collect every BFRB timestamp from all four stores.
+    const stamps = [];
+    sessions.forEach(s => {
+      if (!Array.isArray(s.bfrbs)) return;
+      s.bfrbs.forEach(b => {
+        if (typeof b.timestamp === 'number') stamps.push(b.timestamp);
+      });
+    });
+    ['flow_bfrbs', 'pomodoro_bfrbs', 'bfrbs_global'].forEach(key => {
+      try {
+        const arr = JSON.parse(localStorage.getItem(key)) || [];
+        if (Array.isArray(arr)) {
+          arr.forEach(b => {
+            if (b && typeof b.timestamp === 'number') stamps.push(b.timestamp);
+          });
+        }
+      } catch (e) { /* malformed store — skip */ }
+    });
+
+    // Build per-day buckets, oldest first, ending today.
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const windowStartMs = new Date(today).setDate(today.getDate() - (days - 1));
+    const series = [];
+    const dayCounts = {};
+    stamps.forEach(t => {
+      if (t < windowStartMs) return;
+      if (t >= today.getTime() + 86400000) return; // future stamps are skipped
+      const d = new Date(t); d.setHours(0, 0, 0, 0);
+      const key = localDateKey(d);
+      dayCounts[key] = (dayCounts[key] || 0) + 1;
+    });
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const key = localDateKey(d);
+      series.push({ date: key, count: dayCounts[key] || 0 });
+    }
+
+    // Focus hours in the window: sum of Flow + Pomodoro session durations.
+    let focusMs = 0;
+    const windowEndMs = today.getTime() + 86400000;
+    sessions.forEach(s => {
+      if (s.type !== 'flow' && s.type !== 'pomodoro') return;
+      const t = new Date(s.date).getTime();
+      if (t < windowStartMs || t >= windowEndMs) return;
+      focusMs += s.duration || 0;
+    });
+    const focusHours = focusMs / 3600000;
+
+    const total = series.reduce((sum, d) => sum + d.count, 0);
+    const ratePerHour = focusHours > 0 ? total / focusHours : 0;
+
+    return { days, series, total, focusHours, ratePerHour };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
     getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
-    getDistractions,
+    getDistractions, getBFRBTrend,
   };
 })();
