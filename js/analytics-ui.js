@@ -83,6 +83,90 @@ function renderFocusStreak(streak) {
   `;
 }
 
+const DISTRACTION_LABELS = {
+  phone: 'Phone',
+  email: 'Email',
+  interrupted: 'Interrupted',
+  self: 'Self',
+  other: 'Other',
+};
+
+function hourLabel(h) {
+  if (h === 0) return '12 AM';
+  if (h === 12) return '12 PM';
+  if (h < 12) return h + ' AM';
+  return (h - 12) + ' PM';
+}
+
+function renderDistractions(dist) {
+  const { total, top5, hourly } = dist;
+  if (total === 0) return '';
+
+  const maxCategory = top5[0]?.total || 1;
+  const maxHour = Math.max(1, ...hourly);
+
+  const leaderboard = top5.map(row => {
+    const flowPct = (row.flow / maxCategory) * 100;
+    const pomoPct = (row.pomodoro / maxCategory) * 100;
+    const modeSubtext = row.flow > 0 && row.pomodoro > 0
+      ? ` <span class="analytics-distraction-split">${row.flow}f · ${row.pomodoro}p</span>`
+      : '';
+    const label = DISTRACTION_LABELS[row.category] || row.category;
+    return `
+      <div class="analytics-distraction-row">
+        <div class="analytics-distraction-label">${label}</div>
+        <div class="analytics-distraction-bar">
+          <div class="analytics-distraction-bar-flow" style="width:${flowPct.toFixed(1)}%"></div>
+          <div class="analytics-distraction-bar-pomo" style="width:${pomoPct.toFixed(1)}%"></div>
+        </div>
+        <div class="analytics-distraction-count">${row.total}${modeSubtext}</div>
+      </div>
+    `;
+  }).join('');
+
+  // 24 cells; each opacity scales with count. Same red as Pomodoro but a bit
+  // softer so the strip reads as "when pressure is highest" not "alarm".
+  const hourCells = hourly.map((count, h) => {
+    const intensity = count > 0 ? Math.max(0.18, count / maxHour) : 0;
+    const bg = intensity > 0
+      ? `rgba(255, 107, 107, ${intensity.toFixed(2)})`
+      : 'var(--btn-border)';
+    return `<div class="analytics-distraction-hour" style="background:${bg}" title="${hourLabel(h)} — ${count}"></div>`;
+  }).join('');
+
+  // Find peak hour (for a short insight line)
+  let peakHour = -1, peakCount = 0;
+  hourly.forEach((c, h) => { if (c > peakCount) { peakCount = c; peakHour = h; } });
+  const peakLine = peakHour >= 0 && peakCount > 0
+    ? `Peak: ${hourLabel(peakHour)} (${peakCount})`
+    : '';
+
+  const hasFlow = top5.some(r => r.flow > 0);
+  const hasPomo = top5.some(r => r.pomodoro > 0);
+  const legend = hasFlow && hasPomo
+    ? `<div class="analytics-distraction-legend">
+         <span><span class="analytics-distraction-legend-dot is-flow"></span>Flow</span>
+         <span><span class="analytics-distraction-legend-dot is-pomo"></span>Pomodoro</span>
+       </div>`
+    : '';
+
+  return `
+    <section class="analytics-distraction-card" aria-label="Distraction patterns">
+      <div class="analytics-distraction-header">DISTRACTIONS</div>
+      <div class="analytics-distraction-subtitle">${total} logged across Flow + Pomodoro</div>
+      <div class="analytics-distraction-leaderboard">${leaderboard}</div>
+      ${legend}
+      <div class="analytics-distraction-hour-title">BY HOUR OF DAY</div>
+      <div class="analytics-distraction-hour-strip" role="img"
+           aria-label="Distraction count by hour of day, 12 AM to 11 PM">${hourCells}</div>
+      <div class="analytics-distraction-hour-axis">
+        <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>11p</span>
+      </div>
+      ${peakLine ? `<div class="analytics-distraction-peak">${peakLine}</div>` : ''}
+    </section>
+  `;
+}
+
 function renderFlowCompletion(comp) {
   const { total, completed, endedEarly, completionRate, avgDurationPct } = comp;
 
@@ -153,13 +237,14 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp, distractions] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
     Analytics.getActivityHeatmap(26),
     Analytics.getFocusStreak(),
     Analytics.getFlowCompletion(),
+    Analytics.getDistractions(),
   ]);
 
   let html = '';
@@ -171,6 +256,10 @@ async function renderAnalytics() {
   // Flow completion rate — surfaces the new end-early signal alongside the
   // avg % of planned duration. Hidden when the user has zero Flow sessions.
   html += renderFlowCompletion(flowComp);
+
+  // Distraction leaderboard + hour-of-day heatmap. Hidden if no distractions
+  // have ever been logged.
+  html += renderDistractions(distractions);
 
   // Summary cards
   const thisWeekMin = Math.round(trends.thisWeek.totalMs / 60000);
