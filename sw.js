@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v59-bfrb-context';
+const CACHE_NAME = 'stopwatch-v60-pomodoro-depth';
 const ASSETS = [
   './',
   './index.html',
