@@ -61,6 +61,7 @@ MedsUI.init();
 ExerciseUI.init();
 MindfulUI.init();
 WellnessCookingUI.init();
+RecoveryUI.init();
 
 // ── Service worker ──
 if ('serviceWorker' in navigator) {
