@@ -236,8 +236,67 @@ const Analytics = (() => {
     };
   }
 
+  // Distraction patterns (ANALYTICS-PLAN § E + F).
+  // Collects every distraction entry across Pomodoro + Flow sessions, then
+  // produces:
+  //   - top5 categories, split by source mode (flow vs pomodoro)
+  //   - hourly[0..23] counts (local time)
+  //   - total across all time
+  //
+  // Time window is all-time. Distraction counts per session are low, so a
+  // rolling window would too often be empty. If Analytics grows a
+  // time-selector later, this function can accept a `days` arg.
+  async function getDistractions() {
+    const sessions = await History.getSessions();
+    const entries = [];
+    sessions.forEach(s => {
+      if (!Array.isArray(s.distractions)) return;
+      if (s.type !== 'flow' && s.type !== 'pomodoro') return;
+      s.distractions.forEach(d => {
+        entries.push({
+          category: d.category || 'other',
+          timestamp: d.timestamp,
+          mode: s.type,
+        });
+      });
+    });
+
+    // Top 5 categories, with per-mode split so the UI can show a stacked bar.
+    const byCategory = {};
+    entries.forEach(e => {
+      const slot = byCategory[e.category] || { flow: 0, pomodoro: 0 };
+      slot[e.mode] = (slot[e.mode] || 0) + 1;
+      byCategory[e.category] = slot;
+    });
+    const top5 = Object.entries(byCategory)
+      .map(([category, counts]) => ({
+        category,
+        flow: counts.flow || 0,
+        pomodoro: counts.pomodoro || 0,
+        total: (counts.flow || 0) + (counts.pomodoro || 0),
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    // Hour-of-day histogram (local time). Entries without a timestamp are
+    // skipped — they predate the log schema and can't be bucketed.
+    const hourly = new Array(24).fill(0);
+    entries.forEach(e => {
+      if (typeof e.timestamp !== 'number') return;
+      const h = new Date(e.timestamp).getHours();
+      hourly[h]++;
+    });
+
+    return {
+      total: entries.length,
+      top5,
+      hourly,
+    };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
     getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
+    getDistractions,
   };
 })();

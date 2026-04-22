@@ -3405,6 +3405,141 @@ body.focus-mode .global-bfrb-fab {
   opacity: 0.6;
 }
 
+/* Distraction patterns card (leaderboard + hour-of-day heat strip) */
+.analytics-distraction-card {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-distraction-header {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary, var(--text));
+  opacity: 0.6;
+  font-weight: 600;
+}
+
+.analytics-distraction-subtitle {
+  font-size: 0.78rem;
+  color: var(--text);
+  opacity: 0.68;
+  margin-bottom: 2px;
+}
+
+.analytics-distraction-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analytics-distraction-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.analytics-distraction-label {
+  opacity: 0.82;
+}
+
+.analytics-distraction-bar {
+  height: 10px;
+  background: var(--btn-border);
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+}
+
+.analytics-distraction-bar-flow {
+  height: 100%;
+  background: #007aff;
+}
+
+.analytics-distraction-bar-pomo {
+  height: 100%;
+  background: #ff6b6b;
+}
+
+.analytics-distraction-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+.analytics-distraction-split {
+  opacity: 0.55;
+  font-size: 0.72rem;
+  margin-left: 4px;
+}
+
+.analytics-distraction-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.analytics-distraction-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.analytics-distraction-legend-dot.is-flow { background: #007aff; }
+.analytics-distraction-legend-dot.is-pomo { background: #ff6b6b; }
+
+.analytics-distraction-hour-title {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  opacity: 0.55;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.analytics-distraction-hour-strip {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 2px;
+  height: 22px;
+}
+
+.analytics-distraction-hour {
+  border-radius: 2px;
+  min-width: 0;
+}
+
+.analytics-distraction-hour-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  color: var(--text);
+  opacity: 0.55;
+  padding: 0 2px;
+  margin-top: -2px;
+}
+
+.analytics-distraction-peak {
+  font-size: 0.76rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
 .analytics-section-title {
   font-size: 0.75rem;
   color: var(--text-secondary);
