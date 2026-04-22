@@ -119,8 +119,9 @@ function initFlowUI() {
   // Distraction log
   initFlowDistractionLog();
 
-  // BFRB tally
-  initFlowBFRBLog();
+  // BFRB tally — now handled by the global floating button (js/global-bfrb.js).
+  // The button writes into flow_bfrbs when Flow is the active running session,
+  // so saveFlowSessionToHistory still captures per-session catches below.
 
   // Summary card buttons
   document.getElementById('flow-start-recovery').addEventListener('click', () => {
@@ -305,7 +306,6 @@ function updateFlowUI() {
     const goalDisplay = document.getElementById('flow-goal-display');
     goalDisplay.textContent = Flow.getGoal() || '';
     updateFlowDistractionBtnVisibility();
-    updateFlowBFRBBtnVisibility();
   }
 
   // Format remaining time
@@ -483,41 +483,10 @@ function updateFlowDistractionBtnVisibility() {
   }
 }
 
-function initFlowBFRBLog() {
-  const btn = document.getElementById('flow-bfrb-btn');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    const items = loadFlowBFRBs();
-    items.push({ timestamp: Date.now(), phase: Flow.getPhase() });
-    saveFlowBFRBs(items);
-    if (navigator.vibrate) navigator.vibrate(20);
-    // Kick off (or reset) the 1-min competing-response recovery countdown.
-    // The helper renders the countdown text itself; once it finishes, the
-    // button reverts to its base label (BFRB ×N) via the callback.
-    BFRBRecovery.start('flow-bfrb-btn', () => flowBFRBLabel());
-  });
-}
-
-function flowBFRBLabel() {
-  const count = loadFlowBFRBs().length;
-  return count > 0 ? `BFRB ×${count}` : 'BFRB';
-}
-
-function renderFlowBFRBBtn() {
-  const btn = document.getElementById('flow-bfrb-btn');
-  if (!btn) return;
-  if (BFRBRecovery.isActive('flow-bfrb-btn')) return;
-  btn.textContent = flowBFRBLabel();
-}
-
-function updateFlowBFRBBtnVisibility() {
-  const btn = document.getElementById('flow-bfrb-btn');
-  if (!btn) return;
-  const show = Flow.getStatus() === 'running';
-  btn.classList.toggle('hidden', !show);
-  if (show) renderFlowBFRBBtn();
-  else BFRBRecovery.cancel('flow-bfrb-btn');
-}
+// Per-mode BFRB button and init removed in favor of the global floating button
+// (js/global-bfrb.js). The loadFlowBFRBs/saveFlowBFRBs helpers above are still
+// used by saveFlowSessionToHistory and renderFlowSummary, and by the global
+// button which writes into flow_bfrbs when Flow is the active session.
 
 function renderFlowSummary() {
   const body = document.getElementById('flow-summary-body');

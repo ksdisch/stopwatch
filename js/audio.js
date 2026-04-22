@@ -37,7 +37,17 @@ const SFX = (() => {
     return ctx;
   }
 
-  function beep(freq, duration, type = 'sine') {
+  // Per-sound volume tuning (0.0–1.0). Global sounds default to 0.15
+  // (unchanged behavior). BFRB recovery-end chime is loud and separately
+  // adjustable by the user since they explicitly want to hear it over focus work.
+  const BFRB_VOLUME_KEY = 'bfrb_volume';
+  const BFRB_VOLUME_DEFAULT = 0.55;
+  let bfrbVolume = (() => {
+    const raw = parseFloat(localStorage.getItem(BFRB_VOLUME_KEY));
+    return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : BFRB_VOLUME_DEFAULT;
+  })();
+
+  function beep(freq, duration, type = 'sine', volume = 0.15) {
     if (muted) return;
     try {
       const c = getCtx();
@@ -45,7 +55,7 @@ const SFX = (() => {
       const gain = c.createGain();
       osc.type = type;
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.15, c.currentTime);
+      gain.gain.setValueAtTime(volume, c.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + duration / 1000);
       osc.connect(gain);
       gain.connect(c.destination);
@@ -54,14 +64,14 @@ const SFX = (() => {
     } catch (e) { /* audio not available */ }
   }
 
-  function playSequence(name) {
+  function playSequence(name, volume) {
     const seq = PROFILES[currentProfile]?.[name] || PROFILES.classic[name];
     if (!seq) return;
     seq.forEach(s => {
       if (s.delay) {
-        setTimeout(() => beep(s.freq, s.dur, s.type || 'sine'), s.delay);
+        setTimeout(() => beep(s.freq, s.dur, s.type || 'sine', volume), s.delay);
       } else {
-        beep(s.freq, s.dur, s.type || 'sine');
+        beep(s.freq, s.dur, s.type || 'sine', volume);
       }
     });
   }
@@ -72,6 +82,8 @@ const SFX = (() => {
   function playReset() { playSequence('reset'); }
   function playAlarm() { playSequence('alarm'); }
   function playPhaseChange() { playSequence('phaseChange'); }
+  // Louder, user-adjustable chime specifically for end of BFRB competing-response routine.
+  function playBFRBEnd() { playSequence('phaseChange', bfrbVolume); }
 
   function isMuted() { return muted; }
 
@@ -92,5 +104,16 @@ const SFX = (() => {
     return Object.keys(PROFILES).map(id => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1) }));
   }
 
-  return { playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, isMuted, toggleMute, getProfile, setProfile, getProfiles };
+  function getBFRBVolume() { return bfrbVolume; }
+  function setBFRBVolume(v) {
+    const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+    bfrbVolume = clamped;
+    localStorage.setItem(BFRB_VOLUME_KEY, String(clamped));
+  }
+
+  return {
+    playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, playBFRBEnd,
+    isMuted, toggleMute, getProfile, setProfile, getProfiles,
+    getBFRBVolume, setBFRBVolume,
+  };
 })();
