@@ -622,6 +622,250 @@ describe('Analytics.getPhaseRestarts', () => {
   });
 });
 
+// ── Pre-existing analytics — getTotalTimeByMode ────────────────────────
+
+describe('Analytics.getTotalTimeByMode', () => {
+  it('returns an empty object with no sessions', async () => {
+    setSessions([]);
+    const r = await Analytics.getTotalTimeByMode();
+    assertEqual(Object.keys(r).length, 0);
+  });
+
+  it('sums duration per mode across sessions', async () => {
+    setSessions([
+      { type: 'stopwatch', date: dateStr(0), duration: 60000 },
+      { type: 'stopwatch', date: dateStr(1), duration: 120000 },
+      { type: 'timer', date: dateStr(0), duration: 300000 },
+      { type: 'pomodoro', date: dateStr(0), duration: 1500000 },
+    ]);
+    const r = await Analytics.getTotalTimeByMode();
+    assertEqual(r.stopwatch, 180000);
+    assertEqual(r.timer, 300000);
+    assertEqual(r.pomodoro, 1500000);
+  });
+
+  it('defaults missing type to "stopwatch"', async () => {
+    setSessions([
+      { date: dateStr(0), duration: 5000 },
+      { type: 'stopwatch', date: dateStr(1), duration: 3000 },
+    ]);
+    const r = await Analytics.getTotalTimeByMode();
+    assertEqual(r.stopwatch, 8000);
+  });
+
+  it('handles sessions with 0 or missing duration', async () => {
+    setSessions([
+      { type: 'flow', date: dateStr(0), duration: 0 },
+      { type: 'flow', date: dateStr(1) }, // no duration
+      { type: 'flow', date: dateStr(2), duration: 5400000 },
+    ]);
+    const r = await Analytics.getTotalTimeByMode();
+    assertEqual(r.flow, 5400000);
+  });
+});
+
+// ── Pre-existing analytics — getWeeklyTotals ───────────────────────────
+
+describe('Analytics.getWeeklyTotals', () => {
+  it('returns requested number of week buckets, newest last', async () => {
+    setSessions([]);
+    const r = await Analytics.getWeeklyTotals(8);
+    assertEqual(r.length, 8);
+    // Every bucket should have a label and a totals object
+    assertEqual(typeof r[0].label, 'string');
+    assertEqual(typeof r[0].totals, 'object');
+    assertEqual(Object.keys(r[7].totals).length, 0);
+  });
+
+  it('supports custom weekCount', async () => {
+    setSessions([]);
+    const r4 = await Analytics.getWeeklyTotals(4);
+    const r12 = await Analytics.getWeeklyTotals(12);
+    assertEqual(r4.length, 4);
+    assertEqual(r12.length, 12);
+  });
+
+  it('puts a today-dated session into the most-recent week (index n-1)', async () => {
+    setSessions([
+      { type: 'flow', date: dateStr(0, 12), duration: 5400000 },
+    ]);
+    const r = await Analytics.getWeeklyTotals(8);
+    const currentWeek = r[r.length - 1];
+    assertEqual(currentWeek.totals.flow, 5400000);
+    // Older weeks are empty
+    assertEqual(Object.keys(r[0].totals).length, 0);
+  });
+
+  it('a session from ~8 weeks ago is excluded from an 8-week window', async () => {
+    // 60 days ago is well outside an 8-week window (56 days)
+    setSessions([
+      { type: 'flow', date: dateStr(60, 12), duration: 5400000 },
+    ]);
+    const r = await Analytics.getWeeklyTotals(8);
+    const totalMs = r.reduce((sum, week) => {
+      return sum + Object.values(week.totals).reduce((a, b) => a + b, 0);
+    }, 0);
+    assertEqual(totalMs, 0);
+  });
+});
+
+// ── Pre-existing analytics — getActivityHeatmap ────────────────────────
+
+describe('Analytics.getActivityHeatmap', () => {
+  it('returns weeks*7 day buckets in chronological order', async () => {
+    setSessions([]);
+    const r = await Analytics.getActivityHeatmap(26);
+    assertEqual(r.length, 26 * 7);
+    // Each entry has the expected shape
+    assertEqual(typeof r[0].date, 'string');
+    assertEqual(typeof r[0].dayOfWeek, 'number');
+    assertEqual(r[0].count, 0);
+    assertEqual(r[0].totalMs, 0);
+  });
+
+  it('supports custom weekCount', async () => {
+    setSessions([]);
+    const r = await Analytics.getActivityHeatmap(4);
+    assertEqual(r.length, 4 * 7);
+  });
+
+  it('buckets a today-dated session into the last entry', async () => {
+    setSessions([
+      { type: 'flow', date: dateStr(0, 12), duration: 5400000 },
+    ]);
+    const r = await Analytics.getActivityHeatmap(4);
+    const last = r[r.length - 1];
+    // getActivityHeatmap uses UTC-based getDateStr; use midday (hour 12) so
+    // the UTC and local day agree in any typical timezone.
+    assertEqual(last.count, 1);
+    assertEqual(last.totalMs, 5400000);
+  });
+
+  it('aggregates multiple sessions on the same day', async () => {
+    setSessions([
+      { type: 'flow',  date: dateStr(0, 10), duration: 5400000 },
+      { type: 'flow',  date: dateStr(0, 14), duration: 5400000 },
+      { type: 'timer', date: dateStr(0, 16), duration: 300000 },
+    ]);
+    const r = await Analytics.getActivityHeatmap(4);
+    const last = r[r.length - 1];
+    assertEqual(last.count, 3);
+    assertEqual(last.totalMs, 5400000 + 5400000 + 300000);
+  });
+
+  it('dayOfWeek is an integer in [0, 6]', async () => {
+    setSessions([]);
+    const r = await Analytics.getActivityHeatmap(4);
+    assert(r.every(d => Number.isInteger(d.dayOfWeek) && d.dayOfWeek >= 0 && d.dayOfWeek <= 6));
+  });
+});
+
+// ── Pre-existing analytics — getPersonalBests ──────────────────────────
+
+describe('Analytics.getPersonalBests', () => {
+  it('returns null when no sessions exist', async () => {
+    setSessions([]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r, null);
+  });
+
+  it('totalSessions + totalTimeMs reflect every session', async () => {
+    setSessions([
+      { type: 'stopwatch', date: dateStr(0), duration: 1000 },
+      { type: 'flow',      date: dateStr(1), duration: 5400000 },
+      { type: 'pomodoro',  date: dateStr(2), duration: 1500000 },
+    ]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r.totalSessions, 3);
+    assertEqual(r.totalTimeMs, 1000 + 5400000 + 1500000);
+  });
+
+  it('longestSession points at the session with max duration', async () => {
+    setSessions([
+      { id: 1, type: 'stopwatch', date: dateStr(0), duration: 1000 },
+      { id: 2, type: 'flow',      date: dateStr(1), duration: 7200000 },  // 2 hr
+      { id: 3, type: 'flow',      date: dateStr(2), duration: 5400000 },  // 1.5 hr
+    ]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r.longestSession.id, 2);
+    assertEqual(r.longestSession.duration, 7200000);
+  });
+
+  it('mostLaps is null when no session has a non-empty laps[]', async () => {
+    setSessions([
+      { id: 1, type: 'stopwatch', date: dateStr(0), duration: 1000, laps: [] },
+      { id: 2, type: 'flow', date: dateStr(1), duration: 5400000 },
+    ]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r.mostLaps, null);
+  });
+
+  it('mostLaps points at the session with the largest laps array', async () => {
+    setSessions([
+      { id: 1, type: 'stopwatch', date: dateStr(0), duration: 5000, laps: [{}, {}] },
+      { id: 2, type: 'stopwatch', date: dateStr(1), duration: 9000, laps: [{}, {}, {}, {}, {}] },
+      { id: 3, type: 'stopwatch', date: dateStr(2), duration: 3000, laps: [{}] },
+    ]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r.mostLaps.id, 2);
+    assertEqual(r.mostLaps.laps.length, 5);
+  });
+
+  it('handles sessions with missing duration gracefully', async () => {
+    setSessions([
+      { id: 1, type: 'flow', date: dateStr(0) },        // no duration
+      { id: 2, type: 'flow', date: dateStr(1), duration: 3600000 },
+    ]);
+    const r = await Analytics.getPersonalBests();
+    assertEqual(r.totalTimeMs, 3600000);
+    assertEqual(r.longestSession.id, 2);
+  });
+});
+
+// ── Pre-existing analytics — getTrends ─────────────────────────────────
+
+describe('Analytics.getTrends', () => {
+  it('returns zeros with no sessions', async () => {
+    setSessions([]);
+    const r = await Analytics.getTrends();
+    assertEqual(r.thisWeek.totalMs, 0);
+    assertEqual(r.thisWeek.count, 0);
+    assertEqual(r.lastWeek.totalMs, 0);
+    assertEqual(r.lastWeek.count, 0);
+  });
+
+  it('a session dated now counts toward thisWeek', async () => {
+    setSessions([
+      { type: 'flow', date: new Date().toISOString(), duration: 5400000 },
+    ]);
+    const r = await Analytics.getTrends();
+    assertEqual(r.thisWeek.count, 1);
+    assertEqual(r.thisWeek.totalMs, 5400000);
+  });
+
+  it('a session 30+ days ago falls outside both windows', async () => {
+    // Sunday-anchored weeks: 30 days back is 2+ weeks ago guaranteed
+    setSessions([
+      { type: 'flow', date: dateStr(30), duration: 5400000 },
+    ]);
+    const r = await Analytics.getTrends();
+    assertEqual(r.thisWeek.count, 0);
+    assertEqual(r.lastWeek.count, 0);
+  });
+
+  it('sums across multiple current-week sessions', async () => {
+    const now = Date.now();
+    setSessions([
+      { type: 'flow',  date: new Date(now).toISOString(),             duration: 5400000 },
+      { type: 'flow',  date: new Date(now - 1 * 3600000).toISOString(), duration: 7200000 },
+      { type: 'timer', date: new Date(now - 2 * 3600000).toISOString(), duration: 300000 },
+    ]);
+    const r = await Analytics.getTrends();
+    assertEqual(r.thisWeek.count, 3);
+    assertEqual(r.thisWeek.totalMs, 5400000 + 7200000 + 300000);
+  });
+});
+
 // ── Cleanup ────────────────────────────────────────────────────────────
 
 describe('Analytics tests — cleanup', () => {
