@@ -25,7 +25,11 @@
   <script src="../js/stopwatch.js"></script>
   <script src="../js/timer.js"></script>
   <script src="../js/pomodoro.js"></script>
+  <script src="../js/interval.js"></script>
   <script src="../js/meds.js"></script>
+  <!-- Analytics depends on History.getSessions() + localStorage. Tests
+       stub window.History per-case; no history.js load required here. -->
+  <script src="../js/analytics.js"></script>
 
   <!-- Test framework -->
   <script src="test-runner.js"></script>
@@ -34,7 +38,9 @@
   <script src="stopwatch.test.js"></script>
   <script src="timer.test.js"></script>
   <script src="pomodoro.test.js"></script>
+  <script src="interval.test.js"></script>
   <script src="meds.test.js"></script>
+  <script src="analytics.test.js"></script>
 
   <!-- Report -->
   <script>reportResults();</script>
