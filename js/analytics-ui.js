@@ -34,6 +34,24 @@ function initAnalyticsPanel() {
   }
 }
 
+// Shared card chrome. Every analytics section has the same outer shape —
+// section wrapper + header row (label on left, optional aside on right) +
+// body. The helper centralizes that so each renderer only has to produce
+// its specific inner HTML.
+function renderCard({ label, aside, body, className, ariaLabel }) {
+  const asideHtml = aside ? `<div class="analytics-card-aside">${aside}</div>` : '';
+  const classes = ['analytics-card', className].filter(Boolean).join(' ');
+  return `
+    <section class="${classes}" aria-label="${ariaLabel || label}">
+      <div class="analytics-card-header-row">
+        <div class="analytics-card-header">${label}</div>
+        ${asideHtml}
+      </div>
+      ${body}
+    </section>
+  `;
+}
+
 const MODE_COLORS = {
   stopwatch: '#30d158',
   timer: '#0ac7e8',
@@ -89,17 +107,19 @@ function renderFocusStreak(streak) {
     return `<div class="${cls}" title="${dayLabel} · ${status}" aria-label="${dayLabel}: ${status}"></div>`;
   }).join('');
 
-  return `
-    <section class="analytics-streak-card" aria-label="Focus streak">
-      <div class="analytics-streak-header">FOCUS STREAK</div>
+  return renderCard({
+    label: 'FOCUS STREAK',
+    ariaLabel: 'Focus streak',
+    className: 'analytics-streak-card',
+    body: `
       <div class="analytics-streak-hero">
         <div class="analytics-streak-number">${heroNumber}</div>
         <div class="analytics-streak-hero-label">${heroLabel}</div>
       </div>
       <div class="analytics-streak-sub">${sub}</div>
       <div class="analytics-streak-dots" role="img" aria-label="Last 7 days of focus activity">${dots}</div>
-    </section>
-  `;
+    `,
+  });
 }
 
 const DISTRACTION_LABELS = {
@@ -169,9 +189,11 @@ function renderDistractions(dist) {
        </div>`
     : '';
 
-  return `
-    <section class="analytics-distraction-card" aria-label="Distraction patterns">
-      <div class="analytics-distraction-header">DISTRACTIONS</div>
+  return renderCard({
+    label: 'DISTRACTIONS',
+    ariaLabel: 'Distraction patterns',
+    className: 'analytics-distraction-card',
+    body: `
       <div class="analytics-distraction-subtitle">${total} logged across Flow + Pomodoro</div>
       <div class="analytics-distraction-leaderboard">${leaderboard}</div>
       ${legend}
@@ -182,8 +204,8 @@ function renderDistractions(dist) {
         <span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>11p</span>
       </div>
       ${peakLine ? `<div class="analytics-distraction-peak">${peakLine}</div>` : ''}
-    </section>
-  `;
+    `,
+  });
 }
 
 function renderActualWorkLog(aw) {
@@ -198,16 +220,16 @@ function renderActualWorkLog(aw) {
     </li>
   `).join('');
 
-  return `
-    <section class="analytics-aw-card" aria-label="Actual work log">
-      <div class="analytics-aw-header-row">
-        <div class="analytics-aw-header">ACTUAL WORK</div>
-        <div class="analytics-aw-window">${windowLabel}</div>
-      </div>
+  return renderCard({
+    label: 'ACTUAL WORK',
+    aside: windowLabel,
+    ariaLabel: 'Actual work log',
+    className: 'analytics-aw-card',
+    body: `
       <div class="analytics-aw-meta">${total} log entr${total === 1 ? 'y' : 'ies'} across Pomodoros</div>
       <ol class="analytics-aw-list">${rows}</ol>
-    </section>
-  `;
+    `,
+  });
 }
 
 const PHASE_LABELS = {
@@ -230,19 +252,19 @@ function renderPhaseRestarts(pr) {
     ? `You've restarted ${total} phase${total === 1 ? '' : 's'} in the last ${days} days. A shorter preset might help.`
     : `${total} phase restart${total === 1 ? '' : 's'} in the last ${days} days.`;
 
-  return `
-    <section class="analytics-pr-card" aria-label="Phase restarts">
-      <div class="analytics-pr-header-row">
-        <div class="analytics-pr-header">PHASE RESTARTS</div>
-        <div class="analytics-pr-window">LAST ${days} DAYS</div>
-      </div>
+  return renderCard({
+    label: 'PHASE RESTARTS',
+    aside: `LAST ${days} DAYS`,
+    ariaLabel: 'Phase restarts',
+    className: 'analytics-pr-card',
+    body: `
       <div class="analytics-pr-number-row">
         <div class="analytics-pr-number">${total}</div>
         <div class="analytics-pr-breakdown">${breakdown}</div>
       </div>
       <div class="analytics-pr-tone">${tone}</div>
-    </section>
-  `;
+    `,
+  });
 }
 
 function renderMedAdherence(adh) {
@@ -275,20 +297,20 @@ function renderMedAdherence(adh) {
     `;
   }).join('');
 
-  return `
-    <section class="analytics-adherence-card" aria-label="Medication adherence">
-      <div class="analytics-adherence-header-row">
-        <div class="analytics-adherence-header">MED ADHERENCE</div>
-        <div class="analytics-adherence-window-label">30 DAYS</div>
-      </div>
+  return renderCard({
+    label: 'MED ADHERENCE',
+    aside: '30 DAYS',
+    ariaLabel: 'Medication adherence',
+    className: 'analytics-adherence-card',
+    body: `
       <div class="analytics-adherence-legend">
         <span><span class="adherence-dot adherence-dot-full"></span>Taken</span>
         <span><span class="adherence-dot adherence-dot-partial"></span>Partial</span>
         <span><span class="adherence-dot adherence-dot-missed"></span>Missed</span>
       </div>
       <div class="analytics-adherence-body">${rows}</div>
-    </section>
-  `;
+    `,
+  });
 }
 
 function renderBFRBTrend(trend, selectedDays) {
@@ -416,12 +438,12 @@ function renderBFRBTrend(trend, selectedDays) {
     }
   }
 
-  return `
-    <section class="analytics-bfrb-card" aria-label="BFRB trend">
-      <div class="analytics-bfrb-header-row">
-        <div class="analytics-bfrb-header">BFRB TREND</div>
-        <div class="analytics-bfrb-toggle" role="radiogroup" aria-label="Window">${toggle}</div>
-      </div>
+  return renderCard({
+    label: 'BFRB TREND',
+    aside: `<div class="analytics-bfrb-toggle" role="radiogroup" aria-label="Window">${toggle}</div>`,
+    ariaLabel: 'BFRB trend',
+    className: 'analytics-bfrb-card',
+    body: `
       <div class="analytics-bfrb-numbers">
         <div class="analytics-bfrb-primary">
           <span class="analytics-bfrb-primary-value">${total}</span>
@@ -447,8 +469,8 @@ function renderBFRBTrend(trend, selectedDays) {
       </div>
       ${hourSection}
       ${sourceSection}
-    </section>
-  `;
+    `,
+  });
 }
 
 function renderFlowCompletion(comp) {
@@ -479,9 +501,11 @@ function renderFlowCompletion(comp) {
     tone = 'Every block ended early. Shorter preset next?';
   }
 
-  return `
-    <section class="analytics-flow-card" aria-label="Flow completion rate">
-      <div class="analytics-flow-header">FLOW COMPLETION</div>
+  return renderCard({
+    label: 'FLOW COMPLETION',
+    ariaLabel: 'Flow completion rate',
+    className: 'analytics-flow-card',
+    body: `
       <div class="analytics-flow-body">
         <div class="analytics-flow-donut-wrap" aria-hidden="true">
           <svg class="analytics-flow-donut" viewBox="0 0 100 100" width="108" height="108">
@@ -512,8 +536,8 @@ function renderFlowCompletion(comp) {
         </dl>
       </div>
       <div class="analytics-flow-foot">${tone || ruleLine}</div>
-    </section>
-  `;
+    `,
+  });
 }
 
 async function renderAnalytics() {
