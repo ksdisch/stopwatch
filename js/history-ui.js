@@ -26,13 +26,32 @@ function initHistoryPanel() {
   document.getElementById('history-import-input').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // Belt-and-suspenders: confirm before wiping local state. Users who hit
+    // Restore by mistake get one chance to back out before IndexedDB is cleared.
+    const ok = confirm(
+      `Restore from "${file.name}"?\n\n` +
+      `This will replace everything currently in the app with the backup's contents. ` +
+      `The page will reload when done.`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
     try {
       const text = await file.text();
       const result = await Export.importAllData(text);
-      alert(`Imported ${result.sessionsImported} sessions, ${result.settingsRestored} settings. Reload to apply settings.`);
-      renderHistory();
+      alert(
+        `Restored ${result.sessionsImported} session${result.sessionsImported === 1 ? '' : 's'} ` +
+        `and ${result.settingsRestored} setting${result.settingsRestored === 1 ? '' : 's'}. ` +
+        `Reloading…`
+      );
+      // Reload so every engine module (Pomodoro, Flow, Interval, Meds, etc.)
+      // picks up its freshly-restored localStorage + IndexedDB state from
+      // scratch. Doing this in-process would mean re-running every loadState
+      // hook individually — reload is simpler and more reliable.
+      location.reload();
     } catch (err) {
-      alert('Import failed: ' + err.message);
+      alert('Restore failed: ' + err.message);
     }
     e.target.value = '';
   });
