@@ -3252,24 +3252,46 @@ body.focus-mode .global-bfrb-fab {
   margin-bottom: 16px;
 }
 
-/* Focus streak hero card (top of Analytics dashboard) */
-.analytics-streak-card {
+/* Shared card chrome. Every analytics section renders via renderCard()
+   which outputs this structure; per-card rules below only override what
+   differs (gap, padding). */
+.analytics-card {
   background: var(--btn-bg);
   border: 1px solid var(--btn-border);
   border-radius: 14px;
-  padding: 18px 20px 16px;
+  padding: 16px 20px;
   margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.analytics-streak-header {
+.analytics-card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.analytics-card-header {
   font-size: 0.68rem;
   letter-spacing: 0.14em;
   color: var(--text-secondary, var(--text));
   opacity: 0.6;
   font-weight: 600;
+}
+
+.analytics-card-aside {
+  font-size: 0.66rem;
+  color: var(--text);
+  opacity: 0.55;
+  letter-spacing: 0.1em;
+}
+
+/* Focus streak hero card — slightly taller top padding */
+.analytics-streak-card {
+  padding: 18px 20px 16px;
 }
 
 .analytics-streak-hero {
@@ -3328,24 +3350,9 @@ body.focus-mode .global-bfrb-fab {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 70%, transparent);
 }
 
-/* Flow completion rate card (Analytics › Flow section, after streak) */
+/* Flow completion rate card — slightly wider gap between body + foot */
 .analytics-flow-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
   gap: 12px;
-}
-
-.analytics-flow-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
 }
 
 .analytics-flow-body {
@@ -3406,24 +3413,7 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* Distraction patterns card (leaderboard + hour-of-day heat strip) */
-.analytics-distraction-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.analytics-distraction-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
-}
+/* Distraction card uses shared chrome — see .analytics-card. */
 
 .analytics-distraction-subtitle {
   font-size: 0.78rem;
@@ -3541,32 +3531,7 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* BFRB trend card — line chart with 14/30/90 window toggle */
-.analytics-bfrb-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.analytics-bfrb-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.analytics-bfrb-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
-}
+/* BFRB trend card uses shared chrome — see .analytics-card. */
 
 .analytics-bfrb-toggle {
   display: inline-flex;
@@ -3772,37 +3737,7 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* Med adherence 30-day dot row per med */
-.analytics-adherence-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.analytics-adherence-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.analytics-adherence-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
-}
-
-.analytics-adherence-window-label {
-  font-size: 0.66rem;
-  color: var(--text);
-  opacity: 0.55;
-  letter-spacing: 0.1em;
-}
+/* Med adherence card uses shared chrome — see .analytics-card. */
 
 .analytics-adherence-legend {
   display: flex;
@@ -3907,36 +3842,9 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* Actual-work log (top-10 Pomodoro actualWork entries in window) */
+/* Actual-work card — tighter vertical rhythm than default */
 .analytics-aw-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-}
-
-.analytics-aw-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.analytics-aw-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
-}
-
-.analytics-aw-window {
-  font-size: 0.66rem;
-  color: var(--text);
-  opacity: 0.55;
-  letter-spacing: 0.1em;
 }
 
 .analytics-aw-meta {
@@ -3998,36 +3906,9 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* Phase restarts card — small summary of Pomodoro phaseLog[].restarted */
+/* Phase-restarts card — tighter vertical rhythm than default */
 .analytics-pr-card {
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-}
-
-.analytics-pr-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.analytics-pr-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
-}
-
-.analytics-pr-window {
-  font-size: 0.66rem;
-  color: var(--text);
-  opacity: 0.55;
-  letter-spacing: 0.1em;
 }
 
 .analytics-pr-number-row {
