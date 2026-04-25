@@ -32,6 +32,8 @@
   <!-- Analytics depends on History.getSessions() + localStorage. Tests
        stub window.History per-case; no history.js load required here. -->
   <script src="../js/analytics.js"></script>
+  <!-- PomodoroStats also depends on window.History; stubbed per-case. -->
+  <script src="../js/pomodoro-stats.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
 
@@ -47,6 +49,7 @@
   <script src="meds.test.js"></script>
   <script src="instance-manager.test.js"></script>
   <script src="analytics.test.js"></script>
+  <script src="pomodoro-stats.test.js"></script>
   <script src="export.test.js"></script>
 
   <!-- Report -->
