@@ -212,7 +212,10 @@ function applyAppMode() {
 // Shared button row beneath #controls. Visibility + ‑3 disabled state are
 // recomputed on every RAF tick of the active mode's render loop (the per-mode
 // updateXxxUI functions all call updateTimeAdjustControls at the end).
-const ADJUST_DELTA_MS = 3 * 60 * 1000;
+// Constant is inlined (not a `const`) because applyAppMode runs during
+// initAppMode (above) and would hit a TDZ error otherwise on cold boot into
+// any non-stopwatch mode with a running engine.
+function getAdjustDeltaMs() { return 3 * 60 * 1000; }
 
 function getActiveCountdown() {
   if (appMode === 'timer') {
@@ -289,7 +292,7 @@ function updateTimeAdjustControls() {
   row.hidden = false;
   const minusBtn = document.getElementById('btn-minus-3');
   const remaining = ctx.engine.getRemainingMs();
-  if (minusBtn) minusBtn.disabled = remaining < ADJUST_DELTA_MS + 1000;
+  if (minusBtn) minusBtn.disabled = remaining < getAdjustDeltaMs() + 1000;
 }
 
 function applyTimeAdjust(deltaMs) {
@@ -309,8 +312,8 @@ function applyTimeAdjust(deltaMs) {
   updateTimeAdjustControls();
 }
 
-document.getElementById('btn-minus-3')?.addEventListener('click', () => applyTimeAdjust(-ADJUST_DELTA_MS));
-document.getElementById('btn-plus-3')?.addEventListener('click', () => applyTimeAdjust(ADJUST_DELTA_MS));
+document.getElementById('btn-minus-3')?.addEventListener('click', () => applyTimeAdjust(-getAdjustDeltaMs()));
+document.getElementById('btn-plus-3')?.addEventListener('click', () => applyTimeAdjust(getAdjustDeltaMs()));
 
 // ── Sound Toggle ──
 function initSoundToggle() {
