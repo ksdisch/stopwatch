@@ -216,3 +216,74 @@ describe('Timer — state serialization', () => {
     assertEqual(t.getStatus(), 'finished');
   });
 });
+
+describe('Timer — adjustRemainingMs', () => {
+  it('extends remaining while running', () => {
+    const t = createTimer('tm-test-adjust-1');
+    t.setDuration(60000); // 60s
+    t.start();
+    const before = t.getRemainingMs();
+    const ok = t.adjustRemainingMs(180000); // +3 min
+    assertEqual(ok, true);
+    const after = t.getRemainingMs();
+    assert(after - before >= 179000 && after - before <= 181000,
+      `Expected ~+180000ms, got ${after - before}`);
+  });
+
+  it('extends remaining while paused', () => {
+    const t = createTimer('tm-test-adjust-2');
+    t.setDuration(300000); // 5 min
+    t.start();
+    t.pause();
+    const before = t.getRemainingMs();
+    assertEqual(t.adjustRemainingMs(180000), true);
+    assert(t.getRemainingMs() - before >= 179000 && t.getRemainingMs() - before <= 181000,
+      'Paused extend should add ~180000ms');
+  });
+
+  it('shrinks remaining while running', () => {
+    const t = createTimer('tm-test-adjust-3');
+    t.setDuration(600000); // 10 min
+    t.start();
+    const before = t.getRemainingMs();
+    assertEqual(t.adjustRemainingMs(-180000), true);
+    const after = t.getRemainingMs();
+    assert(before - after >= 179000 && before - after <= 181000,
+      `Expected ~-180000ms, got ${before - after}`);
+  });
+
+  it('rejects when status is idle', () => {
+    const t = createTimer('tm-test-adjust-4');
+    t.setDuration(60000);
+    assertEqual(t.adjustRemainingMs(180000), false);
+    assertEqual(t.getDurationMs(), 60000);
+  });
+
+  it('rejects when status is finished', () => {
+    const t = createTimer('tm-test-adjust-5');
+    t.loadState({ status: 'finished', durationMs: 60000, accumulatedMs: 60000, startedAt: null });
+    assertEqual(t.adjustRemainingMs(180000), false);
+  });
+
+  it('rejects underflow when -delta would go below 1s remaining', () => {
+    const t = createTimer('tm-test-adjust-6');
+    t.setDuration(120000); // 2 min
+    t.start();
+    // Remaining is ~120000, -180000 would leave less than 1s
+    assertEqual(t.adjustRemainingMs(-180000), false);
+    assertEqual(t.getDurationMs(), 120000); // unchanged
+  });
+
+  it('persists durationMs change across getState/loadState', () => {
+    const t1 = createTimer('tm-test-adjust-7');
+    t1.setDuration(300000);
+    t1.start();
+    t1.pause();
+    t1.adjustRemainingMs(180000);
+    const after = t1.getDurationMs();
+    const state = t1.getState();
+    const t2 = createTimer('tm-test-adjust-8');
+    t2.loadState(state);
+    assertEqual(t2.getDurationMs(), after);
+  });
+});

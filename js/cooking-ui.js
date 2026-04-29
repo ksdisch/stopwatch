@@ -148,6 +148,12 @@ function renderCookingTimers() {
       rightBtn = `<button class="cooking-ctrl-btn" disabled>Done</button>`;
     }
 
+    const adjustRow = (status === 'running' || status === 'paused') ? `
+      <div class="cooking-adjust-row">
+        <button class="cooking-adjust-btn" data-cook-adjust="${ct.id}" data-cook-delta="-180000" ${remaining < 180000 + 1000 ? 'disabled' : ''}>&minus;3 min</button>
+        <button class="cooking-adjust-btn" data-cook-adjust="${ct.id}" data-cook-delta="180000">+3 min</button>
+      </div>` : '';
+
     return `<div class="cooking-timer-card ${statusCls}" data-cook-card="${ct.id}">
       <div class="cooking-timer-header">
         <input type="text" class="cooking-timer-name" value="${escapeHtml(ct.name)}" data-cook-name="${ct.id}" maxlength="20" spellcheck="false">
@@ -156,6 +162,7 @@ function renderCookingTimers() {
       <div class="cooking-timer-time" data-cook-time="${ct.id}">${timeStr}</div>
       ${quickBtns}
       <div class="cooking-timer-controls">${leftBtn}${rightBtn}</div>
+      ${adjustRow}
     </div>`;
   }).join('');
 
@@ -226,6 +233,24 @@ function attachCookingHandlers() {
     });
   });
 
+  // ±3 min adjust per timer
+  container.querySelectorAll('[data-cook-adjust]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ct = cookingTimers.find(c => c.id === btn.dataset.cookAdjust);
+      if (!ct) return;
+      const delta = parseInt(btn.dataset.cookDelta, 10);
+      const ok = ct.timer.adjustRemainingMs(delta);
+      if (!ok) return;
+      if (ct.timer.getStatus() === 'running') {
+        BgNotify.schedule('cook-' + ct.id, ct.timer.getRemainingMs(), `${ct.name} Done`, 'Cooking timer finished!');
+      }
+      saveCookingTimers();
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(15);
+      if (typeof SFX !== 'undefined' && SFX.playLap) SFX.playLap();
+      renderCookingTimers();
+    });
+  });
+
   // Name editing
   container.querySelectorAll('.cooking-timer-name').forEach(input => {
     input.addEventListener('change', () => {
@@ -256,6 +281,9 @@ function startCookingRenderLoop() {
           el.textContent = t.hours > 0
             ? `${t.hours}:${t.minStr}:${t.secStr}`
             : `${t.minStr}:${t.secStr}`;
+          // Refresh ‑3 disabled state without rebuilding the card
+          const minusBtn = document.querySelector(`[data-cook-adjust="${ct.id}"][data-cook-delta="-180000"]`);
+          if (minusBtn) minusBtn.disabled = remaining < 180000 + 1000;
         }
         if (ct.timer.getStatus() === 'running') anyRunning = true;
       }

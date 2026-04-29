@@ -12,13 +12,18 @@ const Flow = (() => {
   let focusDurationMs = FOCUS_90;
   let startedAt = null;
   let accumulatedMs = 0;
+  let phaseAdjustmentMs = 0;     // ±N min adjust applied to the current phase only; reset on phase boundary
   let sessionStartedAt = null;
   let focusEndedAt = null;
   let goal = '';
   let phaseCallback = null;
 
-  function getCurrentPhaseDurationMs() {
+  function getBasePhaseDurationMs() {
     return phase === 'focus' ? focusDurationMs : RECOVERY_MS;
+  }
+
+  function getCurrentPhaseDurationMs() {
+    return Math.max(1000, getBasePhaseDurationMs() + phaseAdjustmentMs);
   }
 
   function getRemainingMs() {
@@ -70,15 +75,30 @@ const Flow = (() => {
     phase = 'focus';
     startedAt = null;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
     sessionStartedAt = null;
     focusEndedAt = null;
     goal = '';
+  }
+
+  function adjustRemainingMs(deltaMs) {
+    if (status !== 'running' && status !== 'paused'
+        && status !== 'recovery' && status !== 'recoveryPaused') return false;
+    if (deltaMs < 0) {
+      const remaining = getRemainingMs();
+      if (remaining + deltaMs < 1000) return false;
+    }
+    phaseAdjustmentMs += deltaMs;
+    const minAdjustment = 1000 - getBasePhaseDurationMs();
+    if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    return true;
   }
 
   function startRecovery() {
     if (status !== 'focusComplete') return;
     phase = 'recovery';
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
     startedAt = Date.now();
     status = 'recovery';
   }
@@ -115,6 +135,7 @@ const Flow = (() => {
     status = 'done';
     startedAt = null;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
   }
 
   function checkFinished() {
@@ -164,7 +185,7 @@ const Flow = (() => {
   function getState() {
     return {
       status, phase, focusDurationMs,
-      startedAt, accumulatedMs,
+      startedAt, accumulatedMs, phaseAdjustmentMs,
       sessionStartedAt, focusEndedAt, goal,
     };
   }
@@ -176,6 +197,7 @@ const Flow = (() => {
     focusDurationMs = state.focusDurationMs === FOCUS_120 ? FOCUS_120 : FOCUS_90;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
     sessionStartedAt = state.sessionStartedAt ?? null;
     focusEndedAt = state.focusEndedAt ?? null;
     goal = state.goal ?? '';
@@ -202,6 +224,7 @@ const Flow = (() => {
     start, pause, resume, reset,
     startRecovery, skipRecovery, endFocusEarly,
     checkFinished, onPhaseComplete, configure,
+    adjustRemainingMs,
     setGoal, getGoal,
     getRemainingMs, getElapsedMs, getProgress, getFocusElapsedMs,
     getStatus, getPhase,

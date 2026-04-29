@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v61-bfrb-daily-rollover';
+const CACHE_NAME = 'stopwatch-v62-adjust-time-buttons';
 const ASSETS = [
   './',
   './index.html',

@@ -267,6 +267,8 @@ function updateSequenceUI() {
       btnRight.disabled = true;
       break;
   }
+
+  if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
 }
 
 function startSequenceRenderLoop() {

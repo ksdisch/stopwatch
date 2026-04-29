@@ -583,3 +583,47 @@ describe('Interval — state serialization', () => {
     assertEqual(Interval.getProgram().phases[0].durationMs, 5000);
   });
 });
+
+describe("Interval — adjustRemainingMs", () => {
+  it("extends current phase while running", () => {
+    Interval.reset();
+    Interval.setProgram({
+      name: "T",
+      rounds: 2,
+      phases: [{ name: "Work", durationMs: 60000 }, { name: "Rest", durationMs: 30000 }],
+    });
+    Interval.start();
+    const before = Interval.getRemainingMs();
+    assertEqual(Interval.adjustRemainingMs(180000), true);
+    const after = Interval.getRemainingMs();
+    assert(after - before >= 179000 && after - before <= 181000,
+      `Expected ~+180000ms, got ${after - before}`);
+  });
+
+  it("does not change next phase duration", () => {
+    Interval.reset();
+    Interval.setProgram({
+      name: "T",
+      rounds: 1,
+      phases: [{ name: "P1", durationMs: 60000 }, { name: "P2", durationMs: 30000 }],
+    });
+    Interval.start();
+    Interval.adjustRemainingMs(180000);
+    // Verify P2 program duration is untouched
+    assertEqual(Interval.getProgram().phases[1].durationMs, 30000);
+  });
+
+  it("rejects when idle", () => {
+    Interval.reset();
+    Interval.setProgram({ name: "T", rounds: 1, phases: [{ name: "P", durationMs: 60000 }] });
+    assertEqual(Interval.adjustRemainingMs(180000), false);
+  });
+
+  it("rejects underflow when -delta would go below 1s", () => {
+    Interval.reset();
+    Interval.setProgram({ name: "T", rounds: 1, phases: [{ name: "P", durationMs: 120000 }] });
+    Interval.start();
+    assertEqual(Interval.adjustRemainingMs(-180000), false);
+  });
+});
+
