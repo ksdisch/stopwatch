@@ -640,6 +640,74 @@ input:focus:not(:focus-visible) {
   opacity: 0.6;
 }
 
+/* ── ±3 min Adjust Buttons (Timer, Pomodoro, Flow, Interval, Sequence) ── */
+.time-adjust {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.time-adjust[hidden] { display: none; }
+
+.adjust-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  padding: 8px 20px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 84px;
+  transition: opacity 0.12s, transform 0.08s;
+}
+
+.adjust-btn:active:not(:disabled) {
+  opacity: 0.6;
+  transform: scale(0.96);
+}
+
+.adjust-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Per-card adjust buttons inside cooking timers */
+.cooking-adjust-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cooking-adjust-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  flex: 1;
+  max-width: 96px;
+  transition: opacity 0.12s, transform 0.08s;
+}
+
+.cooking-adjust-btn:active:not(:disabled) {
+  opacity: 0.6;
+  transform: scale(0.96);
+}
+
+.cooking-adjust-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* Presets */
 .preset-list {
   width: 100%;

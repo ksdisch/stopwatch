@@ -335,6 +335,8 @@ function updateIntervalUI() {
       btnRight.className = 'control-btn btn-start';
       break;
   }
+
+  if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
 }
 
 function startIntervalRenderLoop() {

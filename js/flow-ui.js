@@ -426,6 +426,8 @@ function updateFlowUI() {
       btnRight.disabled = false;
       break;
   }
+
+  if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
 }
 
 function renderFlowChecklist() {

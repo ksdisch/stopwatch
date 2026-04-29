@@ -8,15 +8,20 @@ const Pomodoro = (() => {
   let longBreakMs = 15 * 60000;
   let startedAt = null;
   let accumulatedMs = 0;
+  let phaseAdjustmentMs = 0;    // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
   let sessionStartedAt = null;  // When the overall Pomodoro session began
   let phaseStartedAt = null;    // When the current phase first started
   let phaseLog = [];            // { phase, startedAt, endedAt } for each completed phase
 
-  function getCurrentPhaseDurationMs() {
+  function getBasePhaseDurationMs() {
     if (phase === 'work') return workMs;
     if (phase === 'shortBreak') return shortBreakMs;
     return longBreakMs;
+  }
+
+  function getCurrentPhaseDurationMs() {
+    return Math.max(1000, getBasePhaseDurationMs() + phaseAdjustmentMs);
   }
 
   function getRemainingMs() {
@@ -64,9 +69,23 @@ const Pomodoro = (() => {
     cycleIndex = 0;
     startedAt = null;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
     sessionStartedAt = null;
     phaseStartedAt = null;
     phaseLog = [];
+  }
+
+  function adjustRemainingMs(deltaMs) {
+    if (status !== 'running' && status !== 'paused') return false;
+    if (deltaMs < 0) {
+      const remaining = getRemainingMs();
+      if (remaining + deltaMs < 1000) return false;
+    }
+    phaseAdjustmentMs += deltaMs;
+    // Floor: keep effective phase duration above 1s no matter how much we subtract.
+    const minAdjustment = 1000 - getBasePhaseDurationMs();
+    if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    return true;
   }
 
   function checkFinished() {
@@ -88,6 +107,7 @@ const Pomodoro = (() => {
     accumulatedMs = 0;
     startedAt = null;
     phaseStartedAt = null;
+    phaseAdjustmentMs = 0;
 
     if (phase === 'work') {
       cycleIndex++;
@@ -118,6 +138,7 @@ const Pomodoro = (() => {
     accumulatedMs = 0;
     startedAt = null;
     phaseStartedAt = null;
+    phaseAdjustmentMs = 0;
     status = 'idle';
   }
 
@@ -145,7 +166,7 @@ const Pomodoro = (() => {
     return {
       status, phase, cycleIndex, totalCycles,
       workMs, shortBreakMs, longBreakMs,
-      startedAt, accumulatedMs,
+      startedAt, accumulatedMs, phaseAdjustmentMs,
       sessionStartedAt, phaseStartedAt, phaseLog,
     };
   }
@@ -161,6 +182,7 @@ const Pomodoro = (() => {
     longBreakMs = state.longBreakMs ?? 15 * 60000;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
     sessionStartedAt = state.sessionStartedAt ?? null;
     phaseStartedAt = state.phaseStartedAt ?? null;
     phaseLog = state.phaseLog ?? [];
@@ -180,6 +202,7 @@ const Pomodoro = (() => {
 
   return {
     start, pause, reset, restartPhase, checkFinished, nextPhase,
+    adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress,
     getStatus, getPhase, getCycleIndex, getTotalCycles,
     getCurrentPhaseDurationMs, getConfig,

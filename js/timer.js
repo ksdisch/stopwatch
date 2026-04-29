@@ -12,6 +12,16 @@ function createTimer(id) {
     durationMs = Math.max(0, ms);
   }
 
+  function adjustRemainingMs(deltaMs) {
+    if (status !== 'running' && status !== 'paused') return false;
+    if (deltaMs < 0) {
+      const remaining = getRemainingMs();
+      if (remaining + deltaMs < 1000) return false;
+    }
+    durationMs = Math.max(1000, durationMs + deltaMs);
+    return true;
+  }
+
   function getRemainingMs() {
     let elapsed = accumulatedMs;
     if (status === 'running' && startedAt !== null) {
@@ -101,7 +111,7 @@ function createTimer(id) {
   }
 
   return {
-    setDuration, start, pause, reset, checkFinished,
+    setDuration, adjustRemainingMs, start, pause, reset, checkFinished,
     getRemainingMs, getElapsedMs, getProgress,
     getStatus, getDurationMs, getId, getName, setName,
     getColor: () => color,

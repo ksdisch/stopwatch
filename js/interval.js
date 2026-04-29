@@ -6,12 +6,19 @@ const Interval = (() => {
   let isResting = false; // true during rest-between-rounds
   let startedAt = null;
   let accumulatedMs = 0;
+  let phaseAdjustmentMs = 0;     // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
 
-  function getCurrentPhaseDurationMs() {
+  function getBasePhaseDurationMs() {
     if (isResting) return program.restBetweenRoundsMs;
     if (phaseIndex < program.phases.length) return program.phases[phaseIndex].durationMs;
     return 0;
+  }
+
+  function getCurrentPhaseDurationMs() {
+    const base = getBasePhaseDurationMs();
+    if (base === 0) return 0;
+    return Math.max(1000, base + phaseAdjustmentMs);
   }
 
   function getRemainingMs() {
@@ -80,6 +87,20 @@ const Interval = (() => {
     isResting = false;
     startedAt = null;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
+  }
+
+  function adjustRemainingMs(deltaMs) {
+    if (status !== 'running' && status !== 'paused') return false;
+    if (getBasePhaseDurationMs() === 0) return false;
+    if (deltaMs < 0) {
+      const remaining = getRemainingMs();
+      if (remaining + deltaMs < 1000) return false;
+    }
+    phaseAdjustmentMs += deltaMs;
+    const minAdjustment = 1000 - getBasePhaseDurationMs();
+    if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    return true;
   }
 
   function checkFinished() {
@@ -94,6 +115,7 @@ const Interval = (() => {
       isResting = false;
       phaseIndex = 0;
       accumulatedMs = 0;
+      phaseAdjustmentMs = 0;
       status = 'phaseComplete';
       if (phaseCallback) phaseCallback('rest');
       return true;
@@ -108,6 +130,7 @@ const Interval = (() => {
       if (nextRound >= program.rounds) {
         // Program complete
         status = 'done';
+        phaseAdjustmentMs = 0;
         if (phaseCallback) phaseCallback('done');
         return true;
       }
@@ -116,6 +139,7 @@ const Interval = (() => {
       if (program.restBetweenRoundsMs > 0) {
         isResting = true;
         accumulatedMs = 0;
+        phaseAdjustmentMs = 0;
         status = 'phaseComplete';
         if (phaseCallback) phaseCallback('roundEnd');
         return true;
@@ -123,6 +147,7 @@ const Interval = (() => {
       // No rest — start next round
       phaseIndex = 0;
       accumulatedMs = 0;
+      phaseAdjustmentMs = 0;
       status = 'phaseComplete';
       if (phaseCallback) phaseCallback('roundEnd');
       return true;
@@ -131,6 +156,7 @@ const Interval = (() => {
     // Advance to next phase
     phaseIndex = nextPhaseIdx;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
     status = 'phaseComplete';
     if (phaseCallback) phaseCallback('phase');
     return true;
@@ -176,7 +202,7 @@ const Interval = (() => {
   function getState() {
     return {
       status, phaseIndex, roundIndex, isResting,
-      startedAt, accumulatedMs,
+      startedAt, accumulatedMs, phaseAdjustmentMs,
       program: JSON.parse(JSON.stringify(program)),
     };
   }
@@ -189,6 +215,7 @@ const Interval = (() => {
     isResting = state.isResting ?? false;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
     if (state.program) {
       program = JSON.parse(JSON.stringify(state.program));
     }
@@ -206,6 +233,7 @@ const Interval = (() => {
 
   return {
     setProgram, start, pause, reset, checkFinished, advancePhase,
+    adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress, getTotalProgress,
     getCurrentPhase, getNextPhase,
     getStatus, getPhaseIndex, getRoundIndex, getIsResting,

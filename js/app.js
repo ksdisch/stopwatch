@@ -205,7 +205,112 @@ function applyAppMode() {
 
   CardsUI.render();
   PresetsUI.updateQuickVisibility();
+  if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
 }
+
+// ── ±3 min Adjust Buttons ──
+// Shared button row beneath #controls. Visibility + ‑3 disabled state are
+// recomputed on every RAF tick of the active mode's render loop (the per-mode
+// updateXxxUI functions all call updateTimeAdjustControls at the end).
+const ADJUST_DELTA_MS = 3 * 60 * 1000;
+
+function getActiveCountdown() {
+  if (appMode === 'timer') {
+    if (sequenceMode) {
+      const status = Sequence.getStatus();
+      if (status !== 'running' && status !== 'paused') return null;
+      return {
+        engine: Sequence,
+        persist: saveSequenceState,
+        reschedule: () => {},  // Sequence doesn't use BgNotify
+        render: updateSequenceUI,
+      };
+    }
+    const status = Timer.getStatus();
+    if (status !== 'running' && status !== 'paused') return null;
+    return {
+      engine: Timer,
+      persist: saveTimerState,
+      reschedule: () => BgNotify.schedule('timer-' + Timer.getId(), Timer.getRemainingMs(), 'Timer Complete', 'Your countdown has finished!'),
+      render: updateTimerUI,
+    };
+  }
+  if (appMode === 'pomodoro') {
+    const status = Pomodoro.getStatus();
+    if (status !== 'running' && status !== 'paused') return null;
+    return {
+      engine: Pomodoro,
+      persist: savePomodoroState,
+      reschedule: () => {
+        const phase = Pomodoro.getPhase();
+        const phaseLabel = phase === 'work' ? 'Work session complete!' : 'Break is over!';
+        BgNotify.schedule('pomodoro', Pomodoro.getRemainingMs(), 'Pomodoro', phaseLabel);
+      },
+      render: updatePomodoroUI,
+    };
+  }
+  if (appMode === 'flow') {
+    const status = Flow.getStatus();
+    if (status !== 'running' && status !== 'paused'
+        && status !== 'recovery' && status !== 'recoveryPaused') return null;
+    return {
+      engine: Flow,
+      persist: saveFlowState,
+      reschedule: () => {
+        const label = Flow.getPhase() === 'focus'
+          ? 'Focus block complete! Time for recovery.'
+          : 'Recovery complete.';
+        BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', label);
+      },
+      render: updateFlowUI,
+    };
+  }
+  if (appMode === 'interval') {
+    const status = Interval.getStatus();
+    if (status !== 'running' && status !== 'paused') return null;
+    return {
+      engine: Interval,
+      persist: saveIntervalState,
+      reschedule: () => BgNotify.schedule('interval', Interval.getRemainingMs(), 'Interval', 'Phase complete!'),
+      render: updateIntervalUI,
+    };
+  }
+  return null;
+}
+
+function updateTimeAdjustControls() {
+  const row = document.getElementById('time-adjust');
+  if (!row) return;
+  const ctx = getActiveCountdown();
+  if (!ctx) {
+    row.hidden = true;
+    return;
+  }
+  row.hidden = false;
+  const minusBtn = document.getElementById('btn-minus-3');
+  const remaining = ctx.engine.getRemainingMs();
+  if (minusBtn) minusBtn.disabled = remaining < ADJUST_DELTA_MS + 1000;
+}
+
+function applyTimeAdjust(deltaMs) {
+  const ctx = getActiveCountdown();
+  if (!ctx) return;
+  const ok = ctx.engine.adjustRemainingMs(deltaMs);
+  if (!ok) return;
+  // Status may have transitioned to 'running' from a paused state during adjust;
+  // it can't, but the BgNotify reschedule only matters when there is an upcoming
+  // alarm to fire, i.e. when running. We always cancel + reschedule to keep the
+  // timer in sync regardless of the prior schedule state.
+  if (ctx.engine.getStatus() === 'running') ctx.reschedule();
+  ctx.persist();
+  if (typeof navigator.vibrate === 'function') navigator.vibrate(15);
+  if (typeof SFX !== 'undefined' && SFX.playLap) SFX.playLap();
+  ctx.render();
+  updateTimeAdjustControls();
+}
+
+document.getElementById('btn-minus-3')?.addEventListener('click', () => applyTimeAdjust(-ADJUST_DELTA_MS));
+document.getElementById('btn-plus-3')?.addEventListener('click', () => applyTimeAdjust(ADJUST_DELTA_MS));
 
 // ── Sound Toggle ──
 function initSoundToggle() {

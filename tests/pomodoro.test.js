@@ -290,3 +290,93 @@ describe('Pomodoro — state serialization', () => {
     assertEqual(Pomodoro.getCycleIndex(), 0);
   });
 });
+
+describe("Pomodoro — adjustRemainingMs", () => {
+  it("extends current phase remaining while running", () => {
+    Pomodoro.reset();
+    Pomodoro.start();
+    const before = Pomodoro.getRemainingMs();
+    const ok = Pomodoro.adjustRemainingMs(180000);
+    assertEqual(ok, true);
+    const after = Pomodoro.getRemainingMs();
+    assert(after - before >= 179000 && after - before <= 181000,
+      `Expected ~+180000ms, got ${after - before}`);
+  });
+
+  it("extends current phase while paused", () => {
+    Pomodoro.reset();
+    Pomodoro.start();
+    Pomodoro.pause();
+    const before = Pomodoro.getRemainingMs();
+    assertEqual(Pomodoro.adjustRemainingMs(180000), true);
+    assert(Pomodoro.getRemainingMs() - before >= 179000 && Pomodoro.getRemainingMs() - before <= 181000,
+      "Paused extend should add ~180000ms");
+  });
+
+  it("rejects when idle", () => {
+    Pomodoro.reset();
+    assertEqual(Pomodoro.adjustRemainingMs(180000), false);
+    assertEqual(Pomodoro.getCurrentPhaseDurationMs(), 25 * 60000);
+  });
+
+  it("rejects underflow when -delta would go below 1s", () => {
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 120000 });  // 2 min work
+    Pomodoro.start();
+    assertEqual(Pomodoro.adjustRemainingMs(-180000), false);
+  });
+
+  it("phaseAdjustmentMs resets on nextPhase (does not leak to next phase)", () => {
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 60000, shortBreakMs: 5 * 60000, longBreakMs: 15 * 60000, totalCycles: 4 });
+    Pomodoro.start();
+    Pomodoro.adjustRemainingMs(180000);  // +3 min on current work phase
+    // Force phase complete
+    Pomodoro.loadState({ ...Pomodoro.getState(), status: "phaseComplete", accumulatedMs: 240000 });
+    Pomodoro.nextPhase();  // moves to shortBreak, resets phaseAdjustmentMs
+    Pomodoro.start();
+    // Break should be the configured 5 min, not 5 min + 3 min
+    const breakRemaining = Pomodoro.getRemainingMs();
+    assert(breakRemaining > 4 * 60000 && breakRemaining <= 5 * 60000,
+      `Expected break ~5 min, got ${breakRemaining / 60000} min`);
+  });
+
+  it("phaseAdjustmentMs resets on restartPhase", () => {
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 25 * 60000 });
+    Pomodoro.start();
+    Pomodoro.adjustRemainingMs(180000);
+    Pomodoro.restartPhase();
+    Pomodoro.start();
+    const remaining = Pomodoro.getRemainingMs();
+    assert(remaining > 24 * 60000 && remaining <= 25 * 60000,
+      `Expected ~25 min, got ${remaining / 60000} min`);
+  });
+
+  it("phaseAdjustmentMs resets on reset", () => {
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 25 * 60000 });
+    Pomodoro.start();
+    Pomodoro.adjustRemainingMs(180000);
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 25 * 60000 });
+    Pomodoro.start();
+    const remaining = Pomodoro.getRemainingMs();
+    assert(remaining > 24 * 60000 && remaining <= 25 * 60000,
+      `Expected ~25 min after reset, got ${remaining / 60000} min`);
+  });
+
+  it("phaseAdjustmentMs survives getState/loadState round-trip", () => {
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 25 * 60000 });
+    Pomodoro.start();
+    Pomodoro.adjustRemainingMs(180000);
+    const before = Pomodoro.getCurrentPhaseDurationMs();
+    const state = Pomodoro.getState();
+    Pomodoro.reset();
+    Pomodoro.configure({ workMs: 25 * 60000 });
+    Pomodoro.loadState(state);
+    assertEqual(Pomodoro.getCurrentPhaseDurationMs(), before);
+  });
+});
+

@@ -5,6 +5,7 @@ const Sequence = (() => {
   let phaseIndex = 0;
   let startedAt = null;
   let accumulatedMs = 0;
+  let phaseAdjustmentMs = 0;     // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
 
   function setProgram(p) {
@@ -18,9 +19,15 @@ const Sequence = (() => {
 
   function getProgram() { return program; }
 
-  function getCurrentPhaseDurationMs() {
+  function getBasePhaseDurationMs() {
     const ph = program.phases[phaseIndex];
     return ph ? ph.durationMs : 0;
+  }
+
+  function getCurrentPhaseDurationMs() {
+    const base = getBasePhaseDurationMs();
+    if (base === 0) return 0;
+    return Math.max(1000, base + phaseAdjustmentMs);
   }
 
   function getRemainingMs() {
@@ -68,6 +75,20 @@ const Sequence = (() => {
     phaseIndex = 0;
     startedAt = null;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
+  }
+
+  function adjustRemainingMs(deltaMs) {
+    if (status !== 'running' && status !== 'paused') return false;
+    if (getBasePhaseDurationMs() === 0) return false;
+    if (deltaMs < 0) {
+      const remaining = getRemainingMs();
+      if (remaining + deltaMs < 1000) return false;
+    }
+    phaseAdjustmentMs += deltaMs;
+    const minAdjustment = 1000 - getBasePhaseDurationMs();
+    if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    return true;
   }
 
   function checkFinished() {
@@ -85,6 +106,7 @@ const Sequence = (() => {
     if (status !== 'phaseComplete') return;
     phaseIndex++;
     accumulatedMs = 0;
+    phaseAdjustmentMs = 0;
     startedAt = null;
     if (phaseIndex >= program.phases.length) {
       status = 'done';
@@ -102,7 +124,7 @@ const Sequence = (() => {
   function onPhaseComplete(cb) { phaseCallback = cb; }
 
   function getState() {
-    return { status, program, phaseIndex, startedAt, accumulatedMs };
+    return { status, program, phaseIndex, startedAt, accumulatedMs, phaseAdjustmentMs };
   }
 
   function loadState(state) {
@@ -112,6 +134,7 @@ const Sequence = (() => {
     phaseIndex = state.phaseIndex ?? 0;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
     if (status === 'running' && startedAt && startedAt > Date.now()) {
       startedAt = null;
       status = 'paused';
@@ -125,6 +148,7 @@ const Sequence = (() => {
 
   return {
     setProgram, getProgram, start, pause, reset, checkFinished, advancePhase,
+    adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress, getTotalProgress,
     getCurrentPhase, getNextPhase, getPhaseIndex, getPhaseCount,
     getCurrentPhaseDurationMs, getStatus, onPhaseComplete,
