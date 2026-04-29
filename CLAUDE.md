@@ -167,14 +167,18 @@ Additional localStorage keys used for UI/config preferences:
 
 ### Feature Backlog
 
-| Priority | Feature | Impact | Effort | Notes |
-|----------|---------|--------|--------|-------|
-| 1 | **Lap data visualization** | Medium | Medium | Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. |
-| 2 | **Split-screen timer comparison** | Medium | High | Side-by-side two timers. Requires significant layout rework. |
-| 3 | **Voice control** | Low | Medium | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
-| 4 | **Vibration at intervals** | Low | Low | Vibrate every N minutes (configurable). Check in RAF loop. |
-| 5 | **Group/team timing** | Low | High | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
-| 6 | **Home screen widget** | Low | High | Platform-specific. PWA limitations make this mostly impractical. |
+Reordered by impact-vs-effort ROI (best return for effort first), not chronologically. The previous chronological numbering is preserved in the "Added" column so the decision history stays visible.
+
+| Priority | Feature | Impact | Effort | Added | Notes |
+|----------|---------|--------|--------|-------|-------|
+| 1 | **Native iOS app via Capacitor** | High | Medium | #8 | Wrap the existing PWA in a Capacitor iOS shell and ship to the App Store. **Biggest win: real haptics.** `navigator.vibrate()` is no-op on iOS Safari today, so all start/stop/lap haptic feedback in `ui.js` is silently broken on iPhone — a native wrapper with `@capacitor/haptics` fixes this. Also unlocks reliable local notifications (`@capacitor/local-notifications` for alert thresholds, Pomodoro/Flow phase transitions, meds reminders), background timer execution via `BGTaskScheduler` (so 90-min Flow Blocks don't get killed when backgrounded), and audio-session control (synthetic Web Audio chimes currently get cut off when music is playing). Estimated 1–3 days of work: scaffold via PWABuilder (paste URL → get Xcode project), feature-detect Capacitor and replace `navigator.vibrate` + Web Notifications calls, add audio session config, handle App Store Connect paperwork (screenshots, privacy disclosure for meds/BFRB data, age rating). **Cost:** $99/yr Apple Developer Program + losing "push to main → live in 1 min" deploys for the iOS build (App Store review is 24–48 hrs per update). Web version keeps deploying instantly via GitHub Pages. **Not starting yet** — current Add-to-Home-Screen flow works for solo use; revisit when haptics on iPhone or App Store presence becomes worth the overhead. Alternative paths considered and rejected: React Native / Expo rewrite (2–4 weeks, loses no-build-step simplicity), full SwiftUI rewrite (4–8 weeks, two codebases to maintain). |
+| 2 | **Vibration at intervals** | Low | Low | #4 | Vibrate every N minutes (configurable). Check in RAF loop. Cheap win — small effort, modest payoff. |
+| 3 | **Lap data visualization** | Medium | Medium | #1 | Inline SVG bar chart of lap times below the lap list. No library needed. Color-coded best/worst. |
+| 4 | **Real cloud sync (cross-device)** | High | High | #7 | Live sync of meds, history, BFRB log, presets, and preferences between phone and laptop without manual backup/restore. Today the app is `localStorage` + `IndexedDB` only — scoped per-browser per-device. Needs a backend (Firebase/Supabase/CloudKit-via-iCloud), auth, and conflict resolution (last-write-wins probably fine for most stores; doseLog needs append-merge). Driving use case: medication tracking — logging a dose on one device must reflect on the other immediately. **Not starting yet.** Manual "Backup to file" / "Restore from file" is the current workaround. Best paired with #1 — native + sync is the real "shipped product" combo. |
+| 5 | **Split-screen timer comparison** | Medium | High | #2 | Side-by-side two timers. Requires significant layout rework. |
+| 6 | **Voice control** | Low | Medium | #3 | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
+| 7 | **Group/team timing** | Low | High | #5 | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
+| 8 | **Home screen widget** | Low | High | #6 | Platform-specific. PWA limitations make this mostly impractical. Strong candidate for removal from backlog entirely. |
 
 ### Remaining Tech Debt
 
