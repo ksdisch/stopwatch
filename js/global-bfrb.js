@@ -10,8 +10,18 @@
 //   - Everything else     → bfrbs_global (unbounded global log)
 //
 // The FAB label reads the currently-active store so the tally the user sees
-// reflects their in-context session count. Outside of Flow/Pomodoro it
-// reflects the global log.
+// reflects their in-context session count.
+//
+// Daily rollover (bfrbs_global only): the global log accumulates timestamps
+// forever — that's how Analytics computes the 14/30/90-day BFRB trend. But
+// the FAB label was previously showing the all-time count, which is both
+// discouraging (number only ever grows) and not what most users want from a
+// daily-tracking habit. So when the active store is bfrbs_global, the label
+// now shows only today's catches (filtered by local-date key). The stored
+// timestamps are untouched — Analytics still sees every day. A midnight
+// timeout re-renders the label so a left-open PWA flips to "0" at 00:00.
+// Session stores (Flow/Pomodoro) keep showing the full session count, since
+// those reset at session boundaries already.
 
 const GlobalBFRB = (() => {
   const BTN_ID = 'global-bfrb-fab';
@@ -52,9 +62,35 @@ const GlobalBFRB = (() => {
     return e;
   }
 
+  // Local-date key (YYYY-MM-DD in the user's local timezone). Matches the
+  // helper of the same name in js/analytics.js — replicated here rather than
+  // exported across the IIFE boundary because it's 5 lines and the spec is
+  // stable. If a third caller ever needs it, hoist into Utils.
+  function localDateKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  // Count for the FAB label.
+  //   - Session stores (flow_bfrbs / pomodoro_bfrbs): full count, since those
+  //     stores are already session-scoped (cleared on session end/abandon).
+  //   - Global store (bfrbs_global): today's catches only. Stored entries
+  //     stay intact for Analytics; we just filter at render time. Entries
+  //     without a numeric timestamp are skipped — they predate the schema.
+  function countForLabel(key) {
+    const items = loadStore(key);
+    if (key !== GLOBAL_KEY) return items.length;
+    const today = localDateKey(new Date());
+    return items.reduce((n, e) => {
+      if (!e || typeof e.timestamp !== 'number') return n;
+      return localDateKey(new Date(e.timestamp)) === today ? n + 1 : n;
+    }, 0);
+  }
+
   function label() {
-    const key = getActiveStoreKey();
-    const count = loadStore(key).length;
+    const count = countForLabel(getActiveStoreKey());
     return count > 0 ? `BFRB ×${count}` : 'BFRB';
   }
 
@@ -76,6 +112,22 @@ const GlobalBFRB = (() => {
     } else {
       renderLabel();
     }
+  }
+
+  // ms until the next local midnight. The +50ms buffer keeps us safely past
+  // the boundary so the new local date has actually rolled over by the time
+  // we re-render.
+  function msUntilNextMidnight() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 50);
+    return Math.max(1000, next.getTime() - now.getTime());
+  }
+
+  function scheduleMidnightRollover() {
+    setTimeout(() => {
+      renderLabel();
+      scheduleMidnightRollover();
+    }, msUntilNextMidnight());
   }
 
   function init() {
@@ -105,6 +157,12 @@ const GlobalBFRB = (() => {
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) renderLabel();
     });
+
+    // Midnight rollover: a long-running PWA tab needs the global tally to
+    // flip to "0" at the local-day boundary. Schedule a one-shot at the next
+    // midnight, then chain so DST transitions self-correct (we recompute the
+    // delta each time instead of using a fixed 24-hour interval).
+    scheduleMidnightRollover();
 
     // Volume slider in the settings drawer.
     const slider = document.getElementById('bfrb-volume-slider');

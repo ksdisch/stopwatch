@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v60-pomodoro-depth';
+const CACHE_NAME = 'stopwatch-v61-bfrb-daily-rollover';
 const ASSETS = [
   './',
   './index.html',
