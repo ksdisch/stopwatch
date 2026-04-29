@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v62-adjust-time-buttons';
+const CACHE_NAME = 'stopwatch-v63-adjust-tdz-fix';
 const ASSETS = [
   './',
   './index.html',
