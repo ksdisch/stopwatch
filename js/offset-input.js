@@ -196,11 +196,7 @@ const OffsetInput = (() => {
 
   // ── Helpers ──
 
-  function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = str;
-    return el.innerHTML;
-  }
+  // Uses shared escapeHtml from dom-utils.js
 
   function setVisible(visible) {
     const area = document.getElementById('offset-area');
