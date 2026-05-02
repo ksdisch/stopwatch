@@ -4,8 +4,11 @@ const Flow = (() => {
   const FOCUS_120 = 120 * 60000;
   const RECOVERY_MS = 15 * 60000;
 
-  // status: 'idle' | 'running' | 'paused' | 'focusComplete'
-  //       | 'recovery' | 'recoveryPaused' | 'done'
+  // status: 'idle' | 'running' | 'paused' | 'overflowing' | 'recovery'
+  //       | 'recoveryPaused' | 'recoveryOverflowing' | 'done'
+  // 'overflowing' replaces the old 'focusComplete' — focus is past zero,
+  // alarm has fired, but the engine keeps counting up until the user
+  // either starts recovery or skips. Same idea for recovery overshoot.
   // phase:  'focus' | 'recovery'
   let status = 'idle';
   let phase = 'focus';
@@ -17,6 +20,8 @@ const Flow = (() => {
   let focusEndedAt = null;
   let goal = '';
   let phaseCallback = null;
+  let alarmFired = false;
+  let zeroCrossedAt = null;
 
   function getBasePhaseDurationMs() {
     return phase === 'focus' ? focusDurationMs : RECOVERY_MS;
@@ -26,20 +31,37 @@ const Flow = (() => {
     return Math.max(1000, getBasePhaseDurationMs() + phaseAdjustmentMs);
   }
 
-  function getRemainingMs() {
+  function isTickingStatus(s) {
+    return s === 'running' || s === 'recovery'
+        || s === 'overflowing' || s === 'recoveryOverflowing';
+  }
+
+  function rawElapsedMs() {
     let elapsed = accumulatedMs;
-    if ((status === 'running' || status === 'recovery') && startedAt !== null) {
+    if (isTickingStatus(status) && startedAt !== null) {
       elapsed += Date.now() - startedAt;
     }
-    return Math.max(0, getCurrentPhaseDurationMs() - elapsed);
+    return elapsed;
+  }
+
+  function getRemainingMs() {
+    return Math.max(0, getCurrentPhaseDurationMs() - rawElapsedMs());
   }
 
   function getElapsedMs() {
-    let elapsed = accumulatedMs;
-    if ((status === 'running' || status === 'recovery') && startedAt !== null) {
-      elapsed += Date.now() - startedAt;
-    }
-    return Math.min(elapsed, getCurrentPhaseDurationMs());
+    return Math.min(rawElapsedMs(), getCurrentPhaseDurationMs());
+  }
+
+  function getOvershootMs() {
+    return Math.max(0, rawElapsedMs() - getCurrentPhaseDurationMs());
+  }
+
+  function isOvershooting() {
+    return status === 'overflowing' || status === 'recoveryOverflowing';
+  }
+
+  function getZeroCrossedAt() {
+    return zeroCrossedAt;
   }
 
   function getProgress() {
@@ -76,6 +98,8 @@ const Flow = (() => {
     startedAt = null;
     accumulatedMs = 0;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
     sessionStartedAt = null;
     focusEndedAt = null;
     goal = '';
@@ -95,19 +119,22 @@ const Flow = (() => {
   }
 
   function startRecovery() {
-    if (status !== 'focusComplete') return;
+    if (status !== 'overflowing') return;
     phase = 'recovery';
     accumulatedMs = 0;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
     startedAt = Date.now();
     status = 'recovery';
   }
 
   // End the focus phase early. Captures actual elapsed time into
   // accumulatedMs (so history records the real duration, not the planned
-  // blockDurationMs), then transitions to focusComplete and fires the
+  // blockDurationMs), then transitions to overflowing and fires the
   // phase-complete callback so the UI + history pipeline treats this the
-  // same as a naturally-completed block.
+  // same as a naturally-completed block. No overshoot accrues — early-end
+  // means the engine never crossed zero.
   function endFocusEarly() {
     if (phase !== 'focus') return;
     if (status !== 'running' && status !== 'paused') return;
@@ -115,23 +142,33 @@ const Flow = (() => {
       accumulatedMs += Date.now() - startedAt;
     }
     startedAt = null;
-    status = 'focusComplete';
+    status = 'overflowing';
     focusEndedAt = Date.now();
-    if (phaseCallback) phaseCallback('focus');
+    // Treat the alarm as already fired — endFocusEarly is the user's explicit
+    // action and we don't want a double-alarm.
+    if (!alarmFired) {
+      alarmFired = true;
+      if (phaseCallback) phaseCallback('focus');
+    }
   }
 
   // Elapsed time inside the focus phase. Returns accumulatedMs for all
-  // statuses except `running`, where it also includes the in-flight chunk
-  // since the last resume. Always bounded to the focus phase (returns 0 on
-  // recovery states).
+  // statuses except those ticking forward, where it also includes the in-flight
+  // chunk since the last resume. Always bounded to the focus phase (returns
+  // 0 on recovery states) — but during overshoot we return the full elapsed
+  // so callers see how long the user was actually in the focus block.
   function getFocusElapsedMs() {
     if (phase !== 'focus') return 0;
-    const inFlight = status === 'running' && startedAt ? Date.now() - startedAt : 0;
+    const inFlight = (status === 'running' || status === 'overflowing') && startedAt
+      ? Date.now() - startedAt : 0;
     return accumulatedMs + inFlight;
   }
 
   function skipRecovery() {
-    if (status !== 'focusComplete' && status !== 'recovery' && status !== 'recoveryPaused') return;
+    if (status !== 'overflowing'
+        && status !== 'recovery'
+        && status !== 'recoveryPaused'
+        && status !== 'recoveryOverflowing') return;
     status = 'done';
     startedAt = null;
     accumulatedMs = 0;
@@ -140,18 +177,30 @@ const Flow = (() => {
 
   function checkFinished() {
     if (status === 'running' && getRemainingMs() <= 0) {
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
-      status = 'focusComplete';
-      focusEndedAt = Date.now();
-      if (phaseCallback) phaseCallback('focus');
+      const now = Date.now();
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'overflowing';
+      zeroCrossedAt = now;
+      focusEndedAt = now;
+      if (!alarmFired) {
+        alarmFired = true;
+        if (phaseCallback) phaseCallback('focus');
+      }
       return true;
     }
     if (status === 'recovery' && getRemainingMs() <= 0) {
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
-      status = 'done';
-      if (phaseCallback) phaseCallback('recovery');
+      const now = Date.now();
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'recoveryOverflowing';
+      zeroCrossedAt = now;
+      if (!alarmFired) {
+        alarmFired = true;
+        if (phaseCallback) phaseCallback('recovery');
+      }
       return true;
     }
     return false;
@@ -186,6 +235,7 @@ const Flow = (() => {
     return {
       status, phase, focusDurationMs,
       startedAt, accumulatedMs, phaseAdjustmentMs,
+      alarmFired, zeroCrossedAt,
       sessionStartedAt, focusEndedAt, goal,
     };
   }
@@ -193,11 +243,15 @@ const Flow = (() => {
   function loadState(state) {
     if (!state) return;
     status = state.status ?? 'idle';
+    // Migrate legacy 'focusComplete' to the new 'overflowing' state.
+    if (status === 'focusComplete') status = 'overflowing';
     phase = state.phase ?? 'focus';
     focusDurationMs = state.focusDurationMs === FOCUS_120 ? FOCUS_120 : FOCUS_90;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
     phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
+    alarmFired = state.alarmFired === true;
+    zeroCrossedAt = state.zeroCrossedAt ?? null;
     sessionStartedAt = state.sessionStartedAt ?? null;
     focusEndedAt = state.focusEndedAt ?? null;
     goal = state.goal ?? '';
@@ -209,14 +263,31 @@ const Flow = (() => {
     }
     // Check if phase should have finished while page was closed
     if (status === 'running' && getRemainingMs() <= 0) {
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
-      status = 'focusComplete';
-      focusEndedAt = focusEndedAt || Date.now();
+      const now = Date.now();
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'overflowing';
+      focusEndedAt = focusEndedAt || now;
+      if (zeroCrossedAt === null) zeroCrossedAt = now;
+      alarmFired = true;
     } else if (status === 'recovery' && getRemainingMs() <= 0) {
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
-      status = 'done';
+      const now = Date.now();
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'recoveryOverflowing';
+      if (zeroCrossedAt === null) zeroCrossedAt = now;
+      alarmFired = true;
+    }
+    // 24h overshoot cap.
+    if (isOvershooting()) {
+      const cap = getCurrentPhaseDurationMs() + 24 * 60 * 60 * 1000;
+      const elapsed = rawElapsedMs();
+      if (elapsed > cap) {
+        accumulatedMs = cap;
+        startedAt = null;
+      }
     }
   }
 
@@ -227,6 +298,7 @@ const Flow = (() => {
     adjustRemainingMs,
     setGoal, getGoal,
     getRemainingMs, getElapsedMs, getProgress, getFocusElapsedMs,
+    getOvershootMs, isOvershooting, getZeroCrossedAt,
     getStatus, getPhase,
     getCurrentPhaseDurationMs, getFocusDurationMs, getRecoveryDurationMs,
     getSessionStartedAt, getFocusEndedAt, getConfig,

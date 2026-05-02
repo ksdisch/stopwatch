@@ -520,10 +520,54 @@ const Analytics = (() => {
     return { days, total, byPhase };
   }
 
+  // Countdown overshoot trend. Aggregates `overshootMs` across all session
+  // types (timer, pomodoro, flow, interval) within the last `days` days.
+  // Sessions without the field — anything saved before this feature — are
+  // skipped. Returns total/avg/count plus a per-day series for sparklines.
+  async function getOvershootStats(days = 30) {
+    const sessions = await History.getSessions();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const windowStartMs = new Date(today).setDate(today.getDate() - (days - 1));
+    const windowEndMs = today.getTime() + 86400000;
+
+    const recent = sessions.filter(s => {
+      const t = new Date(s.date).getTime();
+      if (t < windowStartMs || t >= windowEndMs) return false;
+      return (s.overshootMs || 0) > 0;
+    });
+
+    const total = recent.reduce((sum, s) => sum + (s.overshootMs || 0), 0);
+    const count = recent.length;
+    const avg = count > 0 ? total / count : 0;
+
+    // Per-day series, oldest first.
+    const dayTotals = {};
+    recent.forEach(s => {
+      const d = new Date(s.date);
+      const key = localDateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+      dayTotals[key] = (dayTotals[key] || 0) + (s.overshootMs || 0);
+    });
+    const series = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const key = localDateKey(d);
+      series.push({ date: key, totalMs: dayTotals[key] || 0 });
+    }
+
+    // Per-type breakdown for the card sub-line.
+    const byType = {};
+    recent.forEach(s => {
+      const k = s.type || 'unknown';
+      byType[k] = (byType[k] || 0) + (s.overshootMs || 0);
+    });
+
+    return { days, total, count, avg, series, byType };
+  }
+
   return {
     getTotalTimeByMode, getWeeklyTotals, getActivityHeatmap,
     getPersonalBests, getTrends, getFocusStreak, getFlowCompletion,
     getDistractions, getBFRBTrend, getMedAdherence,
-    getActualWork, getPhaseRestarts,
+    getActualWork, getPhaseRestarts, getOvershootStats,
   };
 })();

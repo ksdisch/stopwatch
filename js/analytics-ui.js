@@ -473,6 +473,86 @@ function renderBFRBTrend(trend, selectedDays) {
   });
 }
 
+function renderOvershootCard(stats) {
+  const { days, total, count, avg, series, byType } = stats;
+  if (count === 0) return '';
+
+  const fmtSec = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return r > 0 ? `${m}m ${r}s` : `${m}m`;
+  };
+
+  // Sparkline. Reuse the BFRB chart shape so the visual language stays
+  // consistent across the dashboard.
+  const W = 320, H = 60;
+  const PAD_L = 4, PAD_R = 4, PAD_T = 4, PAD_B = 4;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const maxMs = Math.max(1, ...series.map(d => d.totalMs));
+
+  let chartBody = '';
+  if (series.length > 0) {
+    const points = series.map((d, i) => {
+      const x = PAD_L + (series.length === 1 ? innerW / 2 : (i * innerW) / (series.length - 1));
+      const y = PAD_T + innerH - (d.totalMs / maxMs) * innerH;
+      return { x, y, totalMs: d.totalMs, date: d.date };
+    });
+    const poly = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const areaPoly = `${PAD_L},${PAD_T + innerH} ${poly} ${PAD_L + innerW},${PAD_T + innerH}`;
+    const dots = points
+      .filter(p => p.totalMs > 0)
+      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#ff9f0a"><title>${p.date}: +${fmtSec(p.totalMs)}</title></circle>`)
+      .join('');
+    chartBody = `
+      <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
+      <polyline points="${poly}" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/>
+      ${dots}
+    `;
+  }
+
+  // Per-type breakdown ("Timer 1m 12s · Pomodoro 45s · …")
+  const TYPE_LABELS = {
+    timer: 'Timer', pomodoro: 'Pomodoro',
+    flow: 'Flow', interval: 'Interval',
+  };
+  const byTypeStr = Object.entries(byType)
+    .filter(([, ms]) => ms > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, ms]) => `${TYPE_LABELS[type] || type} +${fmtSec(ms)}`)
+    .join(' · ');
+
+  return renderCard({
+    label: 'OVERSHOOT',
+    aside: `LAST ${days} DAYS`,
+    ariaLabel: 'Countdown overshoot',
+    className: 'analytics-overshoot-card',
+    body: `
+      <div class="analytics-overshoot-numbers">
+        <div class="analytics-overshoot-primary">
+          <span class="analytics-overshoot-primary-value">+${fmtSec(total)}</span>
+          <span class="analytics-overshoot-primary-label">total · last ${days}d</span>
+        </div>
+        <div class="analytics-overshoot-secondary">
+          <span class="analytics-overshoot-secondary-value">+${fmtSec(avg)}</span>
+          <span class="analytics-overshoot-secondary-label">avg per session</span>
+        </div>
+        <div class="analytics-overshoot-secondary">
+          <span class="analytics-overshoot-secondary-value">${count}</span>
+          <span class="analytics-overshoot-secondary-label">overrun session${count === 1 ? '' : 's'}</span>
+        </div>
+      </div>
+      <div class="analytics-overshoot-chart-wrap">
+        <svg class="analytics-overshoot-chart" viewBox="0 0 ${W} ${H}"
+             preserveAspectRatio="none" width="100%" height="${H}">${chartBody}</svg>
+      </div>
+      ${byTypeStr ? `<div class="analytics-overshoot-foot">${byTypeStr}</div>` : ''}
+    `,
+  });
+}
+
 function renderFlowCompletion(comp) {
   const { total, completed, endedEarly, completionRate, avgDurationPct } = comp;
 
@@ -545,7 +625,7 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh, actualWork, phaseRestarts] = await Promise.all([
+  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh, actualWork, phaseRestarts, overshoot] = await Promise.all([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
@@ -557,6 +637,7 @@ async function renderAnalytics() {
     Analytics.getMedAdherence(30),
     Analytics.getActualWork(7),
     Analytics.getPhaseRestarts(30),
+    Analytics.getOvershootStats(30),
   ]);
 
   let html = '';
@@ -573,6 +654,10 @@ async function renderAnalytics() {
   // catches with 14 / 30 / 90 day window toggle and a catches-per-focus-hour
   // secondary metric.
   html += renderBFRBTrend(bfrbTrend, bfrbTrendDays);
+
+  // Countdown overshoot — surfaces how often (and how much) timers run past
+  // zero. Hidden when no overshoot has been recorded in window.
+  html += renderOvershootCard(overshoot);
 
   // Distraction leaderboard + hour-of-day heatmap. Hidden if no distractions
   // have ever been logged.

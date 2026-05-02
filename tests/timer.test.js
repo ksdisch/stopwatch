@@ -287,3 +287,112 @@ describe('Timer — adjustRemainingMs', () => {
     assertEqual(t2.getDurationMs(), after);
   });
 });
+
+describe('Timer — overshoot (allowOvershoot=true)', () => {
+  it('default-instance Timer has overshoot enabled', () => {
+    // The exported `Timer` (Timer-mode primary) opts in.
+    Timer.reset();
+    assertEqual(typeof Timer.getOvershootMs, 'function');
+    assertEqual(typeof Timer.isOvershooting, 'function');
+  });
+
+  it('cook-mode timer (allowOvershoot omitted) halts at zero', () => {
+    const t = createTimer('tm-cook-1');
+    t.setDuration(50);
+    t.start();
+    // Wait past zero
+    const start = Date.now();
+    while (Date.now() - start < 100) {}
+    t.checkFinished();
+    assertEqual(t.getStatus(), 'finished');
+    assertEqual(t.getOvershootMs(), 0);
+  });
+
+  it('overshoot timer transitions to overflowing and keeps ticking', () => {
+    const t = createTimer('tm-over-1', { allowOvershoot: true });
+    t.setDuration(50);
+    t.start();
+    const start = Date.now();
+    while (Date.now() - start < 80) {}
+    t.checkFinished();
+    assertEqual(t.getStatus(), 'overflowing');
+    assert(t.isOvershooting(), 'isOvershooting should be true');
+    assert(t.getOvershootMs() > 0, 'overshoot should be > 0 once past zero');
+    // Wait a bit more — overshoot keeps growing.
+    const after1 = t.getOvershootMs();
+    const w2 = Date.now();
+    while (Date.now() - w2 < 30) {}
+    assert(t.getOvershootMs() > after1, 'overshoot should grow over time');
+  });
+
+  it('alarm fires exactly once across multiple checkFinished calls', () => {
+    const t = createTimer('tm-over-2', { allowOvershoot: true });
+    let alarmCount = 0;
+    t.onAlarm(() => alarmCount++);
+    t.setDuration(50);
+    t.start();
+    const start = Date.now();
+    while (Date.now() - start < 80) {}
+    // Spam checkFinished — only one alarm should fire.
+    for (let i = 0; i < 60; i++) t.checkFinished();
+    assertEqual(alarmCount, 1);
+  });
+
+  it('reset clears overshoot state and alarmFired flag', () => {
+    const t = createTimer('tm-over-3', { allowOvershoot: true });
+    let alarmCount = 0;
+    t.onAlarm(() => alarmCount++);
+    t.setDuration(50);
+    t.start();
+    const start = Date.now();
+    while (Date.now() - start < 80) {}
+    t.checkFinished();
+    assertEqual(alarmCount, 1);
+    t.reset();
+    assertEqual(t.getStatus(), 'idle');
+    assertEqual(t.getOvershootMs(), 0);
+    // After reset + new run, alarm should fire again.
+    t.setDuration(50);
+    t.start();
+    const start2 = Date.now();
+    while (Date.now() - start2 < 80) {}
+    t.checkFinished();
+    assertEqual(alarmCount, 2);
+  });
+
+  it('loadState migrates legacy "finished" without re-firing alarm', () => {
+    const t = createTimer('tm-over-4', { allowOvershoot: true });
+    let alarmCount = 0;
+    t.onAlarm(() => alarmCount++);
+    // Simulate a legacy state (no alarmFired field, status 'finished')
+    t.loadState({
+      status: 'finished',
+      durationMs: 60000,
+      accumulatedMs: 60000,
+      startedAt: null,
+    });
+    // Even though status is 'finished', alarm should not be triggered by loadState
+    assertEqual(alarmCount, 0);
+  });
+
+  it('loadState resumes overflowing across tab close without re-firing alarm', () => {
+    const tA = createTimer('tm-over-5', { allowOvershoot: true });
+    let alarmCount = 0;
+    tA.onAlarm(() => alarmCount++);
+    tA.setDuration(60000);
+    // Simulate a state that should have finished while tab was closed:
+    // started 90s ago for a 60s timer.
+    const past = Date.now() - 90000;
+    tA.loadState({
+      status: 'running',
+      durationMs: 60000,
+      startedAt: past,
+      accumulatedMs: 0,
+    });
+    assertEqual(tA.getStatus(), 'overflowing');
+    // Should not have fired the alarm via loadState.
+    assertEqual(alarmCount, 0);
+    // Overshoot should be ~30s.
+    assert(tA.getOvershootMs() >= 25000, 'overshoot >= 25s');
+  });
+});

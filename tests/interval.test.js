@@ -135,12 +135,13 @@ describe('Interval — start/pause/reset', () => {
     assertEqual(Interval.getStatus(), 'phaseComplete');
   });
 
-  it('does not start from done', () => {
+  it('does not start from overflowing (legacy done migrates)', () => {
     Interval.reset();
     Interval.setProgram({ phases: [{ durationMs: 5000 }] });
+    // loadState migrates legacy 'done' → 'overflowing'
     Interval.loadState({ status: 'done', program: Interval.getProgram() });
     Interval.start();
-    assertEqual(Interval.getStatus(), 'done');
+    assertEqual(Interval.getStatus(), 'overflowing');
   });
 
   it('reset clears phase and round indices', () => {
@@ -378,12 +379,13 @@ describe('Interval — checkFinished phase transitions', () => {
     assertEqual(Interval.getStatus(), 'phaseComplete');
   });
 
-  it('transitions to done after last phase of last round', () => {
+  it('transitions to overflowing after last phase of last round', () => {
     triggerExpiration({
       rounds: 1,
       phases: [{ name: 'Only', durationMs: 5000 }],
     });
-    assertEqual(Interval.getStatus(), 'done');
+    // Terminal "done" is now "overflowing" — engine keeps ticking until reset
+    assertEqual(Interval.getStatus(), 'overflowing');
   });
 
   it('returns false when phase still has time left', () => {
@@ -548,11 +550,25 @@ describe('Interval — state serialization', () => {
 
   it('loadState auto-completes an expired running phase', () => {
     Interval.reset();
+    // Terminal phase past zero → overflowing
     Interval.loadState({
       status: 'running',
       startedAt: Date.now() - 999999,
       accumulatedMs: 0,
       program: { rounds: 1, phases: [{ name: 'P', durationMs: 5000 }] },
+    });
+    assertEqual(Interval.getStatus(), 'overflowing');
+
+    // Mid-program (more rounds remaining) → phaseComplete (legacy preserved
+    // for auto-advance flow).
+    Interval.reset();
+    Interval.loadState({
+      status: 'running',
+      phaseIndex: 0,
+      roundIndex: 0,
+      startedAt: Date.now() - 999999,
+      accumulatedMs: 0,
+      program: { rounds: 2, phases: [{ name: 'P', durationMs: 5000 }] },
     });
     assertEqual(Interval.getStatus(), 'phaseComplete');
   });
@@ -627,3 +643,76 @@ describe("Interval — adjustRemainingMs", () => {
   });
 });
 
+
+describe('Interval — overshoot (terminal only)', () => {
+  it('mid-program phaseComplete is preserved (auto-advance unaffected)', () => {
+    Interval.reset();
+    Interval.setProgram({
+      name: 'Test', rounds: 2, restBetweenRoundsMs: 0,
+      phases: [{ name: 'A', durationMs: 1000 }, { name: 'B', durationMs: 1000 }],
+    });
+    Interval.start();
+    // Force first phase past zero
+    Interval.loadState({
+      status: 'running', phaseIndex: 0, roundIndex: 0, isResting: false,
+      startedAt: Date.now() - 1500, accumulatedMs: 0,
+      program: Interval.getProgram(),
+    });
+    Interval.checkFinished();
+    // Mid-program → phaseComplete (legacy behavior preserved)
+    assertEqual(Interval.getStatus(), 'phaseComplete');
+    assertEqual(Interval.isOvershooting(), false);
+  });
+
+  it('terminal phase past zero transitions to overflowing', () => {
+    Interval.reset();
+    Interval.setProgram({
+      name: 'Test', rounds: 1, restBetweenRoundsMs: 0,
+      phases: [{ name: 'Only', durationMs: 1000 }],
+    });
+    Interval.start();
+    Interval.loadState({
+      status: 'running', phaseIndex: 0, roundIndex: 0, isResting: false,
+      startedAt: Date.now() - 1500, accumulatedMs: 0,
+      program: Interval.getProgram(),
+    });
+    Interval.checkFinished();
+    assertEqual(Interval.getStatus(), 'overflowing');
+    assert(Interval.isOvershooting(), 'isOvershooting');
+    assert(Interval.getOvershootMs() > 0, 'overshoot > 0');
+  });
+
+  it('legacy "done" status migrates to overflowing on loadState', () => {
+    Interval.reset();
+    Interval.loadState({
+      status: 'done', phaseIndex: 0, roundIndex: 0, isResting: false,
+      startedAt: null, accumulatedMs: 1000,
+      program: { name: 'X', rounds: 1, restBetweenRoundsMs: 0,
+                phases: [{ name: 'Only', durationMs: 1000 }] },
+    });
+    assertEqual(Interval.getStatus(), 'overflowing');
+    // Old states have no overshoot meaningfully tracked.
+    assertEqual(Interval.isDone(), true);
+  });
+
+  it('alarm-once: terminal callback fires exactly once', () => {
+    Interval.reset();
+    let cbCount = 0;
+    Interval.onPhaseComplete((type) => { if (type === 'done') cbCount++; });
+    // setProgram clamps phase durationMs to a minimum of 1000ms — use the
+    // floor so the test runs in just over 1s.
+    Interval.setProgram({
+      name: 'Test', rounds: 1, restBetweenRoundsMs: 0,
+      phases: [{ name: 'Only', durationMs: 1000 }],
+    });
+    Interval.start();
+    // Wait for the 1s phase to elapse in real time. loadState's recovery
+    // path suppresses the alarm; we want the live-tick path here.
+    const startMs = Date.now();
+    while (Date.now() - startMs < 1100) {}
+    Interval.checkFinished();
+    // Subsequent ticks should not re-fire.
+    for (let i = 0; i < 20; i++) Interval.checkFinished();
+    assertEqual(cbCount, 1);
+  });
+});

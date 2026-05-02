@@ -130,7 +130,7 @@ function initPomodoroUI() {
         break;
       case 'KeyN':
       case 'Enter':
-        if (status === 'phaseComplete') {
+        if (status === 'overflowing') {
           e.preventDefault();
           onPomodoroRight();
         }
@@ -139,10 +139,11 @@ function initPomodoroUI() {
   });
 
   // Restore render loop if needed
-  if (Pomodoro.getStatus() === 'running' && appMode === 'pomodoro') {
+  const initStatus = Pomodoro.getStatus();
+  if ((initStatus === 'running' || initStatus === 'overflowing') && appMode === 'pomodoro') {
     startPomodoroRenderLoop();
   }
-  if ((Pomodoro.getStatus() === 'phaseComplete' || Pomodoro.getStatus() === 'done') && appMode === 'pomodoro') {
+  if ((initStatus === 'overflowing' || initStatus === 'done') && appMode === 'pomodoro') {
     updatePomodoroUI();
   }
 }
@@ -159,7 +160,7 @@ function startAutoAdvanceCountdown() {
     remaining--;
     if (remaining <= 0) {
       cancelAutoAdvance();
-      if (Pomodoro.getStatus() === 'phaseComplete') {
+      if (Pomodoro.getStatus() === 'overflowing') {
         onPomodoroRight();
       }
     } else if (overlay) {
@@ -194,6 +195,7 @@ function onPomodoroLeft() {
         type: 'pomodoro', duration: elapsed, laps: [],
         completedCycles: Pomodoro.getCycleIndex(),
         totalWorkMs: Pomodoro.getCycleIndex() * cfg.workMs,
+        overshootMs: 0,
         ...gatherTaskData(),
         ...gatherTimingData(),
       });
@@ -208,8 +210,9 @@ function onPomodoroLeft() {
     renderActualWork();
     SFX.playReset();
     updatePomodoroUI();
-  } else if (status === 'phaseComplete') {
-    // Skip — advance to next phase
+  } else if (status === 'overflowing') {
+    // Skip — advance to next phase (overshoot already captured into phaseLog
+    // by the engine's nextPhase()).
     Pomodoro.nextPhase();
     savePomodoroState();
     updatePomodoroUI();
@@ -241,15 +244,20 @@ function onPomodoroRight() {
     SFX.playStart();
     startPomodoroRenderLoop();
     updatePomodoroUI();
-  } else if (status === 'phaseComplete') {
-    // Start next phase
+  } else if (status === 'overflowing') {
+    // Capture overshoot before advancing — the engine sums it into the most
+    // recent phaseLog entry inside nextPhase(), but we still want it on the
+    // session record at end-of-cycle (sum of all phaseLog overshoots).
     Pomodoro.nextPhase();
     if (Pomodoro.getStatus() === 'done') {
       const cfg = Pomodoro.getConfig();
+      const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
+      const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0);
       History.addSession({
         type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
         completedCycles: cfg.totalCycles,
         totalWorkMs: cfg.totalCycles * cfg.workMs,
+        overshootMs: totalOvershoot,
         ...gatherTaskData(),
         ...gatherTimingData(),
       });
@@ -278,8 +286,10 @@ function updatePomodoroUI() {
   if (appMode !== 'pomodoro') return;
 
   const status = Pomodoro.getStatus();
+  const isOver = status === 'overflowing';
   const phase = Pomodoro.getPhase();
   const remaining = Pomodoro.getRemainingMs();
+  const overshootMs = isOver && Pomodoro.getOvershootMs ? Pomodoro.getOvershootMs() : 0;
   const timeEl = document.getElementById('time');
   const btnLeft = document.getElementById('btn-left');
   const btnRight = document.getElementById('btn-right');
@@ -316,12 +326,21 @@ function updatePomodoroUI() {
   renderPomodoroTimeline();
   updateDistractionBtnVisibility();
 
-  // Format remaining time
-  const t = Utils.formatMs(remaining);
-  if (t.hours > 0) {
-    timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  // Format remaining time. During overflow, show "+M:SS.cc" instead of zero.
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   } else {
-    timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    const t = Utils.formatMs(remaining);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   }
 
   // Progress bar
@@ -332,9 +351,12 @@ function updatePomodoroUI() {
     progressBar.classList.add('hidden');
   }
 
-  // Break color + phase complete flash
+  // Break color + zero-cross flash + steady amber overshoot
   timerDisplay.classList.toggle('pomodoro-break', phase !== 'work' && status === 'running');
-  timerDisplay.classList.toggle('pomodoro-phase-complete', status === 'phaseComplete');
+  // Reuse the existing flash-red animation (6 × 0.5s = 3s) for the first
+  // ~3s of overshoot, then settle into the steady amber via .overshoot.
+  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   timerDisplay.classList.remove('timer-finished');
 
   // Running indicator
@@ -373,21 +395,23 @@ function updatePomodoroUI() {
       btnRight.innerHTML = '<span class="btn-inner">Resume</span>';
       btnRight.className = 'control-btn btn-start';
       break;
-    case 'phaseComplete':
+    case 'overflowing': {
+      const short = Utils.formatShort && overshootMs > 0 ? ` +${Utils.formatShort(overshootMs)}` : '';
       if (phase === 'work') {
-        btnLeft.innerHTML = '<span class="btn-inner">Skip</span>';
+        btnLeft.innerHTML = `<span class="btn-inner">Skip${short}</span>`;
         btnLeft.className = 'control-btn btn-reset';
         btnLeft.disabled = false;
-        btnRight.innerHTML = '<span class="btn-inner">Break</span>';
+        btnRight.innerHTML = `<span class="btn-inner">Break${short}</span>`;
         btnRight.className = 'control-btn btn-start';
       } else {
-        btnLeft.innerHTML = '<span class="btn-inner">Skip</span>';
+        btnLeft.innerHTML = `<span class="btn-inner">Skip${short}</span>`;
         btnLeft.className = 'control-btn btn-reset';
         btnLeft.disabled = false;
-        btnRight.innerHTML = '<span class="btn-inner">Work</span>';
+        btnRight.innerHTML = `<span class="btn-inner">Work${short}</span>`;
         btnRight.className = 'control-btn btn-start';
       }
       break;
+    }
     case 'done':
       btnLeft.innerHTML = '<span class="btn-inner">--</span>';
       btnLeft.className = 'control-btn btn-lap';
@@ -432,10 +456,12 @@ function startPomodoroRenderLoop() {
   function tick() {
     // Guard: if loop was stopped externally, don't continue
     if (pomodoroRafId === null) return;
-    if (Pomodoro.getStatus() === 'running') {
+    const st = Pomodoro.getStatus();
+    if (st === 'running' || st === 'overflowing') {
       Pomodoro.checkFinished();
       updatePomodoroUI();
-      if (Pomodoro.getStatus() === 'running') {
+      const after = Pomodoro.getStatus();
+      if (after === 'running' || after === 'overflowing') {
         pomodoroRafId = requestAnimationFrame(tick);
       } else {
         pomodoroRafId = null;
@@ -1084,6 +1110,9 @@ function initActionsDrawer() {
     const cfg = Pomodoro.getConfig();
     const cycleIdx = Pomodoro.getCycleIndex();
     const phase = Pomodoro.getPhase();
+    const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
+    const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0)
+      + (Pomodoro.isOvershooting && Pomodoro.isOvershooting() ? Pomodoro.getOvershootMs() : 0);
     if (elapsed > 1000 || cycleIdx > 0) {
       History.addSession({
         type: 'pomodoro',
@@ -1091,6 +1120,7 @@ function initActionsDrawer() {
         laps: [],
         completedCycles: cycleIdx,
         totalWorkMs: cycleIdx * cfg.workMs + (phase === 'work' ? elapsed : 0),
+        overshootMs: totalOvershoot,
         ...gatherTaskData(),
         ...gatherTimingData(),
       });

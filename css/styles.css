@@ -12,6 +12,7 @@
   --green-dark: #0a3d1a;
   --red: #ff453a;
   --red-dark: #3d0f0c;
+  --orange: #ff9f0a;
   --btn-bg: #1c1c1e;
   --btn-border: #38383a;
   --separator: #38383a;
@@ -31,6 +32,7 @@
     --green-dark: #d4f5dc;
     --red: #ff3b30;
     --red-dark: #fdd;
+    --orange: #ff9500;
     --btn-bg: #e5e5ea;
     --btn-border: #c7c7cc;
     --separator: #c7c7cc;
@@ -1408,6 +1410,89 @@ input:focus:not(:focus-visible) {
 @keyframes flash-red {
   from { color: var(--text); }
   to { color: var(--red); }
+}
+
+/* Countdown overshoot — steady amber once the brief flash-red animation
+   has settled (~3s after zero crossing). The .overshoot class is added
+   alongside (or after) the flash class by each countdown UI. */
+#timer-display.overshoot #time {
+  color: var(--orange);
+}
+#timer-display.overshoot.timer-finished #time {
+  /* While the flash animation is still running, let it win — it animates
+     between the text color and red. The amber takes over as the flash
+     class is removed past 3s. */
+  animation: flash-red 0.5s ease-in-out 6 alternate;
+}
+
+/* History list "+X over" badge. Hidden when overshootMs is 0/undefined
+   via the JS guard (no class rendered). */
+.history-overshoot {
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* Flow summary card — overshoot row reuses the amber. */
+.flow-summary-overshoot {
+  color: var(--orange);
+  font-weight: 600;
+}
+
+/* Analytics overshoot card — visual language matches BFRB Trend so the
+   dashboard reads consistently. */
+.analytics-overshoot-numbers {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+.analytics-overshoot-primary {
+  display: flex;
+  flex-direction: column;
+}
+.analytics-overshoot-primary-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--orange);
+  line-height: 1.1;
+}
+.analytics-overshoot-primary-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.analytics-overshoot-secondary {
+  display: flex;
+  flex-direction: column;
+}
+.analytics-overshoot-secondary-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.1;
+}
+.analytics-overshoot-secondary-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.analytics-overshoot-chart-wrap {
+  margin: 8px 0;
+}
+.analytics-overshoot-chart {
+  width: 100%;
+  display: block;
+}
+.analytics-overshoot-foot {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 6px;
 }
 
 /* Vibration Interval */

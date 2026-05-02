@@ -1,5 +1,9 @@
 const Pomodoro = (() => {
-  let status = 'idle'; // 'idle' | 'running' | 'paused' | 'phaseComplete' | 'done'
+  // 'idle' | 'running' | 'paused' | 'overflowing' | 'done'
+  // 'overflowing' replaces the old 'phaseComplete'. The phase has crossed
+  // zero, the alarm has fired, but the engine continues counting up until
+  // the user advances (nextPhase) or the auto-advance overlay fires.
+  let status = 'idle';
   let phase = 'work';  // 'work' | 'shortBreak' | 'longBreak'
   let cycleIndex = 0;  // 0-based, which work session we're on
   let totalCycles = 4;
@@ -10,9 +14,11 @@ const Pomodoro = (() => {
   let accumulatedMs = 0;
   let phaseAdjustmentMs = 0;    // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
+  let alarmFired = false;
+  let zeroCrossedAt = null;
   let sessionStartedAt = null;  // When the overall Pomodoro session began
   let phaseStartedAt = null;    // When the current phase first started
-  let phaseLog = [];            // { phase, startedAt, endedAt } for each completed phase
+  let phaseLog = [];            // { phase, startedAt, endedAt, overshootMs } per completed phase
 
   function getBasePhaseDurationMs() {
     if (phase === 'work') return workMs;
@@ -24,20 +30,33 @@ const Pomodoro = (() => {
     return Math.max(1000, getBasePhaseDurationMs() + phaseAdjustmentMs);
   }
 
-  function getRemainingMs() {
+  // Raw elapsed (without clamping) — used for overshoot math.
+  function rawElapsedMs() {
     let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
+    if ((status === 'running' || status === 'overflowing') && startedAt !== null) {
       elapsed += Date.now() - startedAt;
     }
-    return Math.max(0, getCurrentPhaseDurationMs() - elapsed);
+    return elapsed;
+  }
+
+  function getRemainingMs() {
+    return Math.max(0, getCurrentPhaseDurationMs() - rawElapsedMs());
   }
 
   function getElapsedMs() {
-    let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
-      elapsed += Date.now() - startedAt;
-    }
-    return Math.min(elapsed, getCurrentPhaseDurationMs());
+    return Math.min(rawElapsedMs(), getCurrentPhaseDurationMs());
+  }
+
+  function getOvershootMs() {
+    return Math.max(0, rawElapsedMs() - getCurrentPhaseDurationMs());
+  }
+
+  function isOvershooting() {
+    return status === 'overflowing';
+  }
+
+  function getZeroCrossedAt() {
+    return zeroCrossedAt;
   }
 
   function getProgress() {
@@ -48,7 +67,7 @@ const Pomodoro = (() => {
 
   function start() {
     if (status === 'running' || status === 'done') return;
-    if (status === 'phaseComplete') return;
+    if (status === 'overflowing') return;
     const now = Date.now();
     startedAt = now;
     if (!sessionStartedAt) sessionStartedAt = now;
@@ -70,6 +89,8 @@ const Pomodoro = (() => {
     startedAt = null;
     accumulatedMs = 0;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
     sessionStartedAt = null;
     phaseStartedAt = null;
     phaseLog = [];
@@ -90,24 +111,43 @@ const Pomodoro = (() => {
 
   function checkFinished() {
     if (status === 'running' && getRemainingMs() <= 0) {
+      // Snapshot at exactly the duration so subsequent (now - startedAt)
+      // becomes the overshoot delta. Keep startedAt set so the clock keeps
+      // ticking through the overflowing state.
       const now = Date.now();
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
-      status = 'phaseComplete';
-      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now });
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'overflowing';
+      zeroCrossedAt = now;
+      // Push the phase log entry now (with overshootMs: 0); when the user
+      // advances via nextPhase we'll back-fill the overshoot value.
+      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0 });
       phaseStartedAt = null;
-      if (phaseCallback) phaseCallback(phase);
+      if (!alarmFired) {
+        alarmFired = true;
+        if (phaseCallback) phaseCallback(phase);
+      }
       return true;
     }
     return false;
   }
 
   function nextPhase() {
-    if (status !== 'phaseComplete' && status !== 'done') return;
+    if (status !== 'overflowing' && status !== 'done') return;
+    // Capture overshoot into the most recent phaseLog entry before resetting.
+    if (status === 'overflowing') {
+      const overshoot = getOvershootMs();
+      if (phaseLog.length > 0) {
+        phaseLog[phaseLog.length - 1].overshootMs = overshoot;
+      }
+    }
     accumulatedMs = 0;
     startedAt = null;
     phaseStartedAt = null;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
 
     if (phase === 'work') {
       cycleIndex++;
@@ -139,6 +179,8 @@ const Pomodoro = (() => {
     startedAt = null;
     phaseStartedAt = null;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
     status = 'idle';
   }
 
@@ -167,6 +209,7 @@ const Pomodoro = (() => {
       status, phase, cycleIndex, totalCycles,
       workMs, shortBreakMs, longBreakMs,
       startedAt, accumulatedMs, phaseAdjustmentMs,
+      alarmFired, zeroCrossedAt,
       sessionStartedAt, phaseStartedAt, phaseLog,
     };
   }
@@ -174,6 +217,12 @@ const Pomodoro = (() => {
   function loadState(state) {
     if (!state) return;
     status = state.status ?? 'idle';
+    // Migrate legacy 'phaseComplete' status to 'overflowing' so old saved
+    // states resume cleanly into the new state machine. Old states have no
+    // overshoot tracked — treat alarmFired as true so we don't re-fire.
+    if (status === 'phaseComplete') {
+      status = 'overflowing';
+    }
     phase = state.phase ?? 'work';
     cycleIndex = state.cycleIndex ?? 0;
     totalCycles = state.totalCycles ?? 4;
@@ -183,6 +232,8 @@ const Pomodoro = (() => {
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
     phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
+    alarmFired = state.alarmFired === true;
+    zeroCrossedAt = state.zeroCrossedAt ?? null;
     sessionStartedAt = state.sessionStartedAt ?? null;
     phaseStartedAt = state.phaseStartedAt ?? null;
     phaseLog = state.phaseLog ?? [];
@@ -194,9 +245,26 @@ const Pomodoro = (() => {
     }
     // Check if phase should have finished while page was closed
     if (status === 'running' && getRemainingMs() <= 0) {
-      status = 'phaseComplete';
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
+      const now = Date.now();
+      const carry = startedAt !== null ? now - startedAt : 0;
+      accumulatedMs += carry;
+      startedAt = now;
+      status = 'overflowing';
+      if (zeroCrossedAt === null) zeroCrossedAt = now;
+      alarmFired = true;
+      if (phaseStartedAt !== null) {
+        phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0 });
+        phaseStartedAt = null;
+      }
+    }
+    // 24h overshoot cap to avoid pathological "left it for a week" states.
+    if (status === 'overflowing') {
+      const cap = getCurrentPhaseDurationMs() + 24 * 60 * 60 * 1000;
+      const elapsed = rawElapsedMs();
+      if (elapsed > cap) {
+        accumulatedMs = cap;
+        startedAt = null;
+      }
     }
   }
 
@@ -204,6 +272,7 @@ const Pomodoro = (() => {
     start, pause, reset, restartPhase, checkFinished, nextPhase,
     adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress,
+    getOvershootMs, isOvershooting, getZeroCrossedAt,
     getStatus, getPhase, getCycleIndex, getTotalCycles,
     getCurrentPhaseDurationMs, getConfig,
     getSessionStartedAt: () => sessionStartedAt,

@@ -45,7 +45,7 @@ const InstanceManager = (() => {
   function addTimer(name) {
     if (timers.length >= MAX_INSTANCES) return null;
     const id = 'tm-' + Date.now().toString(36);
-    const instance = createTimer(id);
+    const instance = createTimer(id, { allowOvershoot: true });
     instance.setName(name || 'Timer ' + (timers.length + 1));
     timers.push(instance);
     return instance;
@@ -121,7 +121,7 @@ const InstanceManager = (() => {
     // Restore timers
     if (Array.isArray(state.timers) && state.timers.length > 0) {
       timers = state.timers.map(s => {
-        const instance = createTimer(s.id || 'tm-default');
+        const instance = createTimer(s.id || 'tm-default', { allowOvershoot: true });
         instance.loadState(s);
         return instance;
       });

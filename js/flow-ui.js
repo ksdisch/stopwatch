@@ -143,7 +143,11 @@ function initFlowUI() {
 
   // Summary card buttons
   document.getElementById('flow-start-recovery').addEventListener('click', () => {
-    if (Flow.getStatus() !== 'focusComplete') return;
+    if (Flow.getStatus() !== 'overflowing') return;
+    // Capture focus overshoot before transitioning into recovery — once
+    // startRecovery() runs the engine resets accumulated to 0 for the
+    // recovery phase and the focus overshoot value is gone.
+    saveFlowSessionToHistory();
     Flow.startRecovery();
     saveFlowState();
     SFX.playStart();
@@ -152,9 +156,14 @@ function initFlowUI() {
     updateFlowUI();
   });
   document.getElementById('flow-skip-recovery').addEventListener('click', () => {
-    if (Flow.getStatus() !== 'focusComplete'
-        && Flow.getStatus() !== 'recovery'
-        && Flow.getStatus() !== 'recoveryPaused') return;
+    const st = Flow.getStatus();
+    if (st !== 'overflowing'
+        && st !== 'recovery'
+        && st !== 'recoveryPaused'
+        && st !== 'recoveryOverflowing') return;
+    // If we're skipping straight from focus overflow, capture the overshoot
+    // into history before the engine resets.
+    if (st === 'overflowing') saveFlowSessionToHistory();
     BgNotify.cancel('flow');
     stopFlowRenderLoop();
     Flow.skipRecovery();
@@ -182,13 +191,15 @@ function initFlowUI() {
   // If the block completed while the tab was closed, persist it now so we
   // don't lose the session (the onPhaseComplete callback only fires from the
   // render loop, not from loadState recovery).
-  if (Flow.getStatus() === 'focusComplete') {
+  if (Flow.getStatus() === 'overflowing') {
     saveFlowSessionToHistory();
   }
 
   // Restore render loop if needed
-  const st = Flow.getStatus();
-  if ((st === 'running' || st === 'recovery') && appMode === 'flow') {
+  const initSt = Flow.getStatus();
+  if ((initSt === 'running' || initSt === 'recovery'
+       || initSt === 'overflowing' || initSt === 'recoveryOverflowing')
+      && appMode === 'flow') {
     startFlowRenderLoop();
   }
   if (appMode === 'flow') updateFlowUI();
@@ -197,9 +208,9 @@ function initFlowUI() {
 function onFlowLeft() {
   if (appMode !== 'flow') return;
   const status = Flow.getStatus();
-  if (status === 'paused' || status === 'recoveryPaused') {
-    // Reset — abandon session (do NOT save, since an in-progress block
-    // never "completed" its focus phase)
+  if (status === 'paused' || status === 'recoveryPaused' || status === 'recoveryOverflowing') {
+    // Reset — abandon session (focus block has already been saved to history
+    // at focusComplete time, so we're not losing data).
     stopFlowRenderLoop();
     BgNotify.cancel('flow');
     Flow.reset();
@@ -257,6 +268,19 @@ function onFlowRight() {
     SFX.playStart();
     startFlowRenderLoop();
     updateFlowUI();
+  } else if (status === 'recoveryOverflowing') {
+    // End recovery — capture overshoot was already in the focus history
+    // record. Recovery overshoot itself isn't currently surfaced in the
+    // record, but the user has acted, so we transition to done + reset.
+    BgNotify.cancel('flow');
+    stopFlowRenderLoop();
+    Flow.skipRecovery();
+    Flow.reset();
+    resetFlowChecklistState();
+    saveFlowDistractions([]);
+    saveFlowBFRBs([]);
+    saveFlowState();
+    updateFlowUI();
   } else if (status === 'done') {
     Flow.reset();
     resetFlowChecklistState();
@@ -278,6 +302,7 @@ function updateFlowUI() {
 
   const status = Flow.getStatus();
   const phase = Flow.getPhase();
+  const overshootMs = Flow.isOvershooting && Flow.isOvershooting() ? Flow.getOvershootMs() : 0;
   const timeEl = document.getElementById('time');
   const btnLeft = document.getElementById('btn-left');
   const btnRight = document.getElementById('btn-right');
@@ -291,11 +316,15 @@ function updateFlowUI() {
   const summaryEl = document.getElementById('flow-summary');
   const recoveryEl = document.getElementById('flow-recovery');
 
-  // Section visibility
+  // Section visibility. 'overflowing' is the focus-phase overflow state and
+  // surfaces the summary card (with the +M:SS overshoot reflected in the time
+  // display). 'recoveryOverflowing' surfaces the recovery section.
   const isIdle = status === 'idle';
   const isFocusActive = status === 'running' || status === 'paused';
-  const isFocusComplete = status === 'focusComplete';
-  const isRecoveryActive = status === 'recovery' || status === 'recoveryPaused';
+  const isFocusComplete = status === 'overflowing';
+  const isRecoveryActive = status === 'recovery'
+    || status === 'recoveryPaused'
+    || status === 'recoveryOverflowing';
   const isDone = status === 'done';
 
   setupEl.classList.toggle('hidden', !isIdle);
@@ -332,20 +361,24 @@ function updateFlowUI() {
     endEarlyBtn.classList.toggle('hidden', !isFocusActive);
   }
 
-  // Format remaining time
-  let remaining;
-  if (isFocusComplete) {
-    remaining = 0;
-  } else if (isDone) {
-    remaining = 0;
+  // Format remaining time. Overflow shows "+M:SS.cc" — applies to focus
+  // overshoot (status 'overflowing') and recovery overshoot
+  // ('recoveryOverflowing'). All other states show remaining.
+  if (Flow.isOvershooting && Flow.isOvershooting()) {
+    const t = Utils.formatMs(overshootMs);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   } else {
-    remaining = Flow.getRemainingMs();
-  }
-  const t = Utils.formatMs(remaining);
-  if (t.hours > 0) {
-    timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-  } else {
-    timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    const remaining = isDone ? 0 : Flow.getRemainingMs();
+    const t = Utils.formatMs(remaining);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   }
 
   // Progress bar
@@ -356,9 +389,12 @@ function updateFlowUI() {
     progressBar.classList.add('hidden');
   }
 
-  // Visual states
-  timerDisplay.classList.toggle('pomodoro-break', isRecoveryActive);
-  timerDisplay.classList.toggle('pomodoro-phase-complete', isFocusComplete);
+  // Visual states. Overflow flashes red briefly (first ~3s) then settles
+  // into steady amber via .overshoot.
+  const isOver = Flow.isOvershooting && Flow.isOvershooting();
+  timerDisplay.classList.toggle('pomodoro-break', isRecoveryActive && !isOver);
+  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   timerDisplay.classList.remove('timer-finished');
   timerDisplay.classList.toggle('is-running', status === 'running' || status === 'recovery');
   appEl.classList.toggle('is-running', status === 'running' || status === 'recovery');
@@ -393,7 +429,10 @@ function updateFlowUI() {
       btnRight.className = 'control-btn btn-start';
       btnRight.disabled = false;
       break;
-    case 'focusComplete':
+    case 'overflowing': {
+      // Focus phase past zero — buttons are inactive on the main row;
+      // user advances via the summary card's Start Recovery / Skip Recovery
+      // buttons. Showing the overshoot in the time display is enough.
       btnLeft.innerHTML = '<span class="btn-inner">--</span>';
       btnLeft.className = 'control-btn btn-lap';
       btnLeft.disabled = true;
@@ -401,6 +440,17 @@ function updateFlowUI() {
       btnRight.className = 'control-btn btn-start';
       btnRight.disabled = true;
       break;
+    }
+    case 'recoveryOverflowing': {
+      // Recovery past zero — left = Reset, right = End (capture and reset).
+      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
+      btnLeft.className = 'control-btn btn-reset';
+      btnLeft.disabled = false;
+      btnRight.innerHTML = '<span class="btn-inner">End</span>';
+      btnRight.className = 'control-btn btn-start';
+      btnRight.disabled = false;
+      break;
+    }
     case 'recovery':
       btnLeft.innerHTML = '<span class="btn-inner">--</span>';
       btnLeft.className = 'control-btn btn-lap';
@@ -522,6 +572,11 @@ function renderFlowSummary() {
   const plannedMin = Math.round(plannedMs / 60000);
   const elapsedMin = Math.round(elapsedMs / 60000);
   const endedEarly = elapsedMs < plannedMs - 5000; // 5s fudge for float-rounding
+  const overshootMs = (Flow.isOvershooting && Flow.isOvershooting() && Flow.getPhase() === 'focus')
+    ? Flow.getOvershootMs() : 0;
+  const overshootStr = overshootMs > 0 && Utils.formatShort
+    ? Utils.formatShort(overshootMs)
+    : '';
   const goal = Flow.getGoal();
   const distractions = loadFlowDistractions();
   const bfrbs = loadFlowBFRBs();
@@ -544,6 +599,10 @@ function renderFlowSummary() {
       <span class="flow-summary-label">Duration</span>
       <span class="flow-summary-value">${elapsedMin} min${endedEarly ? ` <span class="flow-summary-sub">(of ${plannedMin} planned · ended early)</span>` : ''}</span>
     </div>
+    ${overshootStr ? `<div class="flow-summary-row">
+      <span class="flow-summary-label">Overshoot</span>
+      <span class="flow-summary-value flow-summary-overshoot">+${overshootStr}</span>
+    </div>` : ''}
     ${goal ? `<div class="flow-summary-row">
       <span class="flow-summary-label">Goal</span>
       <span class="flow-summary-value">${escapeHtml(goal)}</span>
@@ -561,12 +620,15 @@ function renderFlowSummary() {
 
 const FLOW_LAST_SAVED_KEY = 'flow_last_saved_session';
 
+// Save (or update) the flow session record in history. The record id is the
+// session's start timestamp so subsequent saves for the same session are
+// idempotent upserts via IndexedDB `put`. We deliberately re-save on user
+// advance (Start Recovery / Skip Recovery) so the overshoot field reflects
+// however long the user lingered past zero — the initial save at focus
+// complete writes overshoot=0, then advance updates it.
 function saveFlowSessionToHistory() {
   const sessionStartedAt = Flow.getSessionStartedAt();
   if (!sessionStartedAt) return;
-  // Dedupe: don't save the same session twice (e.g., if the user reopens the
-  // tab after the block already completed, and again after clicking through).
-  if (localStorage.getItem(FLOW_LAST_SAVED_KEY) === String(sessionStartedAt)) return;
 
   const plannedMs = Flow.getFocusDurationMs();
   // Actual elapsed focus time. For naturally-completed blocks this equals
@@ -577,8 +639,16 @@ function saveFlowSessionToHistory() {
   const distractions = loadFlowDistractions();
   const bfrbs = loadFlowBFRBs();
   const sessionEndedAt = Flow.getFocusEndedAt() || Date.now();
+  // Capture overshoot only when we're in the focus-overflow state. Once
+  // recovery starts, overshoot resets — but the value at the moment of
+  // user-advance is what we want to persist.
+  const overshootMs = (Flow.isOvershooting && Flow.isOvershooting()
+    && Flow.getPhase() === 'focus')
+    ? Flow.getOvershootMs()
+    : 0;
 
   const session = {
+    id: sessionStartedAt,
     type: 'flow',
     duration: elapsedMs,
     laps: [],
@@ -587,6 +657,7 @@ function saveFlowSessionToHistory() {
     preBlockSkipped: isFlowChecklistSkipped(),
     sessionStartedAt,
     sessionEndedAt,
+    overshootMs,
   };
   if (endedEarly) session.endedEarly = true;
   if (distractions.length > 0) session.distractions = distractions;
@@ -601,11 +672,15 @@ function startFlowRenderLoop() {
   function tick() {
     if (flowRafId === null) return;
     const st = Flow.getStatus();
-    if (st === 'running' || st === 'recovery') {
+    const ticking = st === 'running' || st === 'recovery'
+      || st === 'overflowing' || st === 'recoveryOverflowing';
+    if (ticking) {
       Flow.checkFinished();
       updateFlowUI();
       const after = Flow.getStatus();
-      if (after === 'running' || after === 'recovery') {
+      const stillTicking = after === 'running' || after === 'recovery'
+        || after === 'overflowing' || after === 'recoveryOverflowing';
+      if (stillTicking) {
         flowRafId = requestAnimationFrame(tick);
       } else {
         flowRafId = null;

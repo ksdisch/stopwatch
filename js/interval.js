@@ -1,5 +1,10 @@
 const Interval = (() => {
-  let status = 'idle'; // 'idle' | 'running' | 'paused' | 'phaseComplete' | 'done'
+  // 'idle' | 'running' | 'paused' | 'phaseComplete' | 'overflowing'
+  // 'phaseComplete' is preserved for inter-phase boundaries (auto-advance);
+  // 'overflowing' replaces the legacy 'done' status — the program is past
+  // its final phase, alarm has fired, and the engine continues counting up
+  // until the user resets.
+  let status = 'idle';
   let program = { name: 'Custom', rounds: 1, restBetweenRoundsMs: 0, phases: [] };
   let phaseIndex = 0;
   let roundIndex = 0;
@@ -8,6 +13,8 @@ const Interval = (() => {
   let accumulatedMs = 0;
   let phaseAdjustmentMs = 0;     // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
+  let alarmFired = false;
+  let zeroCrossedAt = null;
 
   function getBasePhaseDurationMs() {
     if (isResting) return program.restBetweenRoundsMs;
@@ -21,20 +28,39 @@ const Interval = (() => {
     return Math.max(1000, base + phaseAdjustmentMs);
   }
 
-  function getRemainingMs() {
+  function rawElapsedMs() {
     let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
+    if ((status === 'running' || status === 'overflowing') && startedAt !== null) {
       elapsed += Date.now() - startedAt;
     }
-    return Math.max(0, getCurrentPhaseDurationMs() - elapsed);
+    return elapsed;
+  }
+
+  function getRemainingMs() {
+    return Math.max(0, getCurrentPhaseDurationMs() - rawElapsedMs());
   }
 
   function getElapsedMs() {
-    let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
-      elapsed += Date.now() - startedAt;
-    }
-    return Math.min(elapsed, getCurrentPhaseDurationMs());
+    return Math.min(rawElapsedMs(), getCurrentPhaseDurationMs());
+  }
+
+  function getOvershootMs() {
+    if (status !== 'overflowing') return 0;
+    return Math.max(0, rawElapsedMs() - getCurrentPhaseDurationMs());
+  }
+
+  function isOvershooting() {
+    return status === 'overflowing';
+  }
+
+  function getZeroCrossedAt() {
+    return zeroCrossedAt;
+  }
+
+  function isDone() {
+    // Backwards-compat: a program past its final phase is 'done'-equivalent
+    // regardless of whether the engine is in the new 'overflowing' state.
+    return status === 'overflowing';
   }
 
   function getProgress() {
@@ -66,7 +92,7 @@ const Interval = (() => {
   }
 
   function start() {
-    if (status === 'running' || status === 'done') return;
+    if (status === 'running' || status === 'overflowing') return;
     if (status === 'phaseComplete') return;
     if (program.phases.length === 0) return;
     startedAt = Date.now();
@@ -88,6 +114,8 @@ const Interval = (() => {
     startedAt = null;
     accumulatedMs = 0;
     phaseAdjustmentMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
   }
 
   function adjustRemainingMs(deltaMs) {
@@ -106,6 +134,8 @@ const Interval = (() => {
   function checkFinished() {
     if (status !== 'running' || getRemainingMs() > 0) return false;
 
+    // Default: snap to phase end (legacy behavior preserved for non-terminal
+    // boundaries). The terminal branch overrides this below.
     accumulatedMs = getCurrentPhaseDurationMs();
     startedAt = null;
 
@@ -128,10 +158,18 @@ const Interval = (() => {
       // End of round
       const nextRound = roundIndex + 1;
       if (nextRound >= program.rounds) {
-        // Program complete
-        status = 'done';
+        // Program complete — overflow past zero, keep ticking forward
+        // until the user resets. Push back into 'overflowing' state with
+        // startedAt re-anchored to now.
+        const now = Date.now();
+        startedAt = now;
+        status = 'overflowing';
+        zeroCrossedAt = now;
         phaseAdjustmentMs = 0;
-        if (phaseCallback) phaseCallback('done');
+        if (!alarmFired) {
+          alarmFired = true;
+          if (phaseCallback) phaseCallback('done');
+        }
         return true;
       }
       // More rounds — check for rest between rounds
@@ -203,6 +241,7 @@ const Interval = (() => {
     return {
       status, phaseIndex, roundIndex, isResting,
       startedAt, accumulatedMs, phaseAdjustmentMs,
+      alarmFired, zeroCrossedAt,
       program: JSON.parse(JSON.stringify(program)),
     };
   }
@@ -210,12 +249,18 @@ const Interval = (() => {
   function loadState(state) {
     if (!state) return;
     status = state.status ?? 'idle';
+    // Migrate legacy terminal 'done' state to 'overflowing' so old saved
+    // states don't lose the workout-finished context. Old states have no
+    // overshoot tracked; alarmFired defaults true so we don't re-fire.
+    if (status === 'done') status = 'overflowing';
     phaseIndex = state.phaseIndex ?? 0;
     roundIndex = state.roundIndex ?? 0;
     isResting = state.isResting ?? false;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
     phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;
+    alarmFired = state.alarmFired === true || status === 'overflowing';
+    zeroCrossedAt = state.zeroCrossedAt ?? null;
     if (state.program) {
       program = JSON.parse(JSON.stringify(state.program));
     }
@@ -225,9 +270,34 @@ const Interval = (() => {
       status = 'paused';
     }
     if (status === 'running' && getRemainingMs() <= 0) {
-      status = 'phaseComplete';
-      accumulatedMs = getCurrentPhaseDurationMs();
-      startedAt = null;
+      // If this was the terminal phase, transition into overflowing.
+      // Otherwise (mid-program), snap into phaseComplete so the UI's
+      // auto-advance handler can take over.
+      const isTerminal = !isResting
+        && phaseIndex + 1 >= program.phases.length
+        && roundIndex + 1 >= program.rounds;
+      if (isTerminal) {
+        const now = Date.now();
+        const carry = startedAt !== null ? now - startedAt : 0;
+        accumulatedMs += carry;
+        startedAt = now;
+        status = 'overflowing';
+        if (zeroCrossedAt === null) zeroCrossedAt = now;
+        alarmFired = true;
+      } else {
+        status = 'phaseComplete';
+        accumulatedMs = getCurrentPhaseDurationMs();
+        startedAt = null;
+      }
+    }
+    // 24h overshoot cap.
+    if (status === 'overflowing') {
+      const cap = getCurrentPhaseDurationMs() + 24 * 60 * 60 * 1000;
+      const elapsed = rawElapsedMs();
+      if (elapsed > cap) {
+        accumulatedMs = cap;
+        startedAt = null;
+      }
     }
   }
 
@@ -235,6 +305,7 @@ const Interval = (() => {
     setProgram, start, pause, reset, checkFinished, advancePhase,
     adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress, getTotalProgress,
+    getOvershootMs, isOvershooting, isDone, getZeroCrossedAt,
     getCurrentPhase, getNextPhase,
     getStatus, getPhaseIndex, getRoundIndex, getIsResting,
     getTotalPhases, getTotalRounds, getProgram,
