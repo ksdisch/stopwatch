@@ -274,10 +274,16 @@ async function renderHistory() {
       }
     }
 
+    const overshootMs = (s.overshootMs || 0);
+    const overshootBadge = overshootMs > 0
+      ? `<span class="history-overshoot" title="Time past zero before you reset">+${Utils.formatShort ? Utils.formatShort(overshootMs) : Math.round(overshootMs / 1000) + 's'} over</span>`
+      : '';
+
     return `<div class="history-row" data-id="${s.id}">
       <div class="history-row-top">
         <span class="history-type">${type}</span>
         <span class="history-dur">${dur}</span>
+        ${overshootBadge}
         <span class="history-date">${dateStr}</span>
       </div>
       <div class="history-row-bottom">

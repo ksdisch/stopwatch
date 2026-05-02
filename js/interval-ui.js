@@ -82,8 +82,9 @@ function initIntervalUI() {
     updateProgramFromUI();
   });
 
-  // Restore render loop if running
-  if (Interval.getStatus() === 'running' && appMode === 'interval') {
+  // Restore render loop if running or overflowing (terminal phase past zero)
+  const initSt = Interval.getStatus();
+  if ((initSt === 'running' || initSt === 'overflowing') && appMode === 'interval') {
     startIntervalRenderLoop();
   }
 
@@ -197,16 +198,29 @@ function syncSetupInputs() {
 function onIntervalLeft() {
   if (appMode !== 'interval') return;
   const status = Interval.getStatus();
-  if (status === 'paused') {
+  if (status === 'paused' || status === 'overflowing') {
     const elapsed = Interval.getElapsedMs();
-    if (elapsed > 1000) {
+    const overshootMs = Interval.getOvershootMs ? Interval.getOvershootMs() : 0;
+    if (elapsed > 1000 || overshootMs > 0) {
       const prog = Interval.getProgram();
-      History.addSession({ type: 'interval', duration: elapsed, laps: [], programName: prog.name });
+      // For overflowing (terminal) reset, capture the full program total so
+      // the duration field reflects what the user actually completed.
+      const duration = status === 'overflowing'
+        ? prog.phases.reduce((s, p) => s + p.durationMs, 0) * (prog.rounds || 1)
+        : elapsed;
+      History.addSession({
+        type: 'interval',
+        duration,
+        laps: [],
+        programName: prog.name,
+        overshootMs,
+      });
     }
     Interval.reset();
     BgNotify.cancel('interval');
     saveIntervalState();
     SFX.playReset();
+    stopIntervalRenderLoop();
     updateIntervalUI();
     renderSetupPhases();
     syncSetupInputs();
@@ -231,12 +245,23 @@ function onIntervalRight() {
     SFX.playStart();
     startIntervalRenderLoop();
     updateIntervalUI();
-  } else if (status === 'done') {
+  } else if (status === 'overflowing') {
+    // Terminal overflow — Reset/Done. Capture overshoot into history then
+    // reset. (Same path as paused, but with the program-total duration.)
     const prog = Interval.getProgram();
     const totalMs = prog.phases.reduce((s, p) => s + p.durationMs, 0) * (prog.rounds || 1);
-    History.addSession({ type: 'interval', duration: totalMs, laps: [], programName: prog.name });
+    const overshootMs = Interval.getOvershootMs ? Interval.getOvershootMs() : 0;
+    History.addSession({
+      type: 'interval',
+      duration: totalMs,
+      laps: [],
+      programName: prog.name,
+      overshootMs,
+    });
     Interval.reset();
+    BgNotify.cancel('interval');
     saveIntervalState();
+    stopIntervalRenderLoop();
     updateIntervalUI();
     renderSetupPhases();
     syncSetupInputs();
@@ -247,6 +272,8 @@ function updateIntervalUI() {
   if (appMode !== 'interval') return;
 
   const status = Interval.getStatus();
+  const isOver = status === 'overflowing';
+  const overshootMs = isOver && Interval.getOvershootMs ? Interval.getOvershootMs() : 0;
   const remaining = Interval.getRemainingMs();
   const timeEl = document.getElementById('time');
   const btnLeft = document.getElementById('btn-left');
@@ -283,18 +310,30 @@ function updateIntervalUI() {
     }
   }
 
-  // Time display
-  const t = Utils.formatMs(remaining);
-  if (t.hours > 0) {
-    timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  // Time display: standard during running phases, "+M:SS.cc" during overflow.
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   } else {
-    timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    const t = Utils.formatMs(remaining);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   }
 
-  // Progress bar
-  if (isActive && status !== 'done') {
+  // Progress bar (full when overflowing)
+  if (isActive && !isOver) {
     progressBar.classList.remove('hidden');
     progressFill.style.width = `${Interval.getProgress() * 100}%`;
+  } else if (isOver) {
+    progressBar.classList.remove('hidden');
+    progressFill.style.width = '100%';
   } else {
     progressBar.classList.add('hidden');
   }
@@ -302,7 +341,11 @@ function updateIntervalUI() {
   // Running indicator
   timerDisplay.classList.toggle('is-running', status === 'running');
   appEl.classList.toggle('is-running', status === 'running');
-  timerDisplay.classList.remove('timer-finished', 'pomodoro-break', 'pomodoro-phase-complete');
+  timerDisplay.classList.remove('pomodoro-break');
+  // Overflow visual: brief flash via timer-finished, then steady amber.
+  timerDisplay.classList.toggle('timer-finished', isOver && overshootMs <= 3000);
+  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
+  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
 
   // Buttons
   switch (status) {
@@ -327,13 +370,15 @@ function updateIntervalUI() {
       btnRight.innerHTML = '<span class="btn-inner">Resume</span>';
       btnRight.className = 'control-btn btn-start';
       break;
-    case 'done':
+    case 'overflowing': {
+      const short = Utils.formatShort && overshootMs > 0 ? ` +${Utils.formatShort(overshootMs)}` : '';
       btnLeft.innerHTML = '<span class="btn-inner">--</span>';
       btnLeft.className = 'control-btn btn-lap';
       btnLeft.disabled = true;
-      btnRight.innerHTML = '<span class="btn-inner">Reset</span>';
+      btnRight.innerHTML = `<span class="btn-inner">Reset${short}</span>`;
       btnRight.className = 'control-btn btn-start';
       break;
+    }
   }
 
   if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
@@ -343,10 +388,12 @@ function startIntervalRenderLoop() {
   if (intervalRafId !== null) return;
   function tick() {
     if (intervalRafId === null) return;
-    if (Interval.getStatus() === 'running') {
+    const st = Interval.getStatus();
+    if (st === 'running' || st === 'overflowing') {
       Interval.checkFinished();
       updateIntervalUI();
-      if (Interval.getStatus() === 'running') {
+      const after = Interval.getStatus();
+      if (after === 'running' || after === 'overflowing') {
         intervalRafId = requestAnimationFrame(tick);
       } else {
         intervalRafId = null;

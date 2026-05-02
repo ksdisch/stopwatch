@@ -119,6 +119,9 @@ const History = (() => {
     if (session.bfrbs) entry.bfrbs = session.bfrbs;
     // Interval / Exercise metadata
     if (session.programName) entry.programName = session.programName;
+    // Countdown overshoot (Timer / Pomodoro / Flow / Interval). Optional;
+    // pre-existing rows lack the field and the badge guards on > 0.
+    if (session.overshootMs !== undefined) entry.overshootMs = session.overshootMs;
 
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');

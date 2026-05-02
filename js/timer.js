@@ -1,11 +1,17 @@
-function createTimer(id) {
-  let status = 'idle'; // 'idle' | 'running' | 'paused' | 'finished'
+function createTimer(id, opts) {
+  // 'idle' | 'running' | 'paused' | 'finished' | 'overflowing'
+  // 'overflowing' is only reachable when allowOvershoot === true. Cook timers
+  // omit the option, preserving the legacy halt-at-zero behavior they rely on.
+  let status = 'idle';
   let durationMs = 0;
   let startedAt = null;
   let accumulatedMs = 0;
   let alarmCallback = null;
+  let alarmFired = false;
+  let zeroCrossedAt = null;
   let name = 'Timer';
   let color = null;
+  const allowOvershoot = !!(opts && opts.allowOvershoot);
 
   function setDuration(ms) {
     if (status !== 'idle') return;
@@ -22,20 +28,33 @@ function createTimer(id) {
     return true;
   }
 
-  function getRemainingMs() {
+  // Raw elapsed (without clamping) — used internally for overshoot math.
+  function rawElapsedMs() {
     let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
+    if ((status === 'running' || status === 'overflowing') && startedAt !== null) {
       elapsed += Date.now() - startedAt;
     }
-    return Math.max(0, durationMs - elapsed);
+    return elapsed;
+  }
+
+  function getRemainingMs() {
+    return Math.max(0, durationMs - rawElapsedMs());
   }
 
   function getElapsedMs() {
-    let elapsed = accumulatedMs;
-    if (status === 'running' && startedAt !== null) {
-      elapsed += Date.now() - startedAt;
-    }
-    return Math.min(elapsed, durationMs);
+    return Math.min(rawElapsedMs(), durationMs);
+  }
+
+  function getOvershootMs() {
+    return Math.max(0, rawElapsedMs() - durationMs);
+  }
+
+  function isOvershooting() {
+    return status === 'overflowing';
+  }
+
+  function getZeroCrossedAt() {
+    return zeroCrossedAt;
   }
 
   function getProgress() {
@@ -44,7 +63,7 @@ function createTimer(id) {
   }
 
   function start() {
-    if (status === 'running' || status === 'finished') return;
+    if (status === 'running' || status === 'finished' || status === 'overflowing') return;
     if (durationMs === 0) return;
     startedAt = Date.now();
     status = 'running';
@@ -62,14 +81,32 @@ function createTimer(id) {
     durationMs = 0;
     startedAt = null;
     accumulatedMs = 0;
+    alarmFired = false;
+    zeroCrossedAt = null;
   }
 
   function checkFinished() {
     if (status === 'running' && getRemainingMs() <= 0) {
-      accumulatedMs = durationMs;
-      startedAt = null;
-      status = 'finished';
-      if (alarmCallback) alarmCallback();
+      if (allowOvershoot) {
+        // Snapshot accumulatedMs at exactly the duration so that
+        // (now - startedAt) past this moment becomes the overshoot delta.
+        // Critically: we keep startedAt set and status === 'overflowing'
+        // so the engine continues ticking on subsequent calls.
+        const now = Date.now();
+        const carry = startedAt !== null ? now - startedAt : 0;
+        accumulatedMs += carry;
+        startedAt = now;
+        status = 'overflowing';
+        zeroCrossedAt = now;
+      } else {
+        accumulatedMs = durationMs;
+        startedAt = null;
+        status = 'finished';
+      }
+      if (!alarmFired) {
+        alarmFired = true;
+        if (alarmCallback) alarmCallback();
+      }
       return true;
     }
     return false;
@@ -86,7 +123,10 @@ function createTimer(id) {
   function setName(n) { name = n || 'Timer'; }
 
   function getState() {
-    return { id, name, status, durationMs, startedAt, accumulatedMs, color };
+    return {
+      id, name, status, durationMs, startedAt, accumulatedMs, color,
+      alarmFired, zeroCrossedAt,
+    };
   }
 
   function loadState(state) {
@@ -97,6 +137,8 @@ function createTimer(id) {
     durationMs = state.durationMs ?? 0;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
+    alarmFired = state.alarmFired === true;
+    zeroCrossedAt = state.zeroCrossedAt ?? null;
 
     if (status === 'running' && startedAt && startedAt > Date.now()) {
       startedAt = null;
@@ -104,15 +146,41 @@ function createTimer(id) {
     }
     // Check if it should have finished while page was closed
     if (status === 'running' && getRemainingMs() <= 0) {
-      status = 'finished';
-      accumulatedMs = durationMs;
-      startedAt = null;
+      if (allowOvershoot) {
+        // Resume into overflowing — the alarm already fired (or was missed)
+        // while the tab was closed; suppress re-fire.
+        const now = Date.now();
+        const carry = startedAt !== null ? now - startedAt : 0;
+        accumulatedMs += carry;
+        startedAt = now;
+        status = 'overflowing';
+        if (zeroCrossedAt === null) zeroCrossedAt = now;
+        alarmFired = true;
+      } else {
+        status = 'finished';
+        accumulatedMs = durationMs;
+        startedAt = null;
+        alarmFired = true;
+      }
+    }
+    // 24h overshoot guard — pathological "left it for a week" sessions
+    // shouldn't pollute analytics. Cap accumulatedMs so getOvershootMs maxes
+    // out at durationMs + 24h. Only applies when we're already overflowing.
+    if (status === 'overflowing') {
+      const cap = durationMs + 24 * 60 * 60 * 1000;
+      const elapsed = rawElapsedMs();
+      if (elapsed > cap) {
+        // Snapshot at the cap and stop ticking forward.
+        accumulatedMs = cap;
+        startedAt = null;
+      }
     }
   }
 
   return {
     setDuration, adjustRemainingMs, start, pause, reset, checkFinished,
     getRemainingMs, getElapsedMs, getProgress,
+    getOvershootMs, isOvershooting, getZeroCrossedAt,
     getStatus, getDurationMs, getId, getName, setName,
     getColor: () => color,
     setColor: (c) => { color = c; },
@@ -120,5 +188,6 @@ function createTimer(id) {
   };
 }
 
-// Default instance — backward compatible global
-let Timer = createTimer('tm-default');
+// Default instance — backward compatible global. Timer-mode opts in to
+// overshoot; cook timers (created in cooking-ui.js) get default behavior.
+let Timer = createTimer('tm-default', { allowOvershoot: true });

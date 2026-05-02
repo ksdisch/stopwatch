@@ -39,11 +39,13 @@ function initTimerUI() {
   document.getElementById('btn-left').addEventListener('click', onTimerLeft);
   document.getElementById('btn-right').addEventListener('click', onTimerRight);
 
-  // If timer was running, restart render loop
-  if (Timer.getStatus() === 'running' && appMode === 'timer') {
+  // If timer was running or already overflowing, restart render loop.
+  if ((Timer.getStatus() === 'running' || Timer.getStatus() === 'overflowing')
+      && appMode === 'timer') {
     startTimerRenderLoop();
   }
-  if (Timer.getStatus() === 'finished' && appMode === 'timer') {
+  if ((Timer.getStatus() === 'finished' || Timer.getStatus() === 'overflowing')
+      && appMode === 'timer') {
     updateTimerUI();
   }
 }
@@ -52,15 +54,22 @@ function onTimerLeft() {
   if (appMode !== 'timer') return;
   if (sequenceMode) { onSequenceLeft(); return; }
   const status = Timer.getStatus();
-  if (status === 'paused' || status === 'finished') {
-    // Save session before reset
+  if (status === 'paused' || status === 'finished' || status === 'overflowing') {
+    // Save session before reset. Read overshoot BEFORE reset() clears it.
     const elapsed = Timer.getElapsedMs();
-    if (elapsed > 1000) {
-      History.addSession({ type: 'timer', duration: elapsed, laps: [] });
+    const overshootMs = Timer.getOvershootMs ? Timer.getOvershootMs() : 0;
+    if (elapsed > 1000 || overshootMs > 0) {
+      History.addSession({
+        type: 'timer',
+        duration: elapsed,
+        laps: [],
+        overshootMs,
+      });
     }
     Timer.reset();
     BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
+    stopTimerRenderLoop();
     updateTimerUI();
   }
 }
@@ -69,7 +78,10 @@ function onTimerRight() {
   if (appMode !== 'timer') return;
   if (sequenceMode) { onSequenceRight(); return; }
   const status = Timer.getStatus();
-  if (status === 'running') {
+  if (status === 'running' || status === 'overflowing') {
+    // 'overflowing' right-button is "Done" — same effect as the legacy
+    // 'finished' Done: capture and reset.
+    if (status === 'overflowing') { onTimerLeft(); return; }
     Timer.pause();
     BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
@@ -90,7 +102,7 @@ function updateTimerUI() {
   if (appMode !== 'timer') return;
 
   const status = Timer.getStatus();
-  const remaining = Timer.getRemainingMs();
+  const isOver = status === 'overflowing';
   const timeEl = document.getElementById('time');
   const btnLeft = document.getElementById('btn-left');
   const btnRight = document.getElementById('btn-right');
@@ -99,15 +111,27 @@ function updateTimerUI() {
   const progressBar = document.getElementById('timer-progress');
   const progressFill = document.getElementById('timer-progress-fill');
 
-  // Format remaining time
-  const t = Utils.formatMs(remaining);
-  if (t.hours > 0) {
-    timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  // Format display: standard remaining when running normally; "+M:SS.cc"
+  // when past zero.
+  if (isOver) {
+    const overshootMs = Timer.getOvershootMs();
+    const t = Utils.formatMs(overshootMs);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   } else {
-    timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    const remaining = Timer.getRemainingMs();
+    const t = Utils.formatMs(remaining);
+    if (t.hours > 0) {
+      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    } else {
+      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+    }
   }
 
-  // Progress bar
+  // Progress bar (full during overflow)
   if (status !== 'idle') {
     progressBar.classList.remove('hidden');
     progressFill.style.width = `${Timer.getProgress() * 100}%`;
@@ -115,12 +139,12 @@ function updateTimerUI() {
     progressBar.classList.add('hidden');
   }
 
-  // Finished state
-  if (status === 'finished') {
-    timerDisplay.classList.add('timer-finished');
-  } else {
-    timerDisplay.classList.remove('timer-finished');
-  }
+  // Visual states. Finished briefly (legacy timers without overshoot) flashes
+  // red. Overflowing: flash red for the first ~3s (existing 6×0.5s animation
+  // duration), then settle into steady amber via the .overshoot class.
+  const overshootMs = isOver ? Timer.getOvershootMs() : 0;
+  timerDisplay.classList.toggle('timer-finished', status === 'finished' || (isOver && overshootMs <= 3000));
+  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
 
   // Running indicator
   timerDisplay.classList.toggle('is-running', status === 'running');
@@ -159,6 +183,16 @@ function updateTimerUI() {
       btnRight.innerHTML = '<span class="btn-inner">Done</span>';
       btnRight.className = 'control-btn btn-start';
       break;
+    case 'overflowing': {
+      const short = Utils.formatShort ? Utils.formatShort(overshootMs) : '';
+      const suffix = short ? ` +${short}` : '';
+      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
+      btnLeft.className = 'control-btn btn-reset';
+      btnLeft.disabled = false;
+      btnRight.innerHTML = `<span class="btn-inner">Done${suffix}</span>`;
+      btnRight.className = 'control-btn btn-start';
+      break;
+    }
   }
 
   if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
@@ -167,10 +201,12 @@ function updateTimerUI() {
 function startTimerRenderLoop() {
   if (timerRafId !== null) return;
   function tick() {
-    if (Timer.getStatus() === 'running') {
+    const st = Timer.getStatus();
+    if (st === 'running' || st === 'overflowing') {
       Timer.checkFinished();
       updateTimerUI();
-      if (Timer.getStatus() === 'running') {
+      const after = Timer.getStatus();
+      if (after === 'running' || after === 'overflowing') {
         timerRafId = requestAnimationFrame(tick);
       } else {
         timerRafId = null;
