@@ -100,10 +100,8 @@ function cookingTimerAlarm(timer, idx) {
       }, 200);
     } catch (e) {}
   }
-  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    new Notification(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
-  }
+  Platform.haptic([200, 100, 200, 100, 200]);
+  Platform.notify(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
   History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [], programName: timer.getName() });
   saveCookingTimers();
   renderCookingTimers();
@@ -245,7 +243,7 @@ function attachCookingHandlers() {
         BgNotify.schedule('cook-' + ct.id, ct.timer.getRemainingMs(), `${ct.name} Done`, 'Cooking timer finished!');
       }
       saveCookingTimers();
-      if (typeof navigator.vibrate === 'function') navigator.vibrate(15);
+      Platform.haptic(15);
       if (typeof SFX !== 'undefined' && SFX.playLap) SFX.playLap();
       renderCookingTimers();
     });

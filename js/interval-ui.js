@@ -14,13 +14,11 @@ function initIntervalUI() {
   Interval.onPhaseComplete((type) => {
     if (type === 'done') {
       SFX.playAlarm();
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification('Interval Complete', { body: 'Workout finished!' });
-      }
+      Platform.haptic([200, 100, 200, 100, 200]);
+      Platform.notify('Interval Complete', { body: 'Workout finished!' });
     } else {
       SFX.playPhaseChange();
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      Platform.haptic([100, 50, 100]);
     }
     saveIntervalState();
     // Auto-advance on phase complete (start next phase immediately)

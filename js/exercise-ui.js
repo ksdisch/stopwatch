@@ -184,7 +184,7 @@ const ExerciseUI = (() => {
       localStorage.setItem('interval_state', JSON.stringify(Interval.getState()));
     } catch (e) {}
     if (typeof SFX !== 'undefined') SFX.playLap();
-    if (navigator.vibrate) navigator.vibrate(20);
+    Platform.haptic(20);
     navigateToInterval();
   }
 

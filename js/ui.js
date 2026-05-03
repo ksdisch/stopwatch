@@ -63,7 +63,7 @@ const UI = (() => {
   }
 
   function haptic(ms) {
-    if (navigator.vibrate) navigator.vibrate(ms);
+    Platform.haptic(ms);
   }
 
   function announce(msg) {
@@ -419,10 +419,8 @@ const UI = (() => {
               ? `${t.hours}:${t.minStr}:${t.secStr}`
               : `${t.minStr}:${t.secStr}`;
             SFX.playAlarm();
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-              new Notification('Stopwatch Alert', { body: `${timeStr} reached` });
-            }
+            Platform.haptic([200, 100, 200, 100, 200]);
+            Platform.notify('Stopwatch Alert', { body: `${timeStr} reached` });
           });
           Persistence.save();
           if (typeof renderAlerts === 'function') renderAlerts();
@@ -433,7 +431,7 @@ const UI = (() => {
           const currentInterval = Math.floor(elapsed / vibrateIntervalMs);
           const lastInterval = Math.floor(lastVibrateMs / vibrateIntervalMs);
           if (currentInterval > lastInterval && elapsed > vibrateIntervalMs) {
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            Platform.haptic([100, 50, 100]);
           }
           lastVibrateMs = elapsed;
         }

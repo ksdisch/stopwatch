@@ -48,13 +48,9 @@ function initPomodoroUI() {
   // Phase complete callback
   Pomodoro.onPhaseComplete((completedPhase) => {
     SFX.playAlarm();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
-      new Notification('Pomodoro', { body: label });
-    } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
+    Platform.haptic([200, 100, 200, 100, 200]);
+    const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
+    Platform.notify('Pomodoro', { body: label });
     savePomodoroState();
     updatePomodoroUI();
 
@@ -908,7 +904,7 @@ function initDistractionLog() {
       });
       saveDistractions(distractions);
       picker.classList.add('hidden');
-      if (navigator.vibrate) navigator.vibrate(30);
+      Platform.haptic(30);
     });
   });
 }

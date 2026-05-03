@@ -1,0 +1,8 @@
+{
+  "appId": "com.ksdisch.tempo",
+  "appName": "Tempo",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always"
+  }
+}

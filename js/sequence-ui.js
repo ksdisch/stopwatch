@@ -16,7 +16,7 @@ function initSequenceUI() {
   // Phase complete callback
   Sequence.onPhaseComplete((phase) => {
     SFX.playPhaseChange();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    Platform.haptic([200, 100, 200]);
     saveSequenceState();
 
     // Auto-advance to next

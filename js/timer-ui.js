@@ -232,12 +232,8 @@ function saveTimerState() {
 function initTimerAlarm() {
   Timer.onAlarm(() => {
     SFX.playAlarm();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      new Notification('Timer Complete', { body: 'Your countdown has finished!' });
-    } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
+    Platform.haptic([200, 100, 200, 100, 200]);
+    Platform.notify('Timer Complete', { body: 'Your countdown has finished!' });
     saveTimerState();
     updateTimerUI();
   });

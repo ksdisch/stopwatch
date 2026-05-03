@@ -63,9 +63,21 @@ MindfulUI.init();
 WellnessCookingUI.init();
 RecoveryUI.init();
 
-// ── Service worker ──
-if ('serviceWorker' in navigator) {
+// ── Service worker (web only) ──
+// In the Capacitor iOS shell the WebView loads from capacitor:// — there's no
+// HTTP origin, so the SW won't install. Skip registration to avoid a console
+// error. Native scheduled notifications go through @capacitor/local-notifications
+// (see js/platform.js + js/bg-notify.js).
+if (!Platform.isNative && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// ── Native notification permission (Capacitor iOS) ──
+// On native, request once at boot so the first scheduled timer doesn't get
+// silently dropped. On web, individual call sites still trigger the prompt
+// in response to a user action (preserves Safari/Chrome heuristics).
+if (Platform.isNative) {
+  Platform.requestNotificationPermission();
 }
 
 // ── PWA install prompt ──
@@ -306,7 +318,7 @@ function applyTimeAdjust(deltaMs) {
   // timer in sync regardless of the prior schedule state.
   if (ctx.engine.getStatus() === 'running') ctx.reschedule();
   ctx.persist();
-  if (typeof navigator.vibrate === 'function') navigator.vibrate(15);
+  Platform.haptic(15);
   if (typeof SFX !== 'undefined' && SFX.playLap) SFX.playLap();
   ctx.render();
   updateTimeAdjustControls();

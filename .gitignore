@@ -1,2 +1,12 @@
 .DS_Store
 .claude/
+
+# Capacitor / Node
+node_modules/
+www/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/Podfile.lock
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
