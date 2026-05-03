@@ -104,7 +104,7 @@ const WellnessCookingUI = (() => {
     saveCookingTimers();
 
     if (typeof SFX !== 'undefined') SFX.playStart();
-    if (navigator.vibrate) navigator.vibrate(20);
+    Platform.haptic(20);
 
     // Route to Timers › Cook where the existing multi-timer UI runs it.
     if (typeof TempoNav !== 'undefined' && TempoNav.applyRoute) {

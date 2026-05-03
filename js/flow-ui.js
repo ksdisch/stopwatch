@@ -65,15 +65,11 @@ function initFlowUI() {
   // Phase complete callback
   Flow.onPhaseComplete((completedPhase) => {
     SFX.playAlarm();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const label = completedPhase === 'focus'
-        ? 'Focus block complete! Time for recovery.'
-        : 'Recovery complete.';
-      new Notification('Flow Block', { body: label });
-    } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
+    Platform.haptic([200, 100, 200, 100, 200]);
+    const label = completedPhase === 'focus'
+      ? 'Focus block complete! Time for recovery.'
+      : 'Recovery complete.';
+    Platform.notify('Flow Block', { body: label });
 
     // Save the focus block to history as soon as focus completes
     if (completedPhase === 'focus') {
@@ -544,7 +540,7 @@ function initFlowDistractionLog() {
       });
       saveFlowDistractions(items);
       picker.classList.add('hidden');
-      if (navigator.vibrate) navigator.vibrate(30);
+      Platform.haptic(30);
     });
   });
 }

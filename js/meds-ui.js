@@ -162,7 +162,7 @@ const MedsUI = (() => {
         refreshCardStatus(med);
         flash(card);
         if (typeof SFX !== 'undefined') SFX.playLap();
-        if (navigator.vibrate) navigator.vibrate(30);
+        Platform.haptic(30);
 
       } else if (action === 'log-offset') {
         // Prefill with 30 min (user can adjust). No schedule to derive
@@ -186,7 +186,7 @@ const MedsUI = (() => {
           refreshCardStatus(med);
           flash(card);
           if (typeof SFX !== 'undefined') SFX.playLap();
-          if (navigator.vibrate) navigator.vibrate(30);
+          Platform.haptic(30);
         }
         toggleOffset(card, false);
 

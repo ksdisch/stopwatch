@@ -106,7 +106,7 @@ const GlobalBFRB = (() => {
     const items = loadStore(key);
     items.push(buildEntry());
     saveStore(key, items);
-    if (navigator.vibrate) navigator.vibrate(20);
+    Platform.haptic(20);
     if (typeof BFRBRecovery !== 'undefined') {
       BFRBRecovery.start(BTN_ID, label);
     } else {

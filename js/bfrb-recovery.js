@@ -43,7 +43,7 @@ const BFRBRecovery = (() => {
         btn.classList.remove('bfrb-recovery-active');
         btn.style.removeProperty('--bfrb-recovery-progress');
         btn.textContent = baseLabelFn();
-        if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+        Platform.haptic([30, 40, 30]);
         // Two-note ascending chime — short but noticeable. Respects the
         // user's global mute toggle via the SFX module.
         if (typeof SFX !== 'undefined') SFX.playBFRBEnd();

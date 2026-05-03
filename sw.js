@@ -1,10 +1,11 @@
-const CACHE_NAME = 'stopwatch-v64-overshoot';
+const CACHE_NAME = 'stopwatch-v65-platform-abstraction';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './css/tempo-shell.css',
   './js/utils.js',
+  './js/platform.js',
   './js/tempo-nav.js',
   './js/stopwatch.js',
   './js/timer.js',

@@ -365,7 +365,7 @@ const RecoveryUI = (() => {
     };
     render(surface);
     napState.intervalId = setInterval(() => tickNapCountdown(surface), 500);
-    if (navigator.vibrate) navigator.vibrate(20);
+    Platform.haptic(20);
   }
 
   function tickNapCountdown(surface) {
@@ -400,7 +400,7 @@ const RecoveryUI = (() => {
     if (!endedEarly) {
       // End-of-nap cue: short haptic + the louder BFRB chime (user
       // already tuned its volume) since the user is likely sleeping.
-      if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+      Platform.haptic([120, 80, 120]);
       if (typeof SFX !== 'undefined' && SFX.playBFRBEnd) SFX.playBFRBEnd();
     }
     render(surface);

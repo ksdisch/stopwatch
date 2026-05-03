@@ -14,9 +14,7 @@ function initAlertUI() {
     minutesEl.focus();
     minutesEl.select();
     // Request notification permission proactively
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    Platform.requestNotificationPermission();
   });
 
   cancelBtn.addEventListener('click', () => {
