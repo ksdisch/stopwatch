@@ -10,6 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/tempo-shell.css?v=1">
+  <link rel="stylesheet" href="css/cloud.css?v=1">
   <title>Tempo</title>
 </head>
 <body>
@@ -899,6 +900,25 @@
 
   <script src="js/global-bfrb.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
+
+  <!-- ── Cloud sync (Phase 1 + Phase 2) ──
+       Firebase v10 compat bundles via UMD CDN — keeps the no-build-step
+       constraint. The cloud modules each no-op if the SDK fails to load
+       or firebase-config.js still has the placeholder values. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+  <script src="firebase-config.js"></script>
+  <script src="js/cloud/firebase-init.js"></script>
+  <script src="js/cloud/auth.js"></script>
+  <script src="js/cloud/sync-registry.js"></script>
+  <script src="js/cloud/sync-prefs.js"></script>
+  <script src="js/cloud/sync-meds.js"></script>
+  <script src="js/cloud/sync-bfrb.js"></script>
+  <script src="js/cloud/sync-rest.js"></script>
+  <script src="js/cloud/first-sync-modal.js"></script>
+  <script src="js/cloud/cloud-ui.js"></script>
+
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Tempo cloud sync — per-user data isolation. Every doc lives under
+// /users/{uid}/... and is readable/writable only by that user.
+//
+// schemaVersion gate: writes are rejected if their schemaVersion exceeds
+// the current max (bump this number whenever you ship a new doc shape).
+// This protects against rolled-back deploys: an old client can't accept
+// docs newer than it understands, and a future client can't accidentally
+// poison the store with a shape the rules don't know about.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && (
+                     // Allow deletes (no resource.data on a delete request)
+                     !('schemaVersion' in request.resource.data)
+                     || (
+                       request.resource.data.schemaVersion is int
+                       && request.resource.data.schemaVersion <= 1
+                     )
+                   );
+    }
+  }
+}

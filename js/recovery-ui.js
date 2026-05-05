@@ -36,6 +36,9 @@ const RecoveryUI = (() => {
   }
 
   function saveLog(log) {
+    // Cloud sync (when enabled) auto-fires on this setItem via the
+    // localStorage wrapper in js/cloud/sync-registry.js — no explicit
+    // hook needed here.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
   }
 

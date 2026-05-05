@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const out = join(root, 'www');
 
-const FILES = ['index.html', 'manifest.json', 'sw.js'];
+const FILES = ['index.html', 'manifest.json', 'sw.js', 'firebase-config.js'];
 const DIRS = ['css', 'js', 'icons'];
 
 await rm(out, { recursive: true, force: true });

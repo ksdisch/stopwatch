@@ -48,6 +48,11 @@ const GlobalBFRB = (() => {
   }
 
   function saveStore(key, items) {
+    // Cloud sync auto-fires for the global log via the localStorage
+    // wrapper in js/cloud/sync-registry.js. The session-scoped stores
+    // (flow_bfrbs / pomodoro_bfrbs) deliberately don't have a sync
+    // handler registered, so they stay device-local — they're working
+    // state of an active focus session.
     localStorage.setItem(key, JSON.stringify(items));
   }
 

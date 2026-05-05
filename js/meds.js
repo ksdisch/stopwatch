@@ -196,6 +196,9 @@ const MedsManager = (() => {
   function saveAll() {
     try {
       const state = { meds: meds.map(m => m.getState()) };
+      // Cloud sync (when enabled) auto-fires on this setItem via the
+      // localStorage wrapper installed in js/cloud/sync-registry.js —
+      // no explicit hook needed here.
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) { /* localStorage unavailable or full */ }
   }

@@ -1,9 +1,10 @@
-const CACHE_NAME = 'stopwatch-v65-platform-abstraction';
+const CACHE_NAME = 'stopwatch-v66-cloud-sync';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './css/tempo-shell.css',
+  './css/cloud.css',
   './js/utils.js',
   './js/platform.js',
   './js/tempo-nav.js',
@@ -49,6 +50,16 @@ const ASSETS = [
   './js/recovery-ui.js',
   './js/global-bfrb.js',
   './js/app.js',
+  './firebase-config.js',
+  './js/cloud/firebase-init.js',
+  './js/cloud/auth.js',
+  './js/cloud/sync-registry.js',
+  './js/cloud/sync-prefs.js',
+  './js/cloud/sync-meds.js',
+  './js/cloud/sync-bfrb.js',
+  './js/cloud/sync-rest.js',
+  './js/cloud/first-sync-modal.js',
+  './js/cloud/cloud-ui.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
