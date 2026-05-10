@@ -457,3 +457,196 @@ describe('MedsManager', () => {
     }
   });
 });
+
+describe('Meds — F19a schema stamping', () => {
+  // Reused storage helpers (same shape as the F18 round-trip test) so each
+  // F19a test starts from a clean meds/* keyspace and restores the user's
+  // real data on teardown.
+  function snapshotMedsKeys() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('meds/') || k === 'wellness_meds')) {
+        out.push([k, localStorage.getItem(k)]);
+      }
+    }
+    return out;
+  }
+  function clearMedsKeys() {
+    const toClean = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('meds/') || k === 'wellness_meds')) toClean.push(k);
+    }
+    for (const k of toClean) localStorage.removeItem(k);
+  }
+
+  it('getState stamps schemaVersion at every write', () => {
+    const m = createMed('s1');
+    m.setName('Vyvanse');
+    m.setFrequency('once-daily');
+    const state = m.getState();
+    assertEqual(state.schemaVersion, Schema.SCHEMA_VERSION);
+    assertEqual(state.schemaVersion, 1);
+  });
+
+  it('new meds are not flagged as future-schema', () => {
+    const m = createMed('s2');
+    assertEqual(m.isFromFutureSchema(), false);
+  });
+
+  it('loadState with no schemaVersion does not flag as future (pre-F19a data)', () => {
+    // Pre-F19a records have no schemaVersion field. They are NOT future —
+    // they get stamped to v1 lazily on the next write.
+    const m = createMed('s3');
+    m.loadState({ id: 's3', name: 'Legacy', frequency: 'once-daily' });
+    assertEqual(m.isFromFutureSchema(), false);
+  });
+
+  it('loadState with schemaVersion === 1 does not flag as future', () => {
+    const m = createMed('s4');
+    m.loadState({ id: 's4', schemaVersion: 1, name: 'Current' });
+    assertEqual(m.isFromFutureSchema(), false);
+  });
+
+  it('loadState with schemaVersion > 1 flags as future', () => {
+    const m = createMed('s5');
+    m.loadState({ id: 's5', schemaVersion: 2, name: 'Future', dose: '99 mg' });
+    assertEqual(m.isFromFutureSchema(), true);
+    // Recognized fields still load into memory so any UI can render them.
+    assertEqual(m.getName(), 'Future');
+    assertEqual(m.getDose(), '99 mg');
+  });
+
+  it('loadState with non-numeric schemaVersion does not flag as future', () => {
+    // String '2' is corrupt / hand-edited data, not a real future record.
+    // Treating it as future would block writes forever on a stuck record.
+    const m = createMed('s6');
+    m.loadState({ id: 's6', schemaVersion: '2', name: 'Corrupt' });
+    assertEqual(m.isFromFutureSchema(), false);
+  });
+
+  it('MedsManager.saveAll skips future-schema meds (on-disk state preserved)', () => {
+    const snapshot = snapshotMedsKeys();
+    clearMedsKeys();
+    try {
+      // Plant a future-schema record directly on disk, then loadAll.
+      const futureState = {
+        id: 'future-1',
+        schemaVersion: 2,
+        name: 'FutureMed',
+        dose: '5 mg',
+        frequency: 'once-daily',
+        lastTakenAt: null,
+        doseLog: [],
+        updatedAt: 1700000000000,
+        deviceId: 'd-test',
+        // A field a V1 client doesn't recognize — must survive roundtrip.
+        futureField: 'should-survive',
+      };
+      localStorage.setItem('meds/future-1', JSON.stringify(futureState));
+
+      MedsManager.clear();
+      MedsManager.loadAll();
+      assertEqual(MedsManager.count(), 1);
+      const m = MedsManager.all()[0];
+      assertEqual(m.isFromFutureSchema(), true);
+
+      // Mutate the in-memory representation in a way that, for a normal
+      // record, would be picked up by saveAll.
+      m.setName('LocalEdit');
+      MedsManager.saveAll();
+
+      // On-disk state must be unchanged — saveAll skipped the future med.
+      const raw = localStorage.getItem('meds/future-1');
+      const onDisk = JSON.parse(raw);
+      assertEqual(onDisk.schemaVersion, 2);
+      assertEqual(onDisk.name, 'FutureMed');           // not 'LocalEdit'
+      assertEqual(onDisk.futureField, 'should-survive');
+    } finally {
+      MedsManager.clear();
+      clearMedsKeys();
+      for (const [k, v] of snapshot) localStorage.setItem(k, v);
+      MedsManager.loadAll();
+    }
+  });
+
+  it('MedsManager.remove refuses future-schema meds', () => {
+    const snapshot = snapshotMedsKeys();
+    clearMedsKeys();
+    try {
+      const futureState = {
+        id: 'future-2',
+        schemaVersion: 2,
+        name: 'FutureMed2',
+        frequency: 'once-daily',
+        doseLog: [],
+        updatedAt: 1700000000000,
+        deviceId: 'd-test',
+      };
+      localStorage.setItem('meds/future-2', JSON.stringify(futureState));
+
+      MedsManager.clear();
+      MedsManager.loadAll();
+      assertEqual(MedsManager.count(), 1);
+
+      // remove() must return false AND leave both memory and disk intact.
+      const removed = MedsManager.remove('future-2');
+      assertEqual(removed, false);
+      assertEqual(MedsManager.count(), 1);
+      assert(localStorage.getItem('meds/future-2') !== null,
+        'Future med remains on disk after refused remove');
+    } finally {
+      MedsManager.clear();
+      clearMedsKeys();
+      for (const [k, v] of snapshot) localStorage.setItem(k, v);
+      MedsManager.loadAll();
+    }
+  });
+
+  it('MedsManager.saveAll still persists normal meds when a future med is loaded', () => {
+    // Belt-and-suspenders: one future med must NOT block writes for the
+    // other meds in the same saveAll() call. (Tests the `continue` semantic
+    // rather than an `early return`.)
+    const snapshot = snapshotMedsKeys();
+    clearMedsKeys();
+    try {
+      localStorage.setItem('meds/future-3', JSON.stringify({
+        id: 'future-3', schemaVersion: 2, name: 'Future',
+        frequency: 'once-daily', doseLog: [],
+      }));
+
+      MedsManager.clear();
+      MedsManager.loadAll();
+      // Add a normal in-memory med alongside the loaded future one.
+      MedsManager.add({ name: 'Normal', frequency: 'once-daily' });
+      assertEqual(MedsManager.count(), 2);
+
+      MedsManager.saveAll();
+
+      // Find the normal med's storage key and verify it was written.
+      let normalKey = null;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('meds/') && k !== 'meds/future-3') {
+          normalKey = k;
+          break;
+        }
+      }
+      assert(normalKey !== null, 'Normal med was persisted');
+      const normalOnDisk = JSON.parse(localStorage.getItem(normalKey));
+      assertEqual(normalOnDisk.name, 'Normal');
+      assertEqual(normalOnDisk.schemaVersion, 1);
+
+      // Future med's on-disk state is still untouched.
+      const futureOnDisk = JSON.parse(localStorage.getItem('meds/future-3'));
+      assertEqual(futureOnDisk.schemaVersion, 2);
+      assertEqual(futureOnDisk.name, 'Future');
+    } finally {
+      MedsManager.clear();
+      clearMedsKeys();
+      for (const [k, v] of snapshot) localStorage.setItem(k, v);
+      MedsManager.loadAll();
+    }
+  });
+});

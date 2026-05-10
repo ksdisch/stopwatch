@@ -114,7 +114,11 @@ const History = (() => {
           for (const s of toMigrate) {
             const legacyId = typeof s.id === 'string' ? Number(s.id) : s.id;
             store.delete(s.id);
-            store.put({ ...s, id: generateSessionId(), legacyId });
+            // F19a: stamp the rewritten row. Schema.stamp is a no-op if
+            // the row already carries a future schemaVersion (defensive —
+            // legacy rows here predate F19a so this is a fresh stamp in
+            // practice).
+            store.put(Schema.stamp({ ...s, id: generateSessionId(), legacyId }));
           }
           writeTx.oncomplete = () => resolve();
           writeTx.onerror = () => resolve();
@@ -135,7 +139,14 @@ const History = (() => {
         const req = readTx.objectStore(STORE_NAME).getAll();
         req.onsuccess = () => {
           const sessions = req.result || [];
-          const toStamp = sessions.filter(s => s.updatedAt == null || s.deviceId == null);
+          // F19a: also backfill schemaVersion on rows that lack it. Pre-F19a
+          // rows have no schemaVersion; Schema.stamp sets it to 1. Future
+          // rows (schemaVersion > 1) won't appear in this filter because
+          // they already carry the field — and even if they slipped through,
+          // Schema.stamp refuses to downgrade.
+          const toStamp = sessions.filter(s =>
+            s.updatedAt == null || s.deviceId == null || s.schemaVersion == null
+          );
           if (toStamp.length === 0) { resolve(); return; }
 
           const writeTx = db.transaction(STORE_NAME, 'readwrite');
@@ -146,7 +157,7 @@ const History = (() => {
               || (s.date ? Date.parse(s.date) : 0)
               || Date.now();
             const deviceId = s.deviceId || getDeviceId();
-            store.put({ ...s, deviceId, updatedAt });
+            store.put(Schema.stamp({ ...s, deviceId, updatedAt }));
           }
           writeTx.oncomplete = () => resolve();
           writeTx.onerror = () => resolve();
@@ -209,6 +220,12 @@ const History = (() => {
     const providedId = session.id;
     const useProvidedId = typeof providedId === 'string' && !isLegacyId(providedId);
     const entry = {
+      // F19a: stamp schemaVersion at write. Preserve a caller-provided
+      // future schemaVersion (e.g. JSON import from a newer client) so the
+      // record roundtrips cleanly; otherwise stamp to the current version.
+      schemaVersion: Schema.isFutureRecord(session)
+        ? session.schemaVersion
+        : Schema.SCHEMA_VERSION,
       id: useProvidedId ? providedId : generateSessionId(),
       // F10: deviceId + updatedAt support per-field LWW for mutable fields
       // (note, tags). Preserve caller-provided values so JSON imports keep
@@ -262,9 +279,14 @@ const History = (() => {
     if (!canWrite()) return;
     const session = await getSession(id);
     if (!session) return;
+    // F19a: refuse to overwrite future-schema records. A downlevel client
+    // would strip fields it doesn't recognize on writeback. Silent no-op
+    // so existing callers don't change behavior on normal records.
+    if (Schema.isFutureRecord(session)) return;
     session.note = note;
     session.updatedAt = Date.now();
     session.deviceId = getDeviceId();
+    Schema.stamp(session);
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.put(session);
@@ -276,6 +298,11 @@ const History = (() => {
   async function deleteSession(id) {
     await ready();
     if (!canWrite()) return;
+    // F19a: refuse to delete future-schema records. The downlevel client
+    // may not understand the record's semantics on the newer schema, so
+    // deleting it could lose data we can't represent. Silent no-op.
+    const existing = await getSession(id);
+    if (existing && Schema.isFutureRecord(existing)) return;
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.delete(id);
@@ -289,12 +316,15 @@ const History = (() => {
     if (!canWrite()) return;
     const session = await getSession(sessionId);
     if (!session) return;
+    // F19a: refuse to overwrite future-schema records (see updateNote).
+    if (Schema.isFutureRecord(session)) return;
     if (!Array.isArray(session.tags)) session.tags = [];
     const normalized = tag.trim().toLowerCase();
     if (normalized && !session.tags.includes(normalized)) {
       session.tags.push(normalized);
       session.updatedAt = Date.now();
       session.deviceId = getDeviceId();
+      Schema.stamp(session);
       return new Promise((resolve, reject) => {
         const store = getStore('readwrite');
         const req = store.put(session);
@@ -309,9 +339,12 @@ const History = (() => {
     if (!canWrite()) return;
     const session = await getSession(sessionId);
     if (!session || !Array.isArray(session.tags)) return;
+    // F19a: refuse to overwrite future-schema records (see updateNote).
+    if (Schema.isFutureRecord(session)) return;
     session.tags = session.tags.filter(t => t !== tag);
     session.updatedAt = Date.now();
     session.deviceId = getDeviceId();
+    Schema.stamp(session);
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.put(session);
