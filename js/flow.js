@@ -213,8 +213,17 @@ const Flow = (() => {
   function configure(opts) {
     if (status !== 'idle') return;
     if (opts.focusDurationMs !== undefined) {
-      // Only allow the two presets
-      focusDurationMs = opts.focusDurationMs === FOCUS_120 ? FOCUS_120 : FOCUS_90;
+      // F20: split absent vs present-but-unknown.
+      // - Absent / non-numeric → default FOCUS_90 (the safest baseline).
+      // - Present numeric (including future values like 60-min or 180-min
+      //   focus blocks rolled out by a newer client) → preserve verbatim.
+      // The UI only offers the two presets, so today this path always sees
+      // FOCUS_90 or FOCUS_120; the preserve branch matters when configure()
+      // is called from the load path (app.js → JSON.parse(flow_config)).
+      focusDurationMs = (typeof opts.focusDurationMs === 'number'
+                         && isFinite(opts.focusDurationMs))
+        ? opts.focusDurationMs
+        : FOCUS_90;
     }
   }
 
@@ -246,7 +255,15 @@ const Flow = (() => {
     // Migrate legacy 'focusComplete' to the new 'overflowing' state.
     if (status === 'focusComplete') status = 'overflowing';
     phase = state.phase ?? 'focus';
-    focusDurationMs = state.focusDurationMs === FOCUS_120 ? FOCUS_120 : FOCUS_90;
+    // F20: split absent vs present-but-unknown — see configure() for the
+    // full rationale. Absent / non-numeric → default FOCUS_90; any finite
+    // numeric value (including a future 180-min preset) is preserved
+    // verbatim so a roundtrip on this client doesn't silently downcast
+    // forward-compat data.
+    focusDurationMs = (typeof state.focusDurationMs === 'number'
+                       && isFinite(state.focusDurationMs))
+      ? state.focusDurationMs
+      : FOCUS_90;
     startedAt = state.startedAt ?? null;
     accumulatedMs = state.accumulatedMs ?? 0;
     phaseAdjustmentMs = state.phaseAdjustmentMs ?? 0;

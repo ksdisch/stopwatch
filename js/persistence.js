@@ -11,6 +11,14 @@ const SyncState = (() => {
   function get() {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
+      // Intentionally NOT subject to the F20 "preserve unknown values"
+      // rule. The sync gate is local-only device metadata (it never
+      // syncs to the cloud), and `canWrite()` only returns true on
+      // === 'ready'. If a future version wrote an unrecognized state
+      // like 'syncing' here, an older client preserving it verbatim
+      // would block ALL writes on this device. Fail-open to 'ready' is
+      // the safer DoS-avoidance posture; `set()` below already rejects
+      // unknown values, so a well-behaved future client won't write them.
       return VALID.includes(v) ? v : 'ready';
     } catch (e) {
       return 'ready';

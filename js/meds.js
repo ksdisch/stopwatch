@@ -10,6 +10,10 @@
 // 'wellness_meds' and migrates legacy V1 records (schedule-based) into
 // V2 by defaulting frequency='as-needed' and dropping schedule fields.
 
+// Canonical V2 enum values. Listed for documentation only — the loader and
+// setter intentionally do NOT validate against this list (F20: absent →
+// default, present-but-unknown → preserve verbatim, so forward-compat enum
+// values like a future 'three-times-daily' roundtrip cleanly on a V2 client).
 const MED_FREQUENCIES = ['once-daily', 'twice-daily', 'as-needed'];
 
 // F10: lazy deviceId helper. Mirrors History.getDeviceId — reads or creates
@@ -65,7 +69,15 @@ function createMed(id) {
   }
 
   function setFrequency(f) {
-    frequency = MED_FREQUENCIES.includes(f) ? f : 'once-daily';
+    // F20: split absent vs present-but-unknown.
+    // - Absent (null/undefined/non-string/empty) → default 'once-daily'.
+    // - Present-but-unknown (any other non-empty string) → preserve verbatim.
+    // The UI uses a <select> so user input is always a known enum value;
+    // the preserve path matters for the JSON-import / restore flow, which
+    // routes external state through MedsManager.add({ frequency }) →
+    // setFrequency. Without preservation a backup from a newer schema would
+    // get silently downcast to 'once-daily' on first import.
+    frequency = (typeof f === 'string' && f.length > 0) ? f : 'once-daily';
     touch();
   }
 
@@ -150,13 +162,22 @@ function createMed(id) {
     name = typeof state.name === 'string' ? state.name : 'Medication';
     dose = typeof state.dose === 'string' ? state.dose : '';
 
-    // V2 frequency. If missing, migrate from V1: legacy records had
-    // `scheduleType`/`intervalMs`/`times[]` but never `frequency`.
-    if (typeof state.frequency === 'string' && MED_FREQUENCIES.includes(state.frequency)) {
+    // V2 frequency. F20: split absent vs present-but-unknown.
+    // - Absent (no key / non-string / empty string) → default 'as-needed'.
+    //   This is also the V1 migration path: legacy records had `scheduleType`
+    //   / `intervalMs` / `times[]` but never `frequency`, so they land here.
+    //   'as-needed' is the safest target — it doesn't manufacture a daily
+    //   obligation for records the user never explicitly declared as daily.
+    // - Present-but-unknown (any other non-empty string) → preserve verbatim.
+    //   Forward-compat: a future schema might add 'three-times-daily' or
+    //   similar; a V2 client must not silently rewrite values it doesn't
+    //   recognize, or a roundtrip on this device would erase data minted on
+    //   a newer one. Downstream (getExpectedDosesToday) returns null for
+    //   unrecognized values, so display falls back to 'na' UX without
+    //   corrupting storage.
+    if (typeof state.frequency === 'string' && state.frequency.length > 0) {
       frequency = state.frequency;
     } else {
-      // Safe default: as-needed. Doesn't manufacture a daily obligation
-      // for records the user never explicitly declared as daily.
       frequency = 'as-needed';
     }
 

@@ -51,14 +51,32 @@ describe('Meds — frequency', () => {
     m.setFrequency('as-needed');    assertEqual(m.getFrequency(), 'as-needed');
   });
 
-  it('setFrequency falls back to once-daily on invalid input', () => {
+  it('setFrequency falls back to once-daily on absent input', () => {
+    // F20 "absent" path: null / undefined / non-string / empty string all
+    // collapse to the default. The UI's <select> never produces these, but
+    // defensive callers (and JSON-import edge cases) need a stable target.
     const m = createMed('f2');
-    m.setFrequency('hourly');
-    assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency('twice-daily');  // establish a non-default starting state
     m.setFrequency(null);
     assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency('twice-daily');
     m.setFrequency(undefined);
     assertEqual(m.getFrequency(), 'once-daily');
+    m.setFrequency('twice-daily');
+    m.setFrequency('');
+    assertEqual(m.getFrequency(), 'once-daily');
+  });
+
+  it('setFrequency preserves present-but-unknown values verbatim (F20)', () => {
+    // F20 "present-but-unknown" path: a future schema may add new enum
+    // values (e.g. 'three-times-daily'). A V2 setter must NOT silently
+    // rewrite them — that would erase forward-compat data on roundtrip
+    // through MedsManager.add({ frequency }) → setFrequency from a backup.
+    const m = createMed('f2b');
+    m.setFrequency('three-times-daily');
+    assertEqual(m.getFrequency(), 'three-times-daily');
+    m.setFrequency('q4h');
+    assertEqual(m.getFrequency(), 'q4h');
   });
 
   it('getExpectedDosesToday reflects frequency', () => {
@@ -238,14 +256,41 @@ describe('Meds — serialization', () => {
     assertEqual(b.getDoseLog().length, 1);
   });
 
-  it('loadState tolerates partial/empty state', () => {
+  it('loadState tolerates partial/empty state (F20 absent path)', () => {
     const m = createMed('r4');
     m.loadState({});
     assertEqual(m.getName(), 'Medication');
     assertEqual(m.getDose(), '');
-    // Empty state migrates to as-needed (safest default for untouched rows)
+    // F20 absent path: state has no `frequency` key → default 'as-needed'.
+    // 'as-needed' is the safest default — doesn't manufacture a daily
+    // obligation for untouched rows and matches the V1 migration target.
     assertEqual(m.getFrequency(), 'as-needed');
     assertEqual(m.getLastTakenAt(), null);
+  });
+
+  it('loadState preserves present-but-unknown frequency verbatim (F20)', () => {
+    // F20 forward-compat: a future schema's enum value (e.g. a
+    // 'three-times-daily' bucket added in V3) must roundtrip cleanly on
+    // a V2 client. The V2 loader has no business silently rewriting
+    // values it doesn't recognize — that would erase data on first save.
+    const m = createMed('r4b');
+    m.loadState({ id: 'r4b', frequency: 'three-times-daily' });
+    assertEqual(m.getFrequency(), 'three-times-daily');
+    // Downstream getExpectedDosesToday() still returns null for unknown
+    // values, so display falls back to 'na' UX without corrupting storage.
+    assertEqual(m.getExpectedDosesToday(), null);
+    assertEqual(m.getStatusToday().kind, 'na');
+  });
+
+  it('loadState defaults to as-needed when frequency is non-string', () => {
+    // F20 absent path covers type errors too — a numeric or object value
+    // is treated as absent, not preserved verbatim. Preserving non-strings
+    // would corrupt the type contract for every downstream consumer.
+    const m = createMed('r4c');
+    m.loadState({ id: 'r4c', frequency: 42 });
+    assertEqual(m.getFrequency(), 'as-needed');
+    m.loadState({ id: 'r4c', frequency: '' });
+    assertEqual(m.getFrequency(), 'as-needed');
   });
 
   it('loadState drops far-future dose entries (clock skew)', () => {
