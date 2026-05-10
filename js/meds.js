@@ -215,7 +215,13 @@ function createMed(id) {
 // ── Multi-med manager (singleton, parallel to InstanceManager) ──────
 
 const MedsManager = (() => {
-  const STORAGE_KEY = 'wellness_meds';
+  // F18: per-record persistence. Each med is its own localStorage key under
+  // the `meds/{medId}` prefix. The old single-blob key (`wellness_meds`) is
+  // migrated once on first loadAll and then deleted. Per-record persistence
+  // is what unlocks per-field LWW for name/dose/frequency at the wire format
+  // (see CLOUD-SYNC-STRATEGY.md — Row 1 of the per-store table).
+  const STORAGE_PREFIX = 'meds/';
+  const LEGACY_BLOB_KEY = 'wellness_meds';
   const MAX_MEDS = 10;
   let meds = [];
 
@@ -223,6 +229,8 @@ const MedsManager = (() => {
   function get(id)  { return meds.find(m => m.getId() === id) || null; }
   function count()  { return meds.length; }
   function canAdd() { return meds.length < MAX_MEDS; }
+  // `clear` is in-memory only by design — loadAll restores from persistence.
+  // Removing per-record keys is the explicit job of `remove(id)`.
   function clear()  { meds = []; }
 
   function add(config) {
@@ -241,7 +249,35 @@ const MedsManager = (() => {
   function remove(id) {
     const before = meds.length;
     meds = meds.filter(m => m.getId() !== id);
-    return meds.length < before;
+    const removed = meds.length < before;
+    if (removed) {
+      // Per-record model — orphan keys would leak forever without explicit
+      // cleanup. The old blob model got this "for free" via overwrite.
+      try { localStorage.removeItem(STORAGE_PREFIX + id); } catch (e) {}
+    }
+    return removed;
+  }
+
+  // One-shot migration from the F14-era single blob. Writes each med to its
+  // own key, then deletes the source so it never runs again. Idempotent — a
+  // restored backup of the old blob would re-trigger the migration on the
+  // next load and converge to the same state.
+  function _migrateLegacyBlob() {
+    let raw;
+    try { raw = localStorage.getItem(LEGACY_BLOB_KEY); } catch (e) { return; }
+    if (!raw) return;
+    try {
+      const blob = JSON.parse(raw);
+      if (blob && Array.isArray(blob.meds)) {
+        for (const s of blob.meds) {
+          if (s && s.id) {
+            try { localStorage.setItem(STORAGE_PREFIX + s.id, JSON.stringify(s)); }
+            catch (e) { /* skip on quota */ }
+          }
+        }
+      }
+    } catch (e) { /* corrupt blob — drop it below */ }
+    try { localStorage.removeItem(LEGACY_BLOB_KEY); } catch (e) {}
   }
 
   function saveAll() {
@@ -249,27 +285,39 @@ const MedsManager = (() => {
     // behavior. The `typeof` guard keeps the engine usable in test contexts
     // that don't load persistence.js.
     if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
-    try {
-      const state = { meds: meds.map(m => m.getState()) };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) { /* localStorage unavailable or full */ }
+    for (const m of meds) {
+      try {
+        localStorage.setItem(STORAGE_PREFIX + m.getId(), JSON.stringify(m.getState()));
+      } catch (e) { /* quota or unavailable — keep going for other meds */ }
+    }
   }
 
   function loadAll() {
+    _migrateLegacyBlob();
+
+    // Enumerate every meds/* key. Snapshot the key list first because
+    // we're reading values within the loop and per-record persistence
+    // means we won't mutate storage here, but defensive copies cost
+    // nothing at MAX_MEDS scale.
+    const keys = [];
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const state = JSON.parse(raw);
-      if (!state || !Array.isArray(state.meds)) return;
-      meds = state.meds
-        .filter(s => s && s.id)
-        .map(s => {
-          const m = createMed(s.id);
-          m.loadState(s);
-          return m;
-        });
-    } catch (e) {
-      localStorage.removeItem(STORAGE_KEY);
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
+      }
+    } catch (e) { /* localStorage unavailable */ }
+
+    meds = [];
+    for (const k of keys) {
+      try {
+        const raw = localStorage.getItem(k);
+        const state = raw ? JSON.parse(raw) : null;
+        if (state && state.id) {
+          const m = createMed(state.id);
+          m.loadState(state);
+          meds.push(m);
+        }
+      } catch (e) { /* corrupt entry — skip and let the next save overwrite */ }
     }
   }
 

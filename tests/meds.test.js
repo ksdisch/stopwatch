@@ -369,7 +369,29 @@ describe('MedsManager', () => {
   });
 
   it('saveAll / loadAll round-trips through localStorage', () => {
-    const prior = localStorage.getItem('wellness_meds');
+    // F18: persistence shape changed from a single `wellness_meds` blob to
+    // per-record `meds/{id}` keys. Snapshot both, clear, run, restore.
+    function snapshotMedsKeys() {
+      const out = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) {
+          out.push([k, localStorage.getItem(k)]);
+        }
+      }
+      return out;
+    }
+    function clearMedsKeys() {
+      const toClean = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) toClean.push(k);
+      }
+      for (const k of toClean) localStorage.removeItem(k);
+    }
+
+    const snapshot = snapshotMedsKeys();
+    clearMedsKeys();
     try {
       MedsManager.clear();
       MedsManager.add({ name: 'Persisted', dose: '10 mg', frequency: 'twice-daily' });
@@ -384,8 +406,8 @@ describe('MedsManager', () => {
       assertEqual(m.getFrequency(), 'twice-daily');
     } finally {
       MedsManager.clear();
-      if (prior !== null) localStorage.setItem('wellness_meds', prior);
-      else localStorage.removeItem('wellness_meds');
+      clearMedsKeys();
+      for (const [k, v] of snapshot) localStorage.setItem(k, v);
       MedsManager.loadAll();
     }
   });
