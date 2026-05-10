@@ -124,6 +124,38 @@ const History = (() => {
     });
   }
 
+  // Stage B back-fill (F10): rows that pre-date stamping lack `deviceId` and
+  // `updatedAt`. Stamp them once so cross-device LWW has a baseline. Idempotent
+  // — rows that already carry both fields are skipped. Per spec, fallback
+  // formula is `sessionEndedAt || date || Date.now()`.
+  function backfillMetadata() {
+    return new Promise((resolve) => {
+      try {
+        const readTx = db.transaction(STORE_NAME, 'readonly');
+        const req = readTx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => {
+          const sessions = req.result || [];
+          const toStamp = sessions.filter(s => s.updatedAt == null || s.deviceId == null);
+          if (toStamp.length === 0) { resolve(); return; }
+
+          const writeTx = db.transaction(STORE_NAME, 'readwrite');
+          const store = writeTx.objectStore(STORE_NAME);
+          for (const s of toStamp) {
+            const updatedAt = s.updatedAt
+              || s.sessionEndedAt
+              || (s.date ? Date.parse(s.date) : 0)
+              || Date.now();
+            const deviceId = s.deviceId || getDeviceId();
+            store.put({ ...s, deviceId, updatedAt });
+          }
+          writeTx.oncomplete = () => resolve();
+          writeTx.onerror = () => resolve();
+        };
+        req.onerror = () => resolve();
+      } catch (e) { resolve(); }
+    });
+  }
+
   function init() {
     initPromise = (async () => {
       await open();
@@ -132,6 +164,7 @@ const History = (() => {
       getDeviceId();
       await migrate();
       await migrateSessionIds();
+      await backfillMetadata();
     })();
     return initPromise;
   }
@@ -177,6 +210,11 @@ const History = (() => {
     const useProvidedId = typeof providedId === 'string' && !isLegacyId(providedId);
     const entry = {
       id: useProvidedId ? providedId : generateSessionId(),
+      // F10: deviceId + updatedAt support per-field LWW for mutable fields
+      // (note, tags). Preserve caller-provided values so JSON imports keep
+      // their original stamps.
+      deviceId: session.deviceId || getDeviceId(),
+      updatedAt: session.updatedAt || Date.now(),
       date: session.date || new Date().toISOString(),
       type: session.type || 'stopwatch',
       duration: session.duration || 0,
@@ -225,6 +263,8 @@ const History = (() => {
     const session = await getSession(id);
     if (!session) return;
     session.note = note;
+    session.updatedAt = Date.now();
+    session.deviceId = getDeviceId();
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.put(session);
@@ -253,6 +293,8 @@ const History = (() => {
     const normalized = tag.trim().toLowerCase();
     if (normalized && !session.tags.includes(normalized)) {
       session.tags.push(normalized);
+      session.updatedAt = Date.now();
+      session.deviceId = getDeviceId();
       return new Promise((resolve, reject) => {
         const store = getStore('readwrite');
         const req = store.put(session);
@@ -268,6 +310,8 @@ const History = (() => {
     const session = await getSession(sessionId);
     if (!session || !Array.isArray(session.tags)) return;
     session.tags = session.tags.filter(t => t !== tag);
+    session.updatedAt = Date.now();
+    session.deviceId = getDeviceId();
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.put(session);

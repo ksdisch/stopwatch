@@ -12,12 +12,36 @@
 
 const MED_FREQUENCIES = ['once-daily', 'twice-daily', 'as-needed'];
 
+// F10: lazy deviceId helper. Mirrors History.getDeviceId — reads or creates
+// the shared `tempo_device_id` localStorage key so meds can stamp records
+// without depending on History's module load order.
+function _medsGetDeviceId() {
+  let id = null;
+  try { id = localStorage.getItem('tempo_device_id'); } catch (e) {}
+  if (!id) {
+    id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 11);
+    try { localStorage.setItem('tempo_device_id', id); } catch (e) {}
+  }
+  return id;
+}
+
 function createMed(id) {
   let name = 'Medication';
   let dose = '';
   let frequency = 'once-daily';
   let lastTakenAt = null;          // ms timestamp, convenience mirror of doseLog tail
-  let doseLog = [];                 // [{ takenAt: ms }], append-only, sorted ascending
+  let doseLog = [];                 // [{ takenAt: ms, deviceId }], append-only, sorted ascending
+  // F10: record-level LWW stamps. `touch()` bumps both on any mutation so
+  // sync's per-field LWW for name/dose/frequency has a stable comparator.
+  let updatedAt = Date.now();
+  let deviceId = _medsGetDeviceId();
+
+  function touch() {
+    updatedAt = Date.now();
+    deviceId = _medsGetDeviceId();
+  }
 
   // ── Accessors ───────────────────────────────────────────────────────
 
@@ -27,17 +51,22 @@ function createMed(id) {
   function getFrequency() { return frequency; }
   function getLastTakenAt() { return lastTakenAt; }
   function getDoseLog() { return doseLog.slice(); }
+  function getUpdatedAt() { return updatedAt; }
+  function getDeviceId() { return deviceId; }
 
   function setName(n) {
     name = (n == null ? '' : String(n)).trim().slice(0, 60) || 'Medication';
+    touch();
   }
 
   function setDose(d) {
     dose = (d == null ? '' : String(d)).trim().slice(0, 40);
+    touch();
   }
 
   function setFrequency(f) {
     frequency = MED_FREQUENCIES.includes(f) ? f : 'once-daily';
+    touch();
   }
 
   // ── Dose logging ────────────────────────────────────────────────────
@@ -46,18 +75,22 @@ function createMed(id) {
     const when = (typeof takenAt === 'number' && !isNaN(takenAt))
       ? takenAt
       : Date.now();
-    doseLog.push({ takenAt: when });
+    // F10: each dose entry carries its origin deviceId so cross-device
+    // append-merge can dedup by (deviceId, takenAt).
+    doseLog.push({ takenAt: when, deviceId: _medsGetDeviceId() });
     // Keep log sorted so getDosesToday() / getLastTakenAt() stay consistent
     // even if the user logs an earlier dose via "Took it ~" after a newer one.
     doseLog.sort((a, b) => a.takenAt - b.takenAt);
     if (doseLog.length > 1000) doseLog.splice(0, doseLog.length - 1000);
     lastTakenAt = doseLog[doseLog.length - 1].takenAt;
+    touch();
   }
 
   function undoLastDose() {
     if (doseLog.length === 0) return false;
     doseLog.pop();
     lastTakenAt = doseLog.length > 0 ? doseLog[doseLog.length - 1].takenAt : null;
+    touch();
     return true;
   }
 
@@ -106,6 +139,7 @@ function createMed(id) {
     return {
       id, name, dose, frequency,
       lastTakenAt,
+      updatedAt, deviceId,
       doseLog: doseLog.slice(),
     };
   }
@@ -127,10 +161,17 @@ function createMed(id) {
     }
 
     lastTakenAt = typeof state.lastTakenAt === 'number' ? state.lastTakenAt : null;
+    // F10: stamp legacy doseLog entries (no deviceId) with the local one so
+    // (deviceId, takenAt) dedup has a populated tuple. Existing deviceIds
+    // are preserved verbatim — sync-aware backups roundtrip cleanly.
+    const localDevice = _medsGetDeviceId();
     doseLog = Array.isArray(state.doseLog)
       ? state.doseLog
           .filter(e => e && typeof e.takenAt === 'number')
-          .map(e => ({ takenAt: e.takenAt }))
+          .map(e => ({
+            takenAt: e.takenAt,
+            deviceId: typeof e.deviceId === 'string' ? e.deviceId : localDevice,
+          }))
           .sort((a, b) => a.takenAt - b.takenAt)
       : [];
 
@@ -148,12 +189,22 @@ function createMed(id) {
       doseLog = doseLog.filter(e => e.takenAt <= now + 60000);
       lastTakenAt = doseLog.length > 0 ? doseLog[doseLog.length - 1].takenAt : null;
     }
+
+    // F10: record-level stamp back-fill. Existing pre-F10 records lack both
+    // fields — anchor `updatedAt` to lastTakenAt when available, otherwise
+    // to now. `deviceId` falls back to the local device (pre-sync data is
+    // single-origin by construction).
+    updatedAt = typeof state.updatedAt === 'number'
+      ? state.updatedAt
+      : (lastTakenAt || Date.now());
+    deviceId = typeof state.deviceId === 'string' ? state.deviceId : localDevice;
   }
 
   return {
     getId, getName, getDose, getFrequency,
     setName, setDose, setFrequency,
     getLastTakenAt, getDoseLog,
+    getUpdatedAt, getDeviceId,
     logDose, undoLastDose,
     getTimeSinceLastDoseMs,
     getDosesToday, getExpectedDosesToday, getStatusToday,
