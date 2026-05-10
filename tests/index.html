@@ -29,6 +29,10 @@
   <script src="../js/interval.js"></script>
   <script src="../js/flow.js"></script>
   <script src="../js/meds.js"></script>
+  <!-- Presets is loaded for F19b storage-layer tests (the only tests that
+       exercise it; UI-coupled methods like applyPreset/captureCurrentConfig
+       aren't tested here and won't run without their UI deps in scope). -->
+  <script src="../js/presets.js"></script>
   <!-- Analytics depends on History.getSessions() + localStorage. Tests
        stub window.History per-case; no history.js load required here. -->
   <script src="../js/analytics.js"></script>
@@ -46,6 +50,7 @@
   <script src="interval.test.js"></script>
   <script src="flow.test.js"></script>
   <script src="meds.test.js"></script>
+  <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="export.test.js"></script>
 
