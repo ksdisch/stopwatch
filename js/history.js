@@ -3,9 +3,43 @@ const History = (() => {
   const STORE_NAME = 'sessions';
   const DB_VERSION = 1;
   const LEGACY_KEY = 'stopwatch_history';
+  const DEVICE_ID_KEY = 'tempo_device_id';
 
   let db = null;
   let initPromise = null;
+  let _deviceId = null;
+  let _idCounter = 0;
+
+  // Persistent device ID (UUID v4). Generated on first launch and stored in
+  // localStorage. Used as a stable per-device prefix for session IDs so
+  // cross-device sync can dedup without collisions. F10 will reuse it.
+  function getDeviceId() {
+    if (_deviceId) return _deviceId;
+    let id = null;
+    try { id = localStorage.getItem(DEVICE_ID_KEY); } catch (e) {}
+    if (!id) {
+      id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        // Fallback only fires in browsers without crypto.randomUUID (very rare
+        // today). Keeps the deviceId shape distinct from numeric legacy IDs.
+        : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 11);
+      try { localStorage.setItem(DEVICE_ID_KEY, id); } catch (e) {}
+    }
+    _deviceId = id;
+    return id;
+  }
+
+  function generateSessionId() {
+    return `${getDeviceId()}-${Date.now()}-${_idCounter++}`;
+  }
+
+  // Pre-F2 IDs were bare `Date.now()` numbers; JSON import paths can surface
+  // them as numeric strings. Anything else is already-migrated.
+  function isLegacyId(id) {
+    if (typeof id === 'number') return true;
+    if (typeof id === 'string' && /^\d+$/.test(id)) return true;
+    return false;
+  }
 
   function open() {
     return new Promise((resolve, reject) => {
@@ -52,10 +86,45 @@ const History = (() => {
     });
   }
 
+  // Rewrite legacy `Date.now()` IDs to `${deviceId}-${Date.now()}-${counter}`.
+  // Cross-device sync (and the existing JSON export/import path) needs
+  // collision-resistant keys. Idempotent — already-migrated rows are skipped.
+  // Each rewritten row preserves its original id as `legacyId` so Stage D
+  // sync reconcile can pair pre-migration records across devices. Uses IDB
+  // delete+put because keyPath: 'id' makes in-place mutation impossible.
+  function migrateSessionIds() {
+    return new Promise((resolve) => {
+      try {
+        const readTx = db.transaction(STORE_NAME, 'readonly');
+        const req = readTx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => {
+          const sessions = req.result || [];
+          const toMigrate = sessions.filter(s => isLegacyId(s.id));
+          if (toMigrate.length === 0) { resolve(); return; }
+
+          const writeTx = db.transaction(STORE_NAME, 'readwrite');
+          const store = writeTx.objectStore(STORE_NAME);
+          for (const s of toMigrate) {
+            const legacyId = typeof s.id === 'string' ? Number(s.id) : s.id;
+            store.delete(s.id);
+            store.put({ ...s, id: generateSessionId(), legacyId });
+          }
+          writeTx.oncomplete = () => resolve();
+          writeTx.onerror = () => resolve();
+        };
+        req.onerror = () => resolve();
+      } catch (e) { resolve(); }
+    });
+  }
+
   function init() {
     initPromise = (async () => {
       await open();
+      // Mint deviceId on first launch (per strategy doc), not lazily on first
+      // save. Guarantees the localStorage key exists before any user gesture.
+      getDeviceId();
       await migrate();
+      await migrateSessionIds();
     })();
     return initPromise;
   }
@@ -92,8 +161,14 @@ const History = (() => {
 
   async function addSession(session) {
     await ready();
+    // If a caller hands us an id, only trust it when it's already in the new
+    // shape (non-numeric string). Numeric / numeric-string ids are legacy —
+    // assign a fresh id and stash the original under `legacyId` so JSON
+    // backups roundtrip cleanly through this path.
+    const providedId = session.id;
+    const useProvidedId = typeof providedId === 'string' && !isLegacyId(providedId);
     const entry = {
-      id: session.id || Date.now(),
+      id: useProvidedId ? providedId : generateSessionId(),
       date: session.date || new Date().toISOString(),
       type: session.type || 'stopwatch',
       duration: session.duration || 0,
@@ -101,6 +176,11 @@ const History = (() => {
       note: session.note || '',
       tags: session.tags || [],
     };
+    if (session.legacyId !== undefined) {
+      entry.legacyId = session.legacyId;
+    } else if (!useProvidedId && providedId !== undefined && isLegacyId(providedId)) {
+      entry.legacyId = typeof providedId === 'string' ? Number(providedId) : providedId;
+    }
     // Pomodoro-specific metadata
     if (session.completedCycles !== undefined) entry.completedCycles = session.completedCycles;
     if (session.totalWorkMs !== undefined) entry.totalWorkMs = session.totalWorkMs;
@@ -206,5 +286,5 @@ const History = (() => {
     });
   }
 
-  return { init, getSessions, addSession, updateNote, deleteSession, clearAll, addTag, removeTag, getAllTags };
+  return { init, getSessions, addSession, updateNote, deleteSession, clearAll, addTag, removeTag, getAllTags, getDeviceId };
 })();

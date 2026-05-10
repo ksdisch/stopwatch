@@ -300,7 +300,7 @@ async function renderHistory() {
   list.querySelectorAll('.tag-chip-delete').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await History.removeTag(Number(btn.dataset.sessionId), btn.dataset.tag);
+      await History.removeTag(btn.dataset.sessionId, btn.dataset.tag);
       renderHistory();
     });
   });
@@ -308,7 +308,7 @@ async function renderHistory() {
   list.querySelectorAll('.tag-add-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const sessionId = Number(btn.dataset.sessionId);
+      const sessionId = btn.dataset.sessionId;
       // Replace button with input
       const input = document.createElement('input');
       input.type = 'text';
@@ -337,7 +337,7 @@ async function renderHistory() {
   list.querySelectorAll('.history-note, .history-add-note').forEach(el => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      const sessionId = Number(el.dataset.noteId);
+      const sessionId = el.dataset.noteId;
       const currentNote = el.classList.contains('history-note') ? el.textContent : '';
       const input = document.createElement('input');
       input.type = 'text';
