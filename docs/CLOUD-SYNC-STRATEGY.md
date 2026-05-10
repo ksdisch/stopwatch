@@ -1,6 +1,6 @@
-# Cloud Sync Strategy v1.0
+# Cloud Sync Strategy v2.0
 
-Backend-agnostic exploration of how Tempo's local-first storage would survive becoming multi-device. Structure only — no backend choice, no API shape, no code.
+Backend-agnostic strategy for evolving Tempo's local-first storage to multi-device. v2.0 incorporates findings from a three-lens adversarial review (data integrity, migration, schema evolution) — see `docs/sync-review/CONSOLIDATED-FINDINGS.md` for the audit trail. Structure only — no backend choice, no API shape, no code.
 
 ## Stores in scope
 
@@ -10,81 +10,114 @@ Backend-agnostic exploration of how Tempo's local-first storage would survive be
 - IndexedDB `stopwatch_history_db.sessions` — every completed stopwatch / timer / pomodoro / flow / interval / cooking session, plus mutable `note` / `tags` / `bfrbs` per row.
 - `wellness_rest_log` — daily sleep hours/quality + naps, keyed by `YYYY-MM-DD`.
 
-**Medium stakes** — active-session continuity and user-curated content.
+**Medium stakes** — append-only event streams and user-curated content.
 
-- Engine state: `multi_state`, `pomodoro_state`, `pomodoro_config`, `flow_state`, `flow_config`, `interval_state`, `sequence_state`, `cooking_timers`.
 - Append-only event logs: `bfrbs_global`, `flow_bfrbs`, `pomodoro_bfrbs`, `pomodoro_distractions`, `flow_distractions`.
 - Curated content: `quick_presets`, `offset_presets`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `sequence_templates`.
-- Per-session UI: `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`.
 
-**Low stakes** — per-device taste is acceptable.
+**Excluded from sync** — per-device by design.
 
-- `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`, `presets_seeded`, `sound_muted`, `sound_profile`, `theme`, `bfrb_volume`, `pomo_auto_advance`.
+- All engine state stores (`multi_state`, `pomodoro_state`, `pomodoro_config`, `flow_state`, `flow_config`, `interval_state`, `sequence_state`, `cooking_timers`). Per Q4 resolution: live engine state is per-device; only completed sessions sync via history.
+- Per-session checklist state (`pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`) — coupled to engine state, same exclusion.
+- Primary instance pointers (`primaryStopwatchId`, `primaryTimerId` inside `multi_state`) — UI focus, not engine state. A sync-mid-render swap would reassign the live `Stopwatch` module binding underfoot (F5).
+- Per-device prefs: `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`, `presets_seeded`, `sound_muted`, `sound_profile`, `theme`, `bfrb_volume`, `pomo_auto_advance`. Phone volume should not match laptop volume.
 
 ## Per-store merge strategy
 
-
-| Store                                                                               | Strategy                                                          | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wellness_meds` (name / dose / frequency)                                           | LWW per-field with `updatedAt`                                    | **✅ Lock** Slow-edit text fields; latest edit wins is fine.                                                                                                                                                                                                                                                                                                                                                                                      |
-| `wellness_meds.doseLog`                                                             | Append-merge, dedup by `(deviceId, takenAt)`                      | **✅ Lock**, but flag a ❓ on whether the Stage D prompt is actually sufficient — that's a question worth letting Agent A (data-integrity auditor) stress-test.Append-only health record; never overwrite, never collapse same-ms doses across devices.                                                                                                                                                                                            |
-| `history.sessions` (duration / laps / phaseLog / bfrbs / programName / overshootMs) | Append-merge, dedup by `id`                                       | **✅ Lock**Written once on session-end; no edits to these fields afterward.                                                                                                                                                                                                                                                                                                                                                                       |
-| `history.sessions` (`note`, `tags`)                                                 | LWW per-field with `updatedAt`                                    | **✅ Lock**Human-driven edits; last write reflects current intent.                                                                                                                                                                                                                                                                                                                                                                                |
-| `wellness_rest_log[date].sleep`                                                     | LWW per-day                                                       | **✅ Lock**One sleep entry per night.                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `wellness_rest_log[date].naps`                                                      | Append-merge, dedup by `(deviceId, startedAt)`                    | **✅ Lock**Append-only events.                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Engine state stores (`*_state`, `*_config`, `cooking_timers`)                       | Server-arbitrated, single active device                           | ❓ Unsure — alternative under consideration: exclude live engine state from sync entirely; only completed sessions sync via Row 3 (loses cross-device session resume but ships massively simpler). Auditors: is server arbitration worth the complexity for a 2-device personal app, or is the "exclude live state, sync only history" alternative sufficient?Only one device can be "running" a session; stale snapshots from others must yield. |
-| BFRB / distraction logs                                                             | Append-merge, dedup by `(deviceId, loggedAt)`                     | **✅ Lock**Pure event streams — never lossy.                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Templates / presets / saved tasks                                                   | LWW per-record by `id` + `updatedAt`, with tombstones for deletes | **❓ Unsure** — Agent C (schema-evolution auditor) should weigh in on tombstone GC.Explicit user-driven edits and deletions.                                                                                                                                                                                                                                                                                                                      |
-| Per-session checklist state                                                         | Server-arbitrated under the active session's device               | ❓ Decision deferred — coupled to Row 7. If Row 7 resolves to "server-arbitrated," keep this. If Row 7 resolves to "exclude from sync," this becomes "exclude from sync" too.Tied to the engine that owns the in-flight session.                                                                                                                                                                                                                  |
-| UI prefs (low-stakes block)                                                         | Exclude from sync                                                 | - ✅ LockPer-device taste — phone volume should not match laptop volume.                                                                                                                                                                                                                                                                                                                                                                          |
-
+| Store | Strategy | Notes |
+| --- | --- | --- |
+| `wellness_meds` (`name` / `dose` / `frequency`) | LWW per-field with `updatedAt` | Requires per-record persistence (prereq F18) and unknown-frequency passthrough (schema rule F20). |
+| `wellness_meds.lastTakenAt` | **Derived — do not sync** | Re-derived from merged `doseLog` after merge (F4). |
+| `wellness_meds.doseLog` | Append-merge, dedup by `(deviceId, takenAt)`, plus ±N-minute per-med reconcile (F1) | Reconcile is steady-state, not just Stage D. ±15-minute clock-skew clamp for entries carrying a non-local `deviceId` (F16). Toast on ≥2-entry remote merges (F15 — see UX rules). |
+| `history.sessions` (immutable: `duration`, `laps`, `phaseLog`, `bfrbs`, `programName`, `overshootMs`) | Append-merge, dedup by `id` | Each `phaseLog` entry is stamped `(deviceId, phaseStartedAt)` at push time so the immutable bag has a per-entry merge key (F6). `phaseLog` itself is a separate append-only stream that folds into `history.sessions` at session-end. |
+| `history.sessions.note` / `tags` | LWW per-field with `updatedAt` | Stamping is a prereq (F10). |
+| `wellness_rest_log[date].sleep` | LWW per-day | One sleep entry per night. |
+| `wellness_rest_log[date].naps` | Append-merge, dedup by `(deviceId, startedAt)` | Append-only events. |
+| BFRB events | Append-merge, dedup by `(deviceId, loggedAt)` | Either consolidate `bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` into one tagged stream with `context: 'flow' \| 'pomodoro' \| 'global'`, or exclude the session-local buckets entirely and treat `session.bfrbs` (in the synced history row) as canonical (F3). Decision deferred to implementation; both shapes preserve correctness. |
+| Distraction logs | Append-merge with session tombstones | Either move to `sessionId`-keyed storage (UI filters by current session, never reset) or emit explicit session-cleared tombstone events into the same stream so reset is representable in append-merge (F8). |
+| Templates / presets / saved tasks | LWW per-record by `id` + `updatedAt`, with tombstones for deletes | Records carry `schemaVersion`; loaders pass unknown fields through `__forward` (schema rules F19a/b). |
+| Engine state, per-session checklists, primary pointers | **Excluded from sync** | Q4 resolution. `loadState` recoveries (auto-advance, `focusEndedAt`, `alarmFired`) are local rendering only, never persisted back (F7). `alarmFired` is intrinsically per-device — Device B must still play the chime even after Device A fires (F21). |
+| UI prefs (low-stakes block) | **Excluded from sync** | Per-device taste. |
 
 ## Device-origin tagging
 
 Persistent `deviceId` (UUID v4) generated on first launch and stored in localStorage `tempo_device_id`. Tag every record where same-instant collisions across devices are plausible:
 
-- `doseLog`, BFRB, distraction, and nap entries → append `deviceId` to the entry shape.
-- `history.sessions.id` → migrate from bare `Date.now()` to `${deviceId}-${Date.now()}-${counter}` so simultaneous session-ends on two devices don't collide.
-- Engine state snapshots → stamp with `deviceId` so the server knows the author and can reject stale writes from a non-active device.
+- `doseLog`, BFRB, distraction, and nap entries → `deviceId` appended to the entry shape.
+- `history.sessions.id` → migrated from bare `Date.now()` to `${deviceId}-${Date.now()}-${counter}` (F2 — see prereqs).
+- `phaseLog` entries → stamped with `(deviceId, phaseStartedAt)` at push time (F6).
+- `lastTakenAt` is **derived, not synced** — re-derived from merged `doseLog` per device after each merge (F4).
 
 Templates, presets, and prefs don't need `deviceId` — they sync record-keyed by stable IDs.
 
+## Schema-evolution rules
+
+Sync runs against a shared cloud schema that older clients may not understand. Three rules govern roundtrip safety.
+
+1. **Stamp `schemaVersion` per record at write (F19a).** Every synced record carries its writer's schema version. Clients refuse-writeback when a received record has `schemaVersion > clientVersion`; downlevel clients display the record read-only until the client updates. This is the contract that makes incremental schema changes safe across mixed-version devices.
+2. **Unknown fields pass through verbatim via `__forward` (F19b).** Loaders preserve fields they don't recognize in a `__forward` bag and re-emit them on writeback. Without this, the first downlevel client to edit any record silently strips fields written by a newer client.
+3. **Loaders distinguish "field absent" from "field present but unknown" (F20).** The current `MED_FREQUENCIES.includes` allowlist silently rewrites unknown frequencies to `as-needed` on roundtrip — a destroy-on-roundtrip trap. Rule: absent → apply default; present-but-unknown → preserve verbatim, do not normalize.
+
+The per-store manifest registry (F19c — replacing hardcoded key lists in `Persistence.clear()` and the sync serializer with a registry stores enumerate themselves into) is **deferred**; see Known limitations.
+
+## UX rules
+
+Two rules cover the conflict surface for v2.0 — everything else is implementation detail.
+
+- **Silent LWW is the default** for editable fields (tags, notes, sleep entries, med metadata, template renames, preset edits). Solo personal use does not justify a "review conflicts" inbox; the cost of surfacing every race exceeds the cost of the rare wrong winner.
+- **Toast on health-data multi-entry arrivals (F15).** Whenever an append-merge into `doseLog` adds ≥2 entries from a remote device, surface a non-blocking toast ("4 doses from your phone synced"). Health-data silent merges are unsafe even when "correct" — the user needs to see the arrival to catch real anomalies (a forgotten med, a clock-skew duplicate, a buffered backlog).
+
+## Prerequisite refactor work — must ship before sync
+
+Five code changes block sync adoption regardless of strategy details. These land *before* the backend-selection spike, not as part of the sync rollout itself.
+
+**F2 — `history.sessions.id` migration.** The current `Date.now()` ID shape already collides via the existing JSON export/import path; cross-device sync makes the collision rate worse. Migrate to `${deviceId}-${Date.now()}-${counter}` *before* sync ships. The migration uses IDB delete+put (not in-place mutation, which IndexedDB doesn't support on `keyPath: 'id'`) and preserves `legacyId` on every rewritten row until Stage D pairings complete.
+
+**F10 — `deviceId` and `updatedAt` stamping at every write site.** Every LWW and dedup rule in the per-store table references metadata the engines don't currently emit. `History.updateNote`, `History.addTag`, `MedsManager.logDose`, `History.saveSession`, and equivalent mutation entry points must stamp `deviceId` and `updatedAt` at write time. Stage B back-fills existing rows with `updatedAt = sessionEndedAt || date || Date.now()` so server LWW has a baseline.
+
+**F13 — Hydrate write gate.** Introduce `tempo_sync_state ∈ {hydrating, ready, error}` in localStorage as a shared write gate. Every engine reads it before any persistence write. Hydrate order is strict: rest-log → meds → presets → history. Per-store hydrated markers; missing markers force a re-pull on next boot. The same gate is used in Stage B (block writes during stamping) and Stage C (block writes during pull-down).
+
+**F14 — Replace 200-entry doseLog cap.** `MedsManager` truncates `doseLog` at 200 entries. With cross-device append-merge, the truncate silently drops the oldest entries and Row 2's "never lossy" promise is fiction. Replace with a soft warn (UI nudge to export) or raise the cap to 1000 entries, which gives roughly 2.7 years of twice-daily dosing headroom.
+
+**F18 — Per-record meds persistence.** `MedsManager.saveAll` writes the entire meds collection as a single localStorage blob. Whole-document writes cannot represent per-field LWW at the wire format — Row 1 is structurally impossible until each med is its own keyed record (`meds/{medId}`) and `doseLog` is its own append-only subcollection. This is the largest of the five prereqs and gates everything in Rows 1 and 2.
+
 ## Migration path
 
-**Stage A — pre-sync (today).** Single device, localStorage + IndexedDB only. Session IDs are bare `Date.now()`; no `deviceId` anywhere. 
+**Stage A — pre-sync (today).** Single device, localStorage + IndexedDB only. **Lock now extends:** session IDs are device-scoped from this point forward (F2). The bare `Date.now()` shape collides today via JSON export/import, so the ID migration ships standalone — not bundled into Stage B.
 
-- **✅ Lock**
+**Stage B — sync enabled on Device A.** Generate `deviceId`, retroactively stamp every existing record (`deviceId` + `updatedAt` per F10), rewrite session IDs to the new shape, then upload a one-shot snapshot.
 
-**Stage B — sync enabled on Device A.** Generate `deviceId`, retroactively stamp every existing record, rewrite session IDs to the new shape, then upload a one-shot snapshot. Low risk: single source of truth, no merge.
+- **Stage B0 prerequisite (F9):** Read cloud first. If non-empty, route through the Stage D reconcile path. Treat every "first enable" as potentially-second-device — naive Stage B silently overwrites a previously-seeded cloud.
+- **Mandatory local backup before mutation (F12):** `Persistence.clear()` only deletes — there is no current snapshot path. Write a full local backup file before Stage B touches any record; restore-from-backup is the documented rollback if stamping fails partway.
+- **IDB delete+put for ID rewrite (F2):** Not in-place mutation; preserve `legacyId` until Stage D pairings complete.
+- **Block all writes during stamping (F13):** Same `tempo_sync_state` gate Stage C uses.
 
-- **❓ Unsure** — flag as "Agent B (migration auditor) weigh in: what's the rollback story if Stage B fails partway? Should we require a local backup before stamping?"
+**Stage C — Device B signs in, no local data.** Pull-down hydrate, with hard guarantees.
 
-**Stage C — Device B signs in, no local data.** Pull-down hydrate. Trivial.
+- `tempo_sync_state = hydrating` blocks all writes until pull completes (F13 — promoted from ❓ to hard requirement).
+- Strict hydrate order: rest-log → meds → presets → history. Per-store markers; missing markers force a re-pull on next boot (F13).
+- Generate `deviceId` *before* first user gesture so any in-flight session-end during hydrate uses the new ID shape, not bare `Date.now()` (F2).
 
-- **✅ Lock** the overall direction (pull-down hydrate is correct), but consider adding a sentence: *"During hydrate, the UI shows a sync indicator and blocks new writes until pull completes."* That single line removes the race and the auditors don't have to flag it.
+**Stage D — Device B signs in with existing standalone data.** Default to **Alternative 2 — separate-bucket "imported" history** (F17). Device B's pre-sync history is stamped with its own `deviceId`, kept in an "imported" bucket visible alongside synced data, and an opt-in manual dedupe tool ships later. The per-collision ±60s prompt approach from v1.0 does not survive 360 doses × 6 months of accumulated entries — the UX collapses under realistic data volume.
 
-**Stage D — Device B signs in *with existing standalone data*. Riskiest transition.** Device B's pre-sync history has no `deviceId`, and its session IDs (`Date.now()`) may collide with cloud entries Device A wrote in the same minute. Required: stamp Device B's local data with its own `deviceId`, rewrite colliding session IDs, then run a one-time reconcile pass — for every untagged doseLog entry within ±60s of a cloud entry, prompt the user to confirm same-dose-or-separate. Without that prompt we either lose real doses or invent fake ones.
+- Steady-state inherits Stage D's contract (F1): the ±N-minute per-med reconcile rule applies in Stage E too, not just at one-time migration. Two same-med entries within ±N minutes always trigger reconcile — regardless of `deviceId` — to cover the cross-device "I forgot, let me re-log it" case.
 
-- ❓ Stage D is the highest-stakes transition in the entire migration. Three alternatives under consideration:
-  1. As proposed: ±60s reconcile prompt on doseLog.
-  2. Separate-bucket: keep Device B's pre-sync history as untagged-and-not-merged, visible alongside synced data.
-  3. Defer-reconcile: sync raw, offer manual dedup tool later.
-  Auditors: which best protects the medication log from silent corruption? Is the ±60s window right? Is the prompt UX realistic for 6+ months of accumulated entries?
+**Stage E — steady-state.** Periodic sync: append-merge for event streams, LWW for editable fields, per-record `schemaVersion` checks. Offline writes buffer locally and replay on reconnect.
 
-**Stage E — steady-state.** Periodic sync: append-merge for event streams, LWW for editable fields, single-active-device arbitration for engine state. Offline writes buffer locally and replay on reconnect.
-
-- *Coupled to Row 7. If Row 7 resolves to exclude live engine state from sync, drop the 'single-active-device arbitration' clause from this stage.*
+- **Engine state is excluded** (Q4 resolution). The "single-active-device arbitration for engine state" clause from v1.0 is dropped. Only completed history syncs.
+- `loadState` recovery branches (auto-advance, `focusEndedAt`, `alarmFired`) are local rendering only — never persisted back (F7).
+- Clients refuse-writeback when `record.schemaVersion > clientVersion`; downlevel clients display read-only until update (F19a).
+- `phaseLog` is its own append-only stream that folds into `history.sessions` at session-end (F6).
 
 ## Open questions
 
-- **Backend constraints.** Does the store support efficient append-only subcollections (per-med `doseLog` is the hot path)? Auth that works on both web and a Capacitor iOS shell without re-prompting per surface? Health-data residency / HIPAA-adjacent disclosure rules for medication logs? Cost at single-user-two-devices scale, given the app has no monetization path.
-  - ❓ All four sub-questions punted to backend-selection spike (separate from this strategy doc). Auditors: of these four, which is most load-bearing — i.e., which one's answer would *change the strategy* (vs just inform implementation)? My instinct: HIPAA-adjacent disclosure rules might shift this from "any cloud backend" to "end-to-end encrypted only"
-- **Conflict UI.** When a merge can't resolve automatically (Stage D dose dedupe; tag-edit races on the same session; engine-state arbitration), do we silently last-write-wins, surface a banner, or ship a "review conflicts" inbox? If Device B starts a Flow block while Device A already has one running, does B refuse, override, or prompt?
-  - ✅ For general conflicts (LWW races on tags, sleep, med metadata): silent LWW is acceptable for solo personal use — no banner, no inbox.
-  ❓ For "Device B starts a Flow while Device A has one running": coupled to Row 7. Defer until Row 7 resolves.
-- **Offline buffer.** Cap on pending-op size? Op compaction for chatty stores like engine snapshots? Do we write `doseLog` locally and optimistically reconcile, or hold until ack? If a buffered "took it now" syncs three days late, does it still claim "now" or get rewritten with the original wall-clock `takenAt`?
-  - ✅ Buffered writes always preserve the original wall-clock timestamp captured at user-action time. A "took it now" syncing 3 days late still records the original 9am — not "3 days later."
-  ❓ Pending-op cap, op compaction, and optimistic-vs-ack-write semantics are implementation details. Auditors: are any of these strategy-shaping (i.e., would the answer change the merge rules), or are they all pure implementation?
-- **Active-session sync.** Worth syncing engine state at all, or only completed history? The drift-free `startedAt + accumulatedMs` timing model means a resumed session on Device B needs exact `startedAt` agreement — feasible but adds ceremony for an unclear payoff.
-  - ❓ This is the same decision as Row 7 (engine state stores) and Q2's "Flow-running-on-two-devices" sub-question. All three resolve together. Auditors: please give a single recommendation that covers all three; don't evaluate them independently.
+- **Q1 — Backend constraints.** ✅ **Resolved.** Atomic compare-and-swap on per-record `schemaVersion` is now a hard requirement on the backend-selection spike (driver: F19). Auth across web + Capacitor surfaces, residency / HIPAA-adjacent rules, and cost at single-user-two-devices scale remain inputs to the spike but don't shape the strategy further.
+- **Q2 — Conflict UI.** ✅ **Resolved.** Silent LWW for general edits; toast override for `doseLog` append-merges of ≥2 entries (F15). See UX rules.
+- **Q3 — Offline buffer.** Partially resolved. ✅ **Locked:** buffered writes always preserve the original wall-clock timestamp captured at user-action time. A "took it now" syncing 3 days late records the original 9am, not "3 days later." ❓ **Deferred to implementation:** pending-op cap, op compaction for chatty stores, optimistic-vs-ack write semantics. None change the merge rules.
+- **Q4 — Active-session sync.** ✅ **Resolved.** Exclude live engine state from sync; only completed history syncs. This single decision closes Row 7 of the per-store table, the Stage E arbitration clause, and the "Flow-running-on-two-devices" sub-question simultaneously.
 
+## Known limitations / deferred
+
+- **F19c — per-store manifest registry.** The hardcoded key lists in `Persistence.clear()` and the sync serializer should be replaced with a manifest registry that stores enumerate themselves into. Deferred from v2.0 — schema rules F19a (`schemaVersion` stamping) and F19b (`__forward` passthrough) ship without it; a hardcoded key list works for the current store count and the refactor can land alongside the next pillar that adds a synced store.
+- **Q3 sub-questions (offline buffer):** pending-op cap, op compaction, optimistic-vs-ack write semantics — implementation-time decisions, not strategy-shaping.
+- **Q1 sub-questions:** auth across web + Capacitor surfaces, health-data residency posture, cost at two-device scale — inputs to the backend-selection spike, not strategy-shaping.
