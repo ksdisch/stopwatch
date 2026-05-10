@@ -22,6 +22,11 @@ const Presets = (() => {
     const presets = getAll();
     preset.id = preset.id || Date.now().toString(36);
     preset.createdAt = preset.createdAt || Date.now();
+    // F19a: stamp schemaVersion at write. Schema.stamp is a no-op if the
+    // caller passed a future-schemaVersion record (e.g. JSON import from a
+    // newer client), preserving the original version so the record
+    // roundtrips cleanly.
+    Schema.stamp(preset);
     presets.push(preset);
     saveAll(presets);
     return preset;
@@ -31,13 +36,24 @@ const Presets = (() => {
     const presets = getAll();
     const idx = presets.findIndex(p => p.id === id);
     if (idx === -1) return;
+    // F19a: refuse to overwrite future-schema records. A downlevel client
+    // would strip fields it doesn't recognize on writeback. Silent no-op
+    // (existing return shape is also `undefined`). The full array is NOT
+    // re-saved here, so the on-disk future record stays untouched.
+    if (Schema.isFutureRecord(presets[idx])) return;
     Object.assign(presets[idx], changes);
+    Schema.stamp(presets[idx]);
     saveAll(presets);
   }
 
   function remove(id) {
-    const presets = getAll().filter(p => p.id !== id);
-    saveAll(presets);
+    const presets = getAll();
+    const target = presets.find(p => p.id === id);
+    // F19a: future-schema records are read-only — refuse to delete. The
+    // downlevel client may not understand semantics the newer client
+    // attached to the preset; deleting could lose data we can't represent.
+    if (target && Schema.isFutureRecord(target)) return;
+    saveAll(presets.filter(p => p.id !== id));
   }
 
   function applyPreset(id) {
@@ -216,6 +232,8 @@ const Presets = (() => {
   }
 
   function getDefaults() {
+    // F19a: stamp schemaVersion on each seeded default so first-launch
+    // storage doesn't carry unstamped records.
     return [
       { id: 'default-sw', name: 'Stopwatch', icon: '⏱️', mode: 'stopwatch', config: {}, createdAt: 0 },
       { id: 'default-timer-5', name: '5 min Timer', icon: '⏲️', mode: 'timer', config: { durationMs: 5 * 60000 }, createdAt: 1 },
@@ -226,7 +244,7 @@ const Presets = (() => {
       { id: 'default-walk', name: 'Louis Walk', icon: '🦮', mode: 'stopwatch', config: { vibrateIntervalMs: 1800000, alertsMs: [1800000] }, createdAt: 6 },
       { id: 'default-potty', name: 'Puppy Potty', icon: '🐶', mode: 'timer', config: { durationMs: 45 * 60000 }, createdAt: 7 },
       { id: 'default-training', name: 'Training Session', icon: '🎾', mode: 'timer', config: { durationMs: 10 * 60000 }, createdAt: 8 },
-    ];
+    ].map(Schema.stamp);
   }
 
   function seedDefaults() {
@@ -248,14 +266,16 @@ const Presets = (() => {
       oldPresets.forEach(op => {
         // Skip if already migrated (check by name)
         if (current.some(p => p.name === op.name && p.mode === 'stopwatch')) return;
-        current.push({
+        // F19a: stamp schemaVersion on the migrated record so it lands at
+        // the current schema (pre-F19a offset_presets have no version).
+        current.push(Schema.stamp({
           id: 'migrated-' + op.id,
           name: op.name,
           icon: '⏱️',
           mode: 'stopwatch',
           config: { offsetMs: op.ms },
           createdAt: Date.now(),
-        });
+        }));
       });
       saveAll(current);
       localStorage.removeItem('offset_presets');

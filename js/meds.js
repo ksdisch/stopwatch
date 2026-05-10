@@ -41,6 +41,11 @@ function createMed(id) {
   // sync's per-field LWW for name/dose/frequency has a stable comparator.
   let updatedAt = Date.now();
   let deviceId = _medsGetDeviceId();
+  // F19a: set by loadState when the on-disk record was minted on a newer
+  // schema (state.schemaVersion > SCHEMA_VERSION). MedsManager.saveAll
+  // and .remove consult this flag and refuse the operation, leaving the
+  // future record on disk byte-clean for the newer client to consume.
+  let _fromFutureSchema = false;
 
   function touch() {
     updatedAt = Date.now();
@@ -57,6 +62,7 @@ function createMed(id) {
   function getDoseLog() { return doseLog.slice(); }
   function getUpdatedAt() { return updatedAt; }
   function getDeviceId() { return deviceId; }
+  function isFromFutureSchema() { return _fromFutureSchema; }
 
   function setName(n) {
     name = (n == null ? '' : String(n)).trim().slice(0, 60) || 'Medication';
@@ -148,7 +154,11 @@ function createMed(id) {
   // ── Serialization ───────────────────────────────────────────────────
 
   function getState() {
+    // F19a: stamp the schema version at every write. The cloud-sync
+    // engine isn't wired yet, but per-record stamping is the contract
+    // that lets mixed-version devices safely share data later.
     return {
+      schemaVersion: Schema.SCHEMA_VERSION,
       id, name, dose, frequency,
       lastTakenAt,
       updatedAt, deviceId,
@@ -158,6 +168,14 @@ function createMed(id) {
 
   function loadState(state) {
     if (!state || typeof state !== 'object') return;
+
+    // F19a: detect records minted on a newer schema. The engine still
+    // loads them (so existing UI can show name/dose), but downstream
+    // mutators (MedsManager.saveAll / .remove) consult this flag and
+    // refuse — preserving the on-disk future record byte-clean for the
+    // newer client to consume. Pre-F19a records (no schemaVersion) are
+    // NOT future; they get stamped to v1 on their next save, lazily.
+    _fromFutureSchema = Schema.isFutureRecord(state);
 
     name = typeof state.name === 'string' ? state.name : 'Medication';
     dose = typeof state.dose === 'string' ? state.dose : '';
@@ -226,6 +244,7 @@ function createMed(id) {
     setName, setDose, setFrequency,
     getLastTakenAt, getDoseLog,
     getUpdatedAt, getDeviceId,
+    isFromFutureSchema,
     logDose, undoLastDose,
     getTimeSinceLastDoseMs,
     getDosesToday, getExpectedDosesToday, getStatusToday,
@@ -268,6 +287,13 @@ const MedsManager = (() => {
   }
 
   function remove(id) {
+    // F19a: refuse to delete future-schema records. The downlevel client
+    // may not understand semantics the newer client attached to the
+    // record; deleting could lose data we can't represent. Returns false
+    // (same shape as "id not found") so existing callers don't crash.
+    const target = meds.find(m => m.getId() === id);
+    if (target && target.isFromFutureSchema()) return false;
+
     const before = meds.length;
     meds = meds.filter(m => m.getId() !== id);
     const removed = meds.length < before;
@@ -307,6 +333,10 @@ const MedsManager = (() => {
     // that don't load persistence.js.
     if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     for (const m of meds) {
+      // F19a: future-schema records keep their on-disk shape. Writing the
+      // downlevel in-memory representation would strip fields this client
+      // doesn't know about (the loader only restores fields it recognizes).
+      if (m.isFromFutureSchema()) continue;
       try {
         localStorage.setItem(STORAGE_PREFIX + m.getId(), JSON.stringify(m.getState()));
       } catch (e) { /* quota or unavailable — keep going for other meds */ }
