@@ -50,7 +50,7 @@ function createMed(id) {
     // Keep log sorted so getDosesToday() / getLastTakenAt() stay consistent
     // even if the user logs an earlier dose via "Took it ~" after a newer one.
     doseLog.sort((a, b) => a.takenAt - b.takenAt);
-    if (doseLog.length > 200) doseLog.splice(0, doseLog.length - 200);
+    if (doseLog.length > 1000) doseLog.splice(0, doseLog.length - 1000);
     lastTakenAt = doseLog[doseLog.length - 1].takenAt;
   }
 
