@@ -194,6 +194,10 @@ const MedsManager = (() => {
   }
 
   function saveAll() {
+    // F13: cross-store write gate. Default 'ready' preserves current
+    // behavior. The `typeof` guard keeps the engine usable in test contexts
+    // that don't load persistence.js.
+    if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     try {
       const state = { meds: meds.map(m => m.getState()) };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

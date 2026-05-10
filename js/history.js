@@ -41,6 +41,13 @@ const History = (() => {
     return false;
   }
 
+  // F13: consult the cross-store write gate before persisting. Defaults open
+  // ('ready') so behavior is unchanged today. The `typeof` guard keeps the
+  // engine usable in test contexts that don't load persistence.js.
+  function canWrite() {
+    return typeof SyncState === 'undefined' || SyncState.canWrite();
+  }
+
   function open() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -161,6 +168,7 @@ const History = (() => {
 
   async function addSession(session) {
     await ready();
+    if (!canWrite()) return null;
     // If a caller hands us an id, only trust it when it's already in the new
     // shape (non-numeric string). Numeric / numeric-string ids are legacy —
     // assign a fresh id and stash the original under `legacyId` so JSON
@@ -213,6 +221,7 @@ const History = (() => {
 
   async function updateNote(id, note) {
     await ready();
+    if (!canWrite()) return;
     const session = await getSession(id);
     if (!session) return;
     session.note = note;
@@ -226,6 +235,7 @@ const History = (() => {
 
   async function deleteSession(id) {
     await ready();
+    if (!canWrite()) return;
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.delete(id);
@@ -236,6 +246,7 @@ const History = (() => {
 
   async function addTag(sessionId, tag) {
     await ready();
+    if (!canWrite()) return;
     const session = await getSession(sessionId);
     if (!session) return;
     if (!Array.isArray(session.tags)) session.tags = [];
@@ -253,6 +264,7 @@ const History = (() => {
 
   async function removeTag(sessionId, tag) {
     await ready();
+    if (!canWrite()) return;
     const session = await getSession(sessionId);
     if (!session || !Array.isArray(session.tags)) return;
     session.tags = session.tags.filter(t => t !== tag);
@@ -278,6 +290,7 @@ const History = (() => {
 
   async function clearAll() {
     await ready();
+    if (!canWrite()) return;
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');
       const req = store.clear();
