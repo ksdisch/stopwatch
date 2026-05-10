@@ -219,17 +219,25 @@ const History = (() => {
     // backups roundtrip cleanly through this path.
     const providedId = session.id;
     const useProvidedId = typeof providedId === 'string' && !isLegacyId(providedId);
+    // F19b: spread the full caller session first, then overlay computed/
+    // normalized fields. Replaces ~20 lines of `if (session.X !== undefined)
+    // entry.X = ...` allowlist copies — they were lossless for present
+    // fields but silently dropped unknowns. The spread + override pattern
+    // is symmetrically lossless and lets future-schema fields (anything a
+    // newer client added that this client doesn't recognize) roundtrip
+    // cleanly through addSession.
+    //
+    // F19a/F10 contracts still hold via the overrides:
+    //   - schemaVersion: caller's future version wins, else stamp current
+    //   - deviceId/updatedAt: caller's values preserved (JSON import path),
+    //     else stamped to local device + now
+    //   - id: caller's well-formed id preserved, else generated
     const entry = {
-      // F19a: stamp schemaVersion at write. Preserve a caller-provided
-      // future schemaVersion (e.g. JSON import from a newer client) so the
-      // record roundtrips cleanly; otherwise stamp to the current version.
+      ...session,
       schemaVersion: Schema.isFutureRecord(session)
         ? session.schemaVersion
         : Schema.SCHEMA_VERSION,
       id: useProvidedId ? providedId : generateSessionId(),
-      // F10: deviceId + updatedAt support per-field LWW for mutable fields
-      // (note, tags). Preserve caller-provided values so JSON imports keep
-      // their original stamps.
       deviceId: session.deviceId || getDeviceId(),
       updatedAt: session.updatedAt || Date.now(),
       date: session.date || new Date().toISOString(),
@@ -239,32 +247,16 @@ const History = (() => {
       note: session.note || '',
       tags: session.tags || [],
     };
-    if (session.legacyId !== undefined) {
-      entry.legacyId = session.legacyId;
-    } else if (!useProvidedId && providedId !== undefined && isLegacyId(providedId)) {
+    // legacyId derivation when the caller didn't provide one but did pass
+    // a numeric/legacy-shaped id (e.g. a pre-F2 history backup being
+    // imported via JSON). session.legacyId, if present, is already on
+    // entry via the spread above.
+    if (session.legacyId === undefined
+        && !useProvidedId
+        && providedId !== undefined
+        && isLegacyId(providedId)) {
       entry.legacyId = typeof providedId === 'string' ? Number(providedId) : providedId;
     }
-    // Pomodoro-specific metadata
-    if (session.completedCycles !== undefined) entry.completedCycles = session.completedCycles;
-    if (session.totalWorkMs !== undefined) entry.totalWorkMs = session.totalWorkMs;
-    if (session.focusGoals) entry.focusGoals = session.focusGoals;
-    if (session.breakTasks) entry.breakTasks = session.breakTasks;
-    if (session.actualWork) entry.actualWork = session.actualWork;
-    if (session.sessionStartedAt) entry.sessionStartedAt = session.sessionStartedAt;
-    if (session.sessionEndedAt) entry.sessionEndedAt = session.sessionEndedAt;
-    if (session.phaseLog) entry.phaseLog = session.phaseLog;
-    if (session.distractions) entry.distractions = session.distractions;
-    // Flow-block specific metadata
-    if (session.goal) entry.goal = session.goal;
-    if (session.blockDurationMs !== undefined) entry.blockDurationMs = session.blockDurationMs;
-    if (session.preBlockSkipped !== undefined) entry.preBlockSkipped = session.preBlockSkipped;
-    if (session.endedEarly !== undefined) entry.endedEarly = session.endedEarly;
-    if (session.bfrbs) entry.bfrbs = session.bfrbs;
-    // Interval / Exercise metadata
-    if (session.programName) entry.programName = session.programName;
-    // Countdown overshoot (Timer / Pomodoro / Flow / Interval). Optional;
-    // pre-existing rows lack the field and the badge guards on > 0.
-    if (session.overshootMs !== undefined) entry.overshootMs = session.overshootMs;
 
     return new Promise((resolve, reject) => {
       const store = getStore('readwrite');

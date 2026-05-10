@@ -16,6 +16,29 @@
 // values like a future 'three-times-daily' roundtrip cleanly on a V2 client).
 const MED_FREQUENCIES = ['once-daily', 'twice-daily', 'as-needed'];
 
+// F19b: known top-level keys on a med record. Anything NOT in this set
+// gets collected into the per-med `_forwardBag` on load and merged back
+// into the wire format on save, so unknown fields minted on a newer
+// schema survive roundtrip on a downlevel client.
+//
+// Includes V1 legacy fields (scheduleType/intervalMs/times/etc.) so the
+// V1→V2 migration in loadState keeps dropping them deliberately rather
+// than smuggling them into __forward forever. Add a key here when a new
+// field is introduced.
+const KNOWN_MED_KEYS = new Set([
+  // V2 schema (current)
+  'id', 'name', 'dose', 'frequency',
+  'lastTakenAt', 'doseLog',
+  // F10 record-level LWW stamps
+  'updatedAt', 'deviceId',
+  // F19a schema version
+  'schemaVersion',
+  // V1 legacy (intentionally dropped on migration — recognized as
+  // "known to be discarded" so __forward stays clean)
+  'scheduleType', 'intervalMs', 'times',
+  'notificationsEnabled', 'dueNotified', 'dueNotificationAt',
+]);
+
 // F10: lazy deviceId helper. Mirrors History.getDeviceId — reads or creates
 // the shared `tempo_device_id` localStorage key so meds can stamp records
 // without depending on History's module load order.
@@ -46,6 +69,11 @@ function createMed(id) {
   // and .remove consult this flag and refuse the operation, leaving the
   // future record on disk byte-clean for the newer client to consume.
   let _fromFutureSchema = false;
+  // F19b: unknown top-level fields collected from the on-disk record at
+  // load time. getState() merges these back into the wire format so a
+  // downlevel client doesn't strip future-schema fields it can't parse.
+  // Null until loadState runs with at least one unrecognized key.
+  let _forwardBag = null;
 
   function touch() {
     updatedAt = Date.now();
@@ -157,13 +185,18 @@ function createMed(id) {
     // F19a: stamp the schema version at every write. The cloud-sync
     // engine isn't wired yet, but per-record stamping is the contract
     // that lets mixed-version devices safely share data later.
-    return {
+    const out = {
       schemaVersion: Schema.SCHEMA_VERSION,
       id, name, dose, frequency,
       lastTakenAt,
       updatedAt, deviceId,
       doseLog: doseLog.slice(),
     };
+    // F19b: merge __forward back into the wire format. The loader's
+    // KNOWN_MED_KEYS filter guarantees the bag never contains a key that
+    // collides with a known field, so a plain assign is safe.
+    if (_forwardBag) Object.assign(out, _forwardBag);
+    return out;
   }
 
   function loadState(state) {
@@ -176,6 +209,18 @@ function createMed(id) {
     // newer client to consume. Pre-F19a records (no schemaVersion) are
     // NOT future; they get stamped to v1 on their next save, lazily.
     _fromFutureSchema = Schema.isFutureRecord(state);
+
+    // F19b: collect unrecognized top-level fields into __forward so a
+    // downlevel client doesn't strip future-schema data on roundtrip.
+    // KNOWN_MED_KEYS includes V1 legacy fields too, so the bag stays
+    // clean of intentionally-discarded migration cruft.
+    _forwardBag = null;
+    for (const key of Object.keys(state)) {
+      if (!KNOWN_MED_KEYS.has(key)) {
+        if (_forwardBag === null) _forwardBag = {};
+        _forwardBag[key] = state[key];
+      }
+    }
 
     name = typeof state.name === 'string' ? state.name : 'Medication';
     dose = typeof state.dose === 'string' ? state.dose : '';

@@ -650,3 +650,182 @@ describe('Meds — F19a schema stamping', () => {
     }
   });
 });
+
+describe('Meds — F19b __forward passthrough', () => {
+  it('loadState collects an unknown top-level field; getState emits it', () => {
+    const m = createMed('fp1');
+    m.loadState({
+      id: 'fp1',
+      name: 'Vyvanse',
+      dose: '60 mg',
+      frequency: 'once-daily',
+      doseLog: [],
+      futureField: 'should-survive',
+    });
+    const state = m.getState();
+    assertEqual(state.futureField, 'should-survive');
+    // Known fields still emit normally.
+    assertEqual(state.name, 'Vyvanse');
+    assertEqual(state.dose, '60 mg');
+    assertEqual(state.frequency, 'once-daily');
+  });
+
+  it('loadState collects multiple unknown fields (preserves shape)', () => {
+    const m = createMed('fp2');
+    m.loadState({
+      id: 'fp2',
+      name: 'Multi',
+      frequency: 'once-daily',
+      doseLog: [],
+      strField: 'str',
+      numField: 42,
+      objField: { nested: true, arr: [1, 2, 3] },
+      arrField: ['a', 'b'],
+      nullField: null,
+      boolField: false,
+    });
+    const state = m.getState();
+    assertEqual(state.strField, 'str');
+    assertEqual(state.numField, 42);
+    assertEqual(state.objField.nested, true);
+    assertEqual(state.objField.arr.length, 3);
+    assertEqual(state.arrField.length, 2);
+    assertEqual(state.nullField, null);
+    assertEqual(state.boolField, false);
+  });
+
+  it('V1 legacy fields are NOT placed in __forward (still dropped on migration)', () => {
+    // Belt-and-suspenders: F19b must not subvert the V1→V2 migration by
+    // smuggling scheduleType/intervalMs/etc. through __forward.
+    const m = createMed('fp3');
+    m.loadState({
+      id: 'fp3',
+      name: 'Legacy',
+      scheduleType: 'interval',
+      intervalMs: 6 * 3600000,
+      times: ['08:00'],
+      notificationsEnabled: true,
+      dueNotified: false,
+      dueNotificationAt: 1700000000000,
+      doseLog: [],
+    });
+    const state = m.getState();
+    assert(state.scheduleType === undefined, 'scheduleType still dropped');
+    assert(state.intervalMs === undefined, 'intervalMs still dropped');
+    assert(state.times === undefined, 'times still dropped');
+    assert(state.notificationsEnabled === undefined, 'notificationsEnabled still dropped');
+    assert(state.dueNotified === undefined, 'dueNotified still dropped');
+    assert(state.dueNotificationAt === undefined, 'dueNotificationAt still dropped');
+    // Migration semantics intact.
+    assertEqual(m.getFrequency(), 'as-needed');
+  });
+
+  it('unknown fields survive across mutations (touch, setName, logDose)', () => {
+    const m = createMed('fp4');
+    m.loadState({
+      id: 'fp4',
+      name: 'Initial',
+      frequency: 'once-daily',
+      doseLog: [],
+      futureField: 'sticky',
+    });
+    m.setName('Renamed');
+    m.logDose(1700000000000);
+    const state = m.getState();
+    assertEqual(state.name, 'Renamed');
+    assertEqual(state.doseLog.length, 1);
+    // The unknown field rode through both setName (touch) and logDose.
+    assertEqual(state.futureField, 'sticky');
+  });
+
+  it('fresh med (no loadState call) emits no __forward keys', () => {
+    const m = createMed('fp5');
+    m.setName('Fresh');
+    const state = m.getState();
+    // Only known fields present.
+    const expectedKeys = new Set([
+      'schemaVersion', 'id', 'name', 'dose', 'frequency',
+      'lastTakenAt', 'updatedAt', 'deviceId', 'doseLog',
+    ]);
+    for (const k of Object.keys(state)) {
+      assert(expectedKeys.has(k), `Unexpected key "${k}" on fresh med state`);
+    }
+  });
+
+  it('loadState({}) clears any prior __forward bag', () => {
+    // If the same med instance is reloaded with a clean record, the
+    // previous bag must not bleed through.
+    const m = createMed('fp6');
+    m.loadState({ id: 'fp6', name: 'First', futureField: 'old' });
+    assertEqual(m.getState().futureField, 'old');
+    m.loadState({ id: 'fp6', name: 'Second' });
+    assert(m.getState().futureField === undefined,
+      '__forward bag cleared on subsequent loadState');
+  });
+
+  it('end-to-end roundtrip: futureField survives load → save → load', () => {
+    // Full disk → memory → disk cycle. The classic F19b case.
+    function snapshotMedsKeysLocal() {
+      const out = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) {
+          out.push([k, localStorage.getItem(k)]);
+        }
+      }
+      return out;
+    }
+    function clearMedsKeysLocal() {
+      const toClean = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) toClean.push(k);
+      }
+      for (const k of toClean) localStorage.removeItem(k);
+    }
+
+    const snapshot = snapshotMedsKeysLocal();
+    clearMedsKeysLocal();
+    try {
+      // Plant a record with future-schema fields at the CURRENT schemaVersion
+      // (NOT a future schemaVersion — that path is F19a's saveAll skip).
+      // F19b is specifically about preserving unknown fields on records
+      // this client DOES write back.
+      localStorage.setItem('meds/fp7', JSON.stringify({
+        id: 'fp7',
+        schemaVersion: 1,
+        name: 'Roundtrip',
+        dose: '10 mg',
+        frequency: 'once-daily',
+        doseLog: [],
+        deviceId: 'd-test',
+        updatedAt: 1700000000000,
+        experimentalFlag: 'from-newer-client',
+        experimentalArray: [{ tag: 'a' }, { tag: 'b' }],
+      }));
+
+      MedsManager.clear();
+      MedsManager.loadAll();
+      const m = MedsManager.get('fp7');
+      assert(m !== null, 'med loaded');
+      assertEqual(m.isFromFutureSchema(), false);  // same-schema record
+
+      // Mutate something so saveAll writes — proves the roundtrip.
+      m.setDose('20 mg');
+      MedsManager.saveAll();
+
+      // Re-read the on-disk state directly and verify __forward survived.
+      const raw = localStorage.getItem('meds/fp7');
+      const onDisk = JSON.parse(raw);
+      assertEqual(onDisk.dose, '20 mg');                   // mutation persisted
+      assertEqual(onDisk.experimentalFlag, 'from-newer-client');
+      assertEqual(onDisk.experimentalArray.length, 2);
+      assertEqual(onDisk.experimentalArray[0].tag, 'a');
+    } finally {
+      MedsManager.clear();
+      clearMedsKeysLocal();
+      for (const [k, v] of snapshot) localStorage.setItem(k, v);
+      MedsManager.loadAll();
+    }
+  });
+});
