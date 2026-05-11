@@ -444,9 +444,32 @@ const MedsManager = (() => {
     m.recomputeLastTakenAt();
   }
 
+  // B-1: read-only snapshot adapter for SyncEngine.getSnapshot().
+  // Returns the per-store envelope { deviceId, schemaVersion, payload }
+  // where `payload.meds` is the array of wire-format records. Defensive-
+  // copy contract holds because:
+  //   - `all()` returns `meds.slice()` — fresh array.
+  //   - per-med `getState()` builds a fresh object literal and slices
+  //     doseLog before returning (see line ~207 of this file).
+  // So mutating the snapshot output never aliases internal state.
+  //
+  // No `Schema.stamp()` call here — inner records are already stamped at
+  // write time per F19a, and the envelope's schemaVersion is the wrapper
+  // version, not a per-record stamp.
+  function snapshotForSync() {
+    return {
+      deviceId: History.getDeviceId(),
+      schemaVersion: Schema.SCHEMA_VERSION,
+      payload: {
+        meds: all().map(m => m.getState()),
+      },
+    };
+  }
+
   return {
     all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
     onMergeComplete,
+    snapshotForSync,
     MAX_MEDS,
   };
 })();

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v65-platform-abstraction';
+const CACHE_NAME = 'stopwatch-v66-sync-engine-scaffold';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,8 @@ const ASSETS = [
   './js/pomodoro.js',
   './js/flow.js',
   './js/persistence.js',
+  './js/sync-flag.js',
+  './js/sync-engine.js',
   './js/audio.js',
   './js/themes.js',
   './js/history.js',

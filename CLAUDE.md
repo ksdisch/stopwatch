@@ -25,6 +25,8 @@ js/pomodoro.js                  — Pomodoro engine. Work/break cycle state mach
 js/flow.js                      — Flow Block engine. Single 90/120-min focus block + 15-min recovery. Ultradian rhythm.
 js/interval.js                  — Interval engine. Phase-based rounds (Tabata / HIIT / Custom).
 js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
+js/sync-flag.js                 — SyncFlag: `tempo_sync_enabled` localStorage flag (`isEnabled()` / `enable()` / `disable()`). Owned by B-1; the visible developer toggle lands in B-2.
+js/sync-engine.js               — SyncEngine: cloud-sync orchestrator scaffold. Hardcoded `SYNCED_STORES` registry (meds / history / rest_log / presets), `init()` / `getSnapshot()` / `enable()` / `disable()` / `getState()` lifecycle + event emitter. No network calls; B-3 wires the uploader.
 js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files). Multiple sound profiles.
 js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
 js/history.js                   — History module. Session storage in IndexedDB (db: stopwatch_history_db, store: sessions). Tags, notes. Migrates legacy localStorage entries.
@@ -67,7 +69,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → global-bfrb → tempo-nav → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-flag → sync-engine → audio → themes → history → export → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → global-bfrb → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -100,6 +102,7 @@ Additional localStorage keys used for UI/config preferences:
 - `offset_presets`, `quick_presets`, `presets_seeded`
 - `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`, `pomodoro_bfrbs`
 - `flow_distractions`, `flow_bfrbs`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
+- `tempo_sync_enabled` (B-1; cloud-sync feature flag, off by default — separate from `tempo_sync_state` which gates writes in `persistence.js`)
 
 ## What Has Been Built
 

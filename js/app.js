@@ -26,6 +26,7 @@ try {
 }
 
 // ── Initialize modules ──
+SyncEngine.init();
 Themes.init();
 Presets.init();
 OffsetInput.init();

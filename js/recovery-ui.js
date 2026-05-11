@@ -436,5 +436,28 @@ const RecoveryUI = (() => {
     }, 30000);
   }
 
-  return { init };
+  // B-1: snapshot adapter, no DOM access — loadLog() is a pure
+  // localStorage read. See docs/sync-impl/audits/B-1-AUDIT.md
+  // § "Recovery decision" for R1 rationale (R2 — extract a separate
+  // js/recovery.js engine — was deferred indefinitely; this adapter
+  // lives on the UI module by design until then).
+  //
+  // Defensive-copy contract: loadLog() returns a fresh JSON.parse of
+  // localStorage on every call, so the entire object graph (including
+  // each day's naps array) is already fresh. No further cloning needed.
+  // No Schema.stamp() — rest_log records don't carry schemaVersion
+  // today (the strategy doc keeps the rest_log payload as the raw
+  // YYYY-MM-DD-keyed object; the envelope's schemaVersion is the
+  // wrapper version).
+  function snapshotForSync() {
+    return {
+      deviceId: History.getDeviceId(),
+      schemaVersion: Schema.SCHEMA_VERSION,
+      payload: {
+        rest_log: loadLog(),
+      },
+    };
+  }
+
+  return { init, snapshotForSync };
 })();

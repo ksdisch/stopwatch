@@ -287,5 +287,22 @@ const Presets = (() => {
     seedDefaults();
   }
 
-  return { getAll, get, save, update, remove, applyPreset, captureCurrentConfig, formatDurationHint, init };
+  // B-1: read-only snapshot adapter for SyncEngine.getSnapshot().
+  // Returns the per-store envelope { deviceId, schemaVersion, payload }
+  // where `payload.presets` is the array of preset records. Defensive-
+  // copy contract holds because `getAll()` re-parses localStorage on
+  // every call, producing a fresh object graph each time. No Schema.stamp()
+  // — inner records are already stamped at write time (F19a) via save()
+  // and update().
+  function snapshotForSync() {
+    return {
+      deviceId: History.getDeviceId(),
+      schemaVersion: Schema.SCHEMA_VERSION,
+      payload: {
+        presets: getAll(),
+      },
+    };
+  }
+
+  return { getAll, get, save, update, remove, applyPreset, captureCurrentConfig, formatDurationHint, init, snapshotForSync };
 })();

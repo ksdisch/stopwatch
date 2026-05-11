@@ -368,5 +368,28 @@ const History = (() => {
     });
   }
 
-  return { init, getSessions, addSession, updateNote, deleteSession, clearAll, addTag, removeTag, getAllTags, getDeviceId };
+  // B-1: read-only snapshot adapter for SyncEngine.getSnapshot().
+  // Returns the per-store envelope { deviceId, schemaVersion, payload }
+  // where `payload.sessions` is the array of wire-format session records.
+  // Async because History sits behind IndexedDB — `getSessions()` returns
+  // a Promise. The other three adapters (meds/rest_log/presets) are
+  // synchronous; SyncEngine.getSnapshot() awaits all four uniformly.
+  //
+  // Defensive-copy contract: IDB's getAll() constructs a fresh array of
+  // fresh structured-cloned objects on every call, so mutating the
+  // snapshot output cannot alias the IDB store. No Schema.stamp() call —
+  // inner sessions are already stamped at write time (F19a) and at the
+  // backfillMetadata step on init().
+  async function snapshotForSync() {
+    const sessions = await getSessions();
+    return {
+      deviceId: getDeviceId(),
+      schemaVersion: Schema.SCHEMA_VERSION,
+      payload: {
+        sessions,
+      },
+    };
+  }
+
+  return { init, getSessions, addSession, updateNote, deleteSession, clearAll, addTag, removeTag, getAllTags, getDeviceId, snapshotForSync };
 })();
