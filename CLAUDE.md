@@ -224,3 +224,64 @@ npm run ios:open         # everyday: sync www/ → cap copy → open Xcode
 The SW (`sw.js`) is web-only — `js/app.js` skips registration when `Platform.isNative`. On native, scheduled notifications are handled by iOS itself even when the WebView is suspended (this is the whole reason for the wrapper).
 
 Bundle ID is `com.ksdisch.tempo`. App name is `Tempo`. Configured in `capacitor.config.json`. App Store paperwork (developer account, privacy nutrition labels for meds + BFRB, screenshots) is not yet done.
+
+---
+
+## Subagent conventions (orchestrator workflow)
+
+The orchestrator at `.claude/orchestrator-prompt.md` coordinates a sync PR across five specialist subagents in `.claude/agents/` (`sync-auditor`, `engine-implementer`, `engine-tester`, `ui-wirer`, `pr-shipper`). The `ui-wirer` phase (Phase 4) fires only when the audit's affected-files table includes UI surface files (`js/*-ui.js`, `index.html`, `css/*.css`, `js/tempo-nav.js`); otherwise it is skipped and the workflow jumps from tests directly to PR ship. When subagents are dispatched, the following are enforceable rules in addition to everything above.
+
+### Test commands
+
+There is no Node-based test runner. Engine tests live in `tests/*.test.js` and are executed by opening `tests/index.html` in a real browser.
+
+```bash
+# from repo root
+python3 -m http.server 8765 &
+# then open http://localhost:8765/tests/index.html in any browser
+# read the pass/fail counts in the rendered output
+# stop the server when done:
+pkill -f "python3 -m http.server 8765"
+```
+
+`curl`-grepping the HTML does NOT execute the tests — it only returns the empty shell. A real browser load is the canonical answer. If a subagent has no browser tool available, it must ask the user to open the URL and paste the pass/fail counts back.
+
+The in-repo test API is `describe(...)`, `it(...)`, `assert(...)`, `assertEqual(...)`, `assertClose(...)`, `assertArrayEqual(...)` — defined in `tests/test-runner.js`.
+
+### Lint / typecheck / build
+
+- **Lint:** none. Vanilla JS, no toolchain.
+- **Typecheck:** none.
+- **Web build:** none. `index.html` loads `js/*.js` in script order; the script order in `index.html` IS the dependency graph.
+- **iOS build:** `npm run sync-www` mirrors repo root → `www/`; `npm run ios:open` runs `cap copy ios && cap open ios`. Subagents should only touch `www/` indirectly via the script.
+
+### Reuse over re-implementation
+
+- HTML-escape: `escapeHtml` from `js/dom-utils.js`. Do NOT re-implement.
+- Time formatting: `Utils.formatMs(ms)` from `js/utils.js`. Do NOT re-implement.
+- Haptics: `Platform.haptic(pattern)` from `js/platform.js`. Do NOT call `navigator.vibrate` directly.
+- Notifications: `Platform.notify(title, opts)` / `BgNotify.schedule(...)`. Do NOT call `new Notification(...)` directly.
+- Sync invariant stamping: helpers in `js/schema.js`. ALL writes to synced stores (`meds`, `history`, `rest_log`, `presets`) stamp `deviceId` + `updatedAt` + `schemaVersion` through these helpers.
+
+### Where things live (orchestrator + subagents read from these)
+
+- Audit docs: `docs/sync-impl/audits/<PR-ID>-AUDIT.md` (canonical example: `A-1-AUDIT.md`).
+- Per-PR briefs: `docs/sync-impl/prompts/<PR-ID>-PROMPT.md` (canonical example: `S0-1-PROMPT.md`).
+- Implementation plan (source of truth): `docs/sync-impl/PLAN.md`.
+- Strategy + per-store merge rules: `docs/CLOUD-SYNC-STRATEGY.md` v2.0.
+- Backend decision: `docs/sync-review/BACKEND-SELECTION.md`.
+- Session log (one entry per Claude session): `docs/SESSION-LOG.md`.
+- Orchestrator system prompt: `.claude/orchestrator-prompt.md`.
+- Subagent system prompts: `.claude/agents/{sync-auditor,engine-implementer,engine-tester,ui-wirer,pr-shipper}.md`.
+- Phase brief template (orchestrator → subagent dispatch): `.claude/templates/phase-brief.md`.
+
+### Service worker cache bump rule
+
+`sw.js` contains a `CACHE_NAME` constant. **Any PR that ships a change to a cached web file (`index.html`, `css/styles.css`, `css/tempo-shell.css`, `manifest.json`, or any `js/*.js`) must bump that version string in the same PR.** The orchestrator's `pr-shipper` handles this — but only when `engine-implementer` reports `sw.js cache-bump needed: yes`.
+
+### Branch + commit conventions for sync PRs
+
+- Branch name: `feat/sync-<pr-id-lowercased>-<short-slug>` (e.g., `feat/sync-b1-uploader`).
+- Commit type prefix: `feat` / `refactor` / `fix` / `docs` (matches recent history — see commit `cc363b8`).
+- One PR per Stage row in `docs/sync-impl/PLAN.md`. Sequential merge order within a stage.
+- `pr-shipper` always pauses before pushing for explicit user approval.

@@ -1,5 +1,9 @@
 .DS_Store
-.claude/
+
+# Claude Code — track orchestrator/agents/templates; ignore personal state
+.claude/settings.local.json
+.claude/worktrees/
+.claude/launch.json
 
 # Capacitor / Node
 node_modules/
