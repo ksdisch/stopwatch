@@ -14,3 +14,8 @@ ios/DerivedData/
 ios/App/Podfile.lock
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
+
+# Firebase Admin / service-account keys (NEVER commit)
+service-account.json
+*-firebase-adminsdk-*.json
+.firebaserc

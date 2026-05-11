@@ -79,6 +79,93 @@ f8e5910 Move Log Past Session to dedicated top-bar button and panel
 
 ---
 
+---
+
+## Session 2 — 2026-05-11
+
+### What We Built
+
+**Cloud sync foundation (S0-1 — Stage 0 backend infrastructure)**
+
+First infrastructure PR for cross-device cloud sync. No runtime behavior change; everything ships dormant behind the unflipped `tempo_sync_enabled` flag.
+
+- Firebase project `tempo-sync-6f7b2` created in `us-central1` (region permanent).
+- Three new npm dependencies installed against the Capacitor 6 line:
+  `firebase@^11.10.0`, `@capacitor-firebase/authentication@^6.3.1`,
+  `@capacitor-firebase/firestore@^6.3.1`. No peer-dependency conflicts.
+- Capacitor plugin config (`capacitor.config.json`): added
+  `FirebaseAuthentication` block (`skipNativeAuth: false`,
+  `providers: ["google.com"]`). No `FirebaseFirestore` block — plugin
+  README says none required.
+- Firebase CLI config: `firebase.json` + `firestore.rules` (per-user UID
+  isolation via `request.auth.uid == userId`) + `firestore.indexes.json`
+  (empty-but-present; E-1 populates as needed).
+- Web client config (`js/sync-firebase-config.js`): passive
+  `window.FirebaseConfig` assignment with real project values. No SDK
+  initialization on load. NOT yet referenced from `index.html` — B-2 wires
+  it behind the feature flag.
+- iOS client config (`ios/App/App/GoogleService-Info.plist`): committed
+  public client config (API key, project ID, GCM sender, bundle ID).
+- Updated `ios/App/Podfile` via `npx cap sync ios` — adds
+  `CapacitorFirebaseAuthentication` + `CapacitorFirebaseFirestore` pods.
+- `.gitignore`: appended `service-account.json`, `*-firebase-adminsdk-*.json`,
+  `.firebaserc` patterns to prevent accidental key commits.
+
+**Orchestrator workflow used end-to-end for first time**
+
+S0-1 was the first PR shipped via the 5-specialist orchestrator workflow
+(`.claude/orchestrator-prompt.md` + `.claude/agents/*.md`). Two-round
+dispatch handled the two-commit plan cleanly:
+
+- Round 1: sync-auditor wrote the audit; engine-implementer wrote
+  FIREBASE-SETUP.md; pr-shipper created the feat branch + opened draft PR.
+- User pause: 6 manual Firebase Console steps performed using
+  FIREBASE-SETUP.md as the checklist.
+- Round 2: engine-implementer wrote the config files with real values;
+  pr-shipper committed, pushed, and flipped the PR to ready-for-review.
+
+Recorded workflow gap in CLAUDE.md § "Known gaps / workflow TODOs"
+(commit ea44b44 on main): the engine-implementer subagent's default scope
+forbids `docs/*` and `ios/*`, which doesn't fit config-only / infrastructure
+PRs like S0-1 or B-2. Worked around via a per-PR dispatch-brief scope
+override. Durable fix (amend the agent's system prompt) is parked for B-2.
+
+**HIPAA / BAA posture documented**
+
+Spark plan cannot self-serve a BAA. Single-user personal use is fine;
+public-launch with other users' dose data is blocked until paid GCP plan
++ signed BAA or migration off Firestore. Captured in
+`docs/sync-impl/FIREBASE-SETUP.md` and acknowledged in the PR body.
+
+### Suggested Next Steps
+
+**Sync stage progression (per `docs/sync-impl/PLAN.md`)**
+- **B-1** (`feat/sync-stage-b-engine-scaffold`) — SyncEngine module skeleton, `snapshotForSync()` adapters on each engine. Parallel-safe with S0-1; no Firebase imports yet.
+- **B-2** (`feat/sync-stage-b-auth`) — Wire Google sign-in via `@capacitor-firebase/authentication`. Adds `<script src="js/sync-firebase-config.js">` to `index.html` behind `tempo_sync_enabled`. Touches settings drawer for sign-in UI.
+- **B-3** (`feat/sync-stage-b-uploader`) — Stage B0 read-cloud-first guard (F9) + mandatory backup before mutation (F12) + first cloud upload.
+- **B-4** — Health-data arrival toast (F15) on remote doseLog entries.
+
+**iOS verification (request reviewer)**
+- Web boot byte-equivalence: load `index.html` incognito, confirm no Firebase network requests.
+- iOS Xcode build: `npm run ios:open`, Build, confirm `.ipa` produces against new Podfile.
+- All 114 engine tests still pass via `tests/index.html`.
+- `firestore.rules` syntax: Firebase Console validates on deploy, or
+  `firebase emulators:start --only firestore` locally.
+
+**Workflow improvements (deferred)**
+- Amend `.claude/agents/engine-implementer.md` to allow brief-driven scope expansion when both audit + dispatch brief enumerate paths outside the default lane. Trigger: next infrastructure PR (likely B-2's `Info.plist` URL types).
+- Decide whether to leave Google Analytics enabled at the Firebase project level (currently on — `measurementId G-QY51PWQDCR`). The `js/sync-firebase-config.js` does NOT load the analytics SDK, but analytics is active at project scope. Toggle off via Firebase Console → Project Settings → Integrations → Google Analytics if desired.
+
+### Commits
+```
+ea44b44 docs(claude): record subagent-scope workflow gap as a known TODO (on main)
+d141ded docs(sync-impl): S0-1 audit + Firebase setup guide
+<SHA>   chore(sync): Firebase project config + plugins (S0-1)
+<SHA>   docs(sync-impl): move S0-1 to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
