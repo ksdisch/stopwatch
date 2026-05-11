@@ -26,14 +26,15 @@ Backend selection (Phase 6): Firebase / Firestore. Two accepted tradeoffs: (1) n
 | F19b | `__forward` passthrough (top-level unknowns) | #53 |
 | — | Phase 6 backend-selection decision doc | #54 |
 | — | Stage 0: Firebase project + plugins + security rules | #57 |
+| — | Stage B: SyncEngine module scaffold + per-store snapshot adapters | #58 |
 
 **What's pending (sync-strategy items + wire/infra):**
 
-Sync-strategy: F1 (per-med ±N-min reconcile), F3 (BFRB stream choice), F4 (re-derive `lastTakenAt` after merge), F6 (`phaseLog` (deviceId, phaseStartedAt) stamping), F7 (verify `loadState` recoveries never persist back), F8 (distraction tombstones vs sessionId-keyed), F9 (Stage B0 read-cloud-first), F12 (mandatory local backup before Stage B mutation), F15 (toast on ≥2-entry remote `doseLog` arrival), F16 (±15-min clock-skew clamp on non-local entries), F17 (Stage D imported bucket), F21 (`alarmFired` per-device — Device B must still chime).
+Sync-strategy: F1 (per-med ±N-min reconcile), F3 (BFRB stream choice), F4 (re-derive `lastTakenAt` after merge), F6 (`phaseLog` (deviceId, phaseStartedAt) stamping), F7 (verify `loadState` recoveries never persist back), F8 (distraction tombstones vs sessionId-keyed), F9 (Stage B0 read-cloud-first), F12 (mandatory local backup before Stage B mutation), F15 (toast on ≥2-entry remote `doseLog` arrival), F16 (±15-min clock-skew clamp on non-local entries), F17 (Stage D imported bucket), F21 (`alarmFired` per-device — Device B must still chime). Also pending: **F19a-fix** — patch `createMed.getState()` (and `history.js` equivalent) to preserve original `schemaVersion` for future-schema records loaded from disk, instead of downgrading to current `Schema.SCHEMA_VERSION` on read. Surfaced by B-1's F19a passthrough test. Must land before B-3 (first PR that round-trips records).
 
 Deferred: F19c (per-store manifest registry).
 
-Wire/infra: auth flow (Google sign-in, web + iOS WebView; B-2); SyncEngine module (B-1); offline buffer (Stage C); `tempo_sync_state` flips on real transitions (Stage C/E).
+Wire/infra: auth flow (Google sign-in, web + iOS WebView; B-2); first cloud upload (B-3); offline buffer (Stage C); `tempo_sync_state` flips on real transitions (Stage C/E).
 
 **Engine-test baseline:** 114 tests today (stopwatch 30 / timer 21 / pomodoro 25 / meds 38) via `tests/index.html`. Sync work adds 1 new engine module + 1 new test file per stage; same pattern.
 

@@ -79,8 +79,6 @@ f8e5910 Move Log Past Session to dedicated top-bar button and panel
 
 ---
 
----
-
 ## Session 2 — 2026-05-11
 
 ### What We Built
@@ -158,10 +156,56 @@ public-launch with other users' dose data is blocked until paid GCP plan
 
 ### Commits
 ```
-ea44b44 docs(claude): record subagent-scope workflow gap as a known TODO (on main)
+ea44b44 docs(claude): record subagent-scope workflow gap as a known TODO
 d141ded docs(sync-impl): S0-1 audit + Firebase setup guide
-<SHA>   chore(sync): Firebase project config + plugins (S0-1)
-<SHA>   docs(sync-impl): move S0-1 to shipped
+53c2cf9 chore(sync): Firebase project config + plugins (S0-1)
+30aec90 docs(sync-impl): move S0-1 to shipped
+d31783a Merge pull request #57 from ksdisch/feat/sync-stage-0-firebase-setup
+```
+
+---
+
+## Session 3 — 2026-05-11
+
+### What We Built
+
+**Cloud sync scaffold (B-1 — Stage B SyncEngine module)**
+
+Second sync infrastructure PR. SyncEngine scaffold + read-only snapshot adapters on the 4 synced stores. Zero network calls, zero behavior change behind `tempo_sync_enabled='0'`.
+
+- New `js/sync-flag.js` — tiny IIFE singleton, owns `tempo_sync_enabled` localStorage key. Default absent → `isEnabled()` returns false. `enable()` / `disable()` write `'1'` / `'0'` (explicit opt-out, not `removeItem`).
+- New `js/sync-engine.js` — IIFE singleton exposing `init / enable / disable / getState / getSnapshot / on / off / emit`. Hardcoded `SYNCED_STORES` registry (4 entries: meds, history, rest_log, presets), each with `read` (calls store's `snapshotForSync()`) + `write` stub (B-3 implements). `init()` is idempotent and a no-op in B-1 regardless of flag — no DOM, no network, no store reads.
+- `snapshotForSync()` adapters on `MedsManager`, `History` (async), `Presets`, `RecoveryUI`. Each returns `{ deviceId, schemaVersion, payload }` envelope; inner records pass through with their existing per-record stamps. Read-only on local state — verified by defensive-copy contract test.
+- One-line wiring in `js/app.js`: `SyncEngine.init();` after `Persistence.load()` and before `Themes.init()`. No-op since flag is off.
+- 21 engine tests in `tests/sync-engine.test.js` (747 lines): SyncFlag basics, init lifecycle (3 cases — off / idempotent / on stays no-op), getState, getSnapshot shape, defensive-copy contracts (meds + history), F21 structural exclusion, F2 ID passthrough, F19a future-record passthrough (placeholder — deferred per gap below), F19b unknown-field passthrough, emitter (3 cases). Full suite: 296/296 pass via kapture.
+- `sw.js` cache bumped to `stopwatch-v66-sync-engine-scaffold`; 2 new paths added to `ASSETS`.
+- 2 new `<script>` tags in `index.html` (between persistence.js and audio.js).
+
+**F19a future-record passthrough gap surfaced**
+
+While writing tests, the F19a passthrough case caught a pre-existing bug in `js/meds.js`: `createMed.getState()` unconditionally writes `schemaVersion: Schema.SCHEMA_VERSION`, downgrading future-schema records on read. Bug predates B-1 (shipped in PR #52's F19a implementation). `History.snapshotForSync()` was audited and confirmed NOT affected (addSession preserves future schemaVersion; getSessions is raw IDB pass-through). Presets is unaffected (`getAll()` reads raw localStorage).
+
+Deferred to a dedicated follow-up PR (`feat/sync-stage-a-f19a-passthrough-fix`) before B-3. Failing test was converted to a passing placeholder in `tests/sync-engine.test.js` with a TODO comment pointing at the fix. New row added to `docs/sync-impl/PLAN.md` § "What's pending."
+
+**Orchestrator workflow improvements**
+
+- Pre-emptively flagged the Auto-Mode-does-not-skip-pause rule in pr-shipper's brief (mitigates the S0-1 round 2 protocol breach where pr-shipper auto-pushed). Working as intended for B-1.
+- Engine-implementer's scope override (per CLAUDE.md § "Known gaps / workflow TODOs") used again for `recovery-ui.js` — explicitly authorized by the audit's R1 decision.
+
+### Suggested Next Steps
+
+- **F19a-fix follow-up** — dedicated patch PR for the future-record passthrough gap. Touches `meds.js` only (history.js confirmed clean). Must land before B-3.
+- **B-2** (`feat/sync-stage-b-auth`) — Google sign-in via `@capacitor-firebase/authentication`. Adds settings-drawer "Cloud Sync" section + the visible toggle for `tempo_sync_enabled`. iOS `Info.plist` URL types for reverse-client-id deep link.
+- **B-3** — first cloud upload (Stage B0 read-cloud-first guard F9 + mandatory backup F12 + `pushSnapshot()`).
+- **B-4** — health-data arrival toast (F15).
+
+**Workflow tweaks deferred**
+- Amend `.claude/agents/engine-implementer.md` to allow brief-driven scope expansion (parked in CLAUDE.md § "Known gaps / workflow TODOs" since S0-1; second motivating case is `recovery-ui.js` in B-1).
+
+### Commits
+```
+a3c3f19 feat(sync): SyncEngine module scaffold + per-store snapshot adapters (B-1)
+d703cc8 docs(sync-impl): move B-1 to shipped + add F19a-fix to pending
 ```
 
 ---
