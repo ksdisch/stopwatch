@@ -140,6 +140,20 @@ function createMed(id) {
     return true;
   }
 
+  // F4: re-derive lastTakenAt from the doseLog tail. Strategy doc treats
+  // lastTakenAt as a synced convenience mirror that must be re-derived after
+  // any merge — it isn't synced directly (Row 2 of the per-store table).
+  // Idempotent. Does NOT bump updatedAt: this helper is invoked by the sync
+  // path (SyncEngine after reconcile), not by a user action; the caller
+  // decides when persistence happens. Assumes doseLog is sorted ascending —
+  // logDose/loadState already maintain that invariant; D-2's reconcile must
+  // sort after merge before calling this.
+  function recomputeLastTakenAt() {
+    lastTakenAt = doseLog.length > 0
+      ? doseLog[doseLog.length - 1].takenAt
+      : null;
+  }
+
   // ── Derived queries ─────────────────────────────────────────────────
 
   function getTimeSinceLastDoseMs() {
@@ -291,6 +305,7 @@ function createMed(id) {
     getUpdatedAt, getDeviceId,
     isFromFutureSchema,
     logDose, undoLastDose,
+    recomputeLastTakenAt,
     getTimeSinceLastDoseMs,
     getDosesToday, getExpectedDosesToday, getStatusToday,
     getState, loadState,
@@ -417,5 +432,21 @@ const MedsManager = (() => {
     }
   }
 
-  return { all, get, count, canAdd, clear, add, remove, saveAll, loadAll, MAX_MEDS };
+  // F4: post-merge hook called by SyncEngine after a per-med doseLog merge
+  // (steady-state) or full hydrate (Stage C). Re-derives lastTakenAt from
+  // the merged log so cross-device convergence stays consistent. No-op if
+  // the med isn't loaded — saveAll on the next user action will re-emit a
+  // clean state. Doesn't trigger a save itself; the caller (SyncEngine)
+  // batches saves around the full merge cycle.
+  function onMergeComplete(medId) {
+    const m = get(medId);
+    if (!m) return;
+    m.recomputeLastTakenAt();
+  }
+
+  return {
+    all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
+    onMergeComplete,
+    MAX_MEDS,
+  };
 })();

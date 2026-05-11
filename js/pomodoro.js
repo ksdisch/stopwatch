@@ -14,11 +14,28 @@ const Pomodoro = (() => {
   let accumulatedMs = 0;
   let phaseAdjustmentMs = 0;    // ±N min adjust applied to the current phase only; reset on phase boundary
   let phaseCallback = null;
+  // F21: per-device, never synced. Each device's engine fires its own
+  // chime independently — receiving alarmFired=true from another device
+  // would suppress the local alarm, violating the strategy doc's Stage E
+  // per-device contract. Engine state (`pomodoro_state`) is excluded from
+  // sync today; this marker exists so a future synced-store PR can't
+  // smuggle the field in without re-checking the contract.
   let alarmFired = false;
   let zeroCrossedAt = null;
   let sessionStartedAt = null;  // When the overall Pomodoro session began
   let phaseStartedAt = null;    // When the current phase first started
-  let phaseLog = [];            // { phase, startedAt, endedAt, overshootMs } per completed phase
+  let phaseLog = [];            // { phase, startedAt, endedAt, overshootMs, deviceId, phaseStartedAt } per completed phase
+
+  // F6: per-entry merge keys for cross-device phaseLog append-merge.
+  // Reads History.getDeviceId() at runtime (History loads after pomodoro.js
+  // per the script load order in index.html, but every push site fires
+  // after full module init). Engine tests stub window.History; if neither
+  // is available the stamp is null and dedup falls back to (null, startedAt).
+  function _phaseDeviceId() {
+    return typeof History !== 'undefined' && History.getDeviceId
+      ? History.getDeviceId()
+      : null;
+  }
 
   function getBasePhaseDurationMs() {
     if (phase === 'work') return workMs;
@@ -122,7 +139,12 @@ const Pomodoro = (() => {
       zeroCrossedAt = now;
       // Push the phase log entry now (with overshootMs: 0); when the user
       // advances via nextPhase we'll back-fill the overshoot value.
-      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0 });
+      // F6: stamp deviceId + phaseStartedAt for cross-device append-merge dedup.
+      phaseLog.push({
+        phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0,
+        deviceId: _phaseDeviceId(),
+        phaseStartedAt,
+      });
       phaseStartedAt = null;
       if (!alarmFired) {
         alarmFired = true;
@@ -173,7 +195,12 @@ const Pomodoro = (() => {
   function restartPhase() {
     if (status === 'idle' || status === 'done') return;
     if (phaseStartedAt) {
-      phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: Date.now(), restarted: true });
+      // F6: stamp deviceId + phaseStartedAt for cross-device append-merge dedup.
+      phaseLog.push({
+        phase, startedAt: phaseStartedAt, endedAt: Date.now(), restarted: true,
+        deviceId: _phaseDeviceId(),
+        phaseStartedAt,
+      });
     }
     accumulatedMs = 0;
     startedAt = null;
@@ -253,7 +280,16 @@ const Pomodoro = (() => {
       if (zeroCrossedAt === null) zeroCrossedAt = now;
       alarmFired = true;
       if (phaseStartedAt !== null) {
-        phaseLog.push({ phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0 });
+        // F6: stamp deviceId + phaseStartedAt for cross-device append-merge dedup.
+        // This recovery branch synthesizes the missed phase-completion entry
+        // when the tab closed mid-phase. F7 holds: the push lives in memory
+        // only — the next user action saves to pomodoro_state (excluded from
+        // sync); the eventual session-end folds the entry into history.
+        phaseLog.push({
+          phase, startedAt: phaseStartedAt, endedAt: now, overshootMs: 0,
+          deviceId: _phaseDeviceId(),
+          phaseStartedAt,
+        });
         phaseStartedAt = null;
       }
     }

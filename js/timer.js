@@ -7,6 +7,12 @@ function createTimer(id, opts) {
   let startedAt = null;
   let accumulatedMs = 0;
   let alarmCallback = null;
+  // F21: per-device, never synced. Each device's engine fires its own
+  // chime independently — receiving alarmFired=true from another device
+  // would suppress the local alarm, violating the strategy doc's Stage E
+  // per-device contract. Engine state (`multi_state`) is excluded from
+  // sync today; this marker exists so a future synced-store PR can't
+  // smuggle the field in without re-checking the contract.
   let alarmFired = false;
   let zeroCrossedAt = null;
   let name = 'Timer';
