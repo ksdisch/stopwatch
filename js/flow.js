@@ -20,6 +20,12 @@ const Flow = (() => {
   let focusEndedAt = null;
   let goal = '';
   let phaseCallback = null;
+  // F21: per-device, never synced. Each device's engine fires its own
+  // chime independently — receiving alarmFired=true from another device
+  // would suppress the local alarm, violating the strategy doc's Stage E
+  // per-device contract. Engine state (`flow_state`) is excluded from
+  // sync today; this marker exists so a future synced-store PR can't
+  // smuggle the field in without re-checking the contract.
   let alarmFired = false;
   let zeroCrossedAt = null;
 

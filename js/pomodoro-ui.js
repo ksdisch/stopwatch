@@ -1048,10 +1048,20 @@ function gatherTaskData() {
 
 function gatherTimingData() {
   const log = Pomodoro.getPhaseLog().slice();
-  // If a phase is currently in progress, include it as open-ended
+  // If a phase is currently in progress, include it as open-ended.
+  // F6: stamp deviceId + phaseStartedAt for cross-device append-merge dedup.
+  // History.getDeviceId is always defined by the time a session ends (UI runs
+  // post-boot; History.init has fired). Mirrors the stamping in pomodoro.js.
   const phaseStart = Pomodoro.getPhaseStartedAt();
   if (phaseStart) {
-    log.push({ phase: Pomodoro.getPhase(), startedAt: phaseStart, endedAt: Date.now(), partial: true });
+    log.push({
+      phase: Pomodoro.getPhase(),
+      startedAt: phaseStart,
+      endedAt: Date.now(),
+      partial: true,
+      deviceId: History.getDeviceId ? History.getDeviceId() : null,
+      phaseStartedAt: phaseStart,
+    });
   }
   return {
     sessionStartedAt: Pomodoro.getSessionStartedAt(),
