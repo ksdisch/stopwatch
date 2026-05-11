@@ -194,14 +194,6 @@ const OffsetInput = (() => {
     localStorage.setItem('offset_presets', JSON.stringify(presets));
   }
 
-  // ── Helpers ──
-
-  function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = str;
-    return el.innerHTML;
-  }
-
   function setVisible(visible) {
     const area = document.getElementById('offset-area');
     if (visible) {
