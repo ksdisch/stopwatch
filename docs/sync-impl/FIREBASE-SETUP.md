@@ -68,6 +68,55 @@ The console will land you on an empty database view. Leave it — commit 2 will 
 
 ---
 
+### Step 2b — Deploy Tempo's Firestore security rules
+
+> **CRITICAL — Firestore is currently configured with Production-mode default rules that deny ALL reads and writes.** Even after you sign in via the app, the first cloud upload (B-3) will fail with `Missing or insufficient permissions` until you replace the default rules with Tempo's rules. **Do this BEFORE you test cloud sync end-to-end.**
+
+The `firestore.rules` file is committed to the repo (at the project root) but **Firebase does NOT auto-deploy from git**. You have to publish the rules manually. Two paths:
+
+#### Path A — Firebase Console (fastest, ~30 seconds, no CLI install needed)
+
+1. Open https://console.firebase.google.com/project/`<your-project-id>`/firestore/rules (or click **Build → Firestore Database → Rules** tab).
+2. You'll see the current rules — likely a restrictive default like `allow read, write: if false;`.
+3. Replace the entire content with the snippet from [Security rules](#security-rules) below (also in the repo at `firestore.rules`):
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+     }
+   }
+   ```
+
+4. Click **Publish** (top right).
+5. Wait ~10 seconds for the rules to propagate.
+
+#### Path B — Firebase CLI (preferred if you have it installed)
+
+```bash
+npm install -g firebase-tools     # one-time
+firebase login                    # one-time, opens browser
+firebase use tempo-sync-6f7b2     # set the active project (substitute your project ID)
+firebase deploy --only firestore:rules
+```
+
+The CLI reads `firestore.rules` from the repo root and pushes it. Idempotent — safe to re-run after every rules edit.
+
+#### How to verify the rules are live
+
+After publishing, the rules page in the Console shows a "Last published" timestamp matching your action. Or open a browser DevTools console while signed in to the app, and run:
+
+```js
+await SyncFirestore.setDoc(`users/${SyncAuth.getCurrentUser().uid}/_test/probe`, { ok: true })
+```
+
+If the rules are deployed correctly, this resolves silently. If not, it throws `permission-denied`.
+
+---
+
 ### Step 3 — Enable Authentication → Google sign-in
 
 **Location:** Firebase Console → **Build → Authentication → "Get started"**.
