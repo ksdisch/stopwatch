@@ -28,6 +28,7 @@ Backend selection (Phase 6): Firebase / Firestore. Two accepted tradeoffs: (1) n
 | — | Stage 0: Firebase project + plugins + security rules | #57 |
 | — | Stage B: SyncEngine module scaffold + per-store snapshot adapters | #58 |
 | — | F19a-fix: preserve future-schema schemaVersion on meds.js getState | #59 |
+| — | Stage B: Google sign-in + settings drawer Cloud Sync section | #60 |
 
 **What's pending (sync-strategy items + wire/infra):**
 
@@ -35,7 +36,7 @@ Sync-strategy: F1 (per-med ±N-min reconcile), F3 (BFRB stream choice), F4 (re-d
 
 Deferred: F19c (per-store manifest registry).
 
-Wire/infra: auth flow (Google sign-in, web + iOS WebView; B-2); first cloud upload (B-3); offline buffer (Stage C); `tempo_sync_state` flips on real transitions (Stage C/E).
+Wire/infra: first cloud upload (B-3); offline buffer (Stage C); `tempo_sync_state` flips on real transitions (Stage C/E).
 
 **Engine-test baseline:** 114 tests today (stopwatch 30 / timer 21 / pomodoro 25 / meds 38) via `tests/index.html`. Sync work adds 1 new engine module + 1 new test file per stage; same pattern.
 

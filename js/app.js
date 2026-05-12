@@ -27,6 +27,7 @@ try {
 
 // ── Initialize modules ──
 SyncEngine.init();
+SyncAuth.init();
 Themes.init();
 Presets.init();
 OffsetInput.init();

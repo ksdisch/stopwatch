@@ -285,7 +285,12 @@ const TempoNav = (() => {
     // existing click handlers fire. We only need to close the drawer
     // after an item is activated; setTimeout gives the handler a tick to
     // open its own panel first.
-    drawer.querySelectorAll('button').forEach(btn => {
+    //
+    // Buttons with [data-keep-drawer-open] opt OUT of the auto-close so
+    // the user can flip toggles (e.g., the Cloud Sync enable switch) and
+    // immediately see the new state. Sign-in is a navigation-onward
+    // action so it auto-closes as usual.
+    drawer.querySelectorAll('button:not([data-keep-drawer-open])').forEach(btn => {
       btn.addEventListener('click', () => {
         setTimeout(() => {
           drawer.classList.add('hidden');
@@ -293,6 +298,143 @@ const TempoNav = (() => {
         }, 0);
       });
     });
+
+    wireCloudSync(drawer, syncExpanded);
+  }
+
+  // ── Cloud Sync section (B-2) ────────────────────────────────────────
+  // Lives inside the settings drawer. Wires the developer toggle for
+  // tempo_sync_enabled plus the Google sign-in / sign-out buttons. All
+  // engine calls go through SyncFlag.* / SyncAuth.*.
+  function wireCloudSync(drawer, syncDrawerExpanded) {
+    const toggleBtn = drawer.querySelector('#cloud-sync-toggle');
+    const signInBtn = drawer.querySelector('#cloud-sync-signin-btn');
+    const signOutBtn = drawer.querySelector('#cloud-sync-signout-btn');
+    const identityRow = drawer.querySelector('#cloud-sync-identity');
+    const statusEl = drawer.querySelector('#cloud-sync-status');
+    const emailEl = drawer.querySelector('#cloud-sync-email');
+    const nameEl = drawer.querySelector('#cloud-sync-display-name');
+    const photoEl = drawer.querySelector('#cloud-sync-photo');
+    if (!toggleBtn) return; // markup not present — feature disabled
+
+    function setStatus(msg, isError) {
+      if (!statusEl) return;
+      if (!msg) {
+        statusEl.textContent = '';
+        statusEl.hidden = true;
+        statusEl.removeAttribute('data-error');
+        return;
+      }
+      statusEl.textContent = msg;
+      statusEl.hidden = false;
+      if (isError) statusEl.setAttribute('data-error', '');
+      else statusEl.removeAttribute('data-error');
+    }
+
+    function renderCloudSyncUI() {
+      const enabled = (typeof SyncFlag !== 'undefined') && SyncFlag.isEnabled();
+      const user = (typeof SyncAuth !== 'undefined') ? SyncAuth.getCurrentUser() : null;
+
+      toggleBtn.setAttribute('aria-checked', enabled ? 'true' : 'false');
+
+      if (!enabled) {
+        if (identityRow) identityRow.hidden = true;
+        if (signInBtn) signInBtn.hidden = true;
+        return;
+      }
+
+      if (user) {
+        if (identityRow) identityRow.hidden = false;
+        if (signInBtn) signInBtn.hidden = true;
+        if (nameEl) nameEl.textContent = user.displayName || '';
+        if (emailEl) emailEl.textContent = user.email || '';
+        if (photoEl) {
+          if (user.photoURL) {
+            photoEl.src = user.photoURL;
+            photoEl.hidden = false;
+          } else {
+            photoEl.removeAttribute('src');
+            photoEl.hidden = true;
+          }
+        }
+      } else {
+        if (identityRow) identityRow.hidden = true;
+        if (signInBtn) signInBtn.hidden = false;
+      }
+    }
+
+    // Toggle the feature flag. Enabling lazy-inits SyncAuth so the cold-
+    // boot rehydrate path runs without a page refresh.
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (typeof SyncFlag === 'undefined') return;
+      if (SyncFlag.isEnabled()) {
+        SyncFlag.disable();
+      } else {
+        SyncFlag.enable();
+        if (typeof SyncAuth !== 'undefined') {
+          try { SyncAuth.init(); } catch (_e) {}
+        }
+      }
+      setStatus('', false);
+      renderCloudSyncUI();
+    });
+
+    if (signInBtn) {
+      signInBtn.addEventListener('click', async () => {
+        setStatus('Signing in…', false);
+        try {
+          const user = (typeof SyncAuth !== 'undefined')
+            ? await SyncAuth.signIn()
+            : null;
+          if (!user) {
+            // Cancellation — nothing to surface.
+            setStatus('', false);
+          } else {
+            setStatus('', false);
+          }
+        } catch (err) {
+          const msg = (err && (err.message || err.code)) || String(err);
+          setStatus('Sign-in error: ' + msg, true);
+        }
+        renderCloudSyncUI();
+      });
+    }
+
+    if (signOutBtn) {
+      signOutBtn.addEventListener('click', async () => {
+        try {
+          if (typeof SyncAuth !== 'undefined') await SyncAuth.signOut();
+          setStatus('', false);
+        } catch (err) {
+          const msg = (err && (err.message || err.code)) || String(err);
+          setStatus('Sign-out error: ' + msg, true);
+        }
+        renderCloudSyncUI();
+      });
+    }
+
+    // Subscribe to ongoing auth changes (covers cold-boot rehydrate
+    // landing after the drawer is already populated, plus system-level
+    // account changes on native).
+    if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.onAuthChange === 'function') {
+      SyncAuth.onAuthChange(() => renderCloudSyncUI());
+    }
+
+    // Re-render on every drawer open so toggle state always reflects
+    // localStorage (handles cases where the flag is flipped by another
+    // tab or by devtools).
+    const settingsToggle = document.getElementById('tempo-settings-toggle');
+    if (settingsToggle) {
+      settingsToggle.addEventListener('click', () => {
+        // Render after the drawer-open click handler has had a tick to
+        // flip the .hidden class; we want the freshest state in view.
+        setTimeout(renderCloudSyncUI, 0);
+      });
+    }
+
+    // Initial paint.
+    renderCloudSyncUI();
   }
 
   function wireWellnessPlaceholderCTA() {
