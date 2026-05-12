@@ -745,7 +745,7 @@ describe('Meds — F19b __forward passthrough', () => {
     // Only known fields present.
     const expectedKeys = new Set([
       'schemaVersion', 'id', 'name', 'dose', 'frequency',
-      'lastTakenAt', 'updatedAt', 'deviceId', 'doseLog',
+      'lastTakenAt', 'updatedAt', 'deviceId', 'originDeviceId', 'doseLog',
     ]);
     for (const k of Object.keys(state)) {
       assert(expectedKeys.has(k), `Unexpected key "${k}" on fresh med state`);

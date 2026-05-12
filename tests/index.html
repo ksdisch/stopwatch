@@ -39,10 +39,13 @@
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
   <!-- Sync flag + engine for B-1 SyncEngine tests. History / RecoveryUI are
-       stubbed per-case (matches analytics.test / export.test pattern). -->
+       stubbed per-case (matches analytics.test / export.test pattern). The
+       D-1 ManualDedupe helper is loaded alongside sync-engine so the
+       D-1 tests can exercise it directly. -->
   <script src="../js/sync-flag.js"></script>
   <script src="../js/sync-firestore.js"></script>
   <script src="../js/sync-engine.js"></script>
+  <script src="../js/sync-manual-dedupe.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
 
@@ -62,6 +65,7 @@
   <script src="sync-auth.test.js"></script>
   <script src="sync-uploader.test.js"></script>
   <script src="sync-hydrate.test.js"></script>
+  <script src="sync-imported-bucket.test.js"></script>
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="export.test.js"></script>

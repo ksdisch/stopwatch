@@ -27,6 +27,7 @@ js/interval.js                  — Interval engine. Phase-based rounds (Tabata 
 js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
 js/sync-flag.js                 — SyncFlag: `tempo_sync_enabled` localStorage flag (`isEnabled()` / `enable()` / `disable()`). Owned by B-1; the visible developer toggle lands in B-2.
 js/sync-engine.js               — SyncEngine: cloud-sync orchestrator scaffold. Hardcoded `SYNCED_STORES` registry (meds / history / rest_log / presets), `init()` / `getSnapshot()` / `enable()` / `disable()` / `getState()` lifecycle + event emitter. No network calls; B-3 wires the uploader.
+js/sync-manual-dedupe.js        — D-1 placeholder: `ManualDedupe.scan()` surfaces history pairs with matching `(date, duration, type)` across synced and imported buckets (1.0 exact-duration match; 0.9 for `|delta| <= 5000ms`). Pre-bucketed by `(type, YYYY-MM-DD)`. UI deferred to D-2+.
 js/sync-auth.js                 — SyncAuth: signIn / signOut / getCurrentUser / onAuthChange. Delegates to Platform.auth (web vs native shim). Caches normalized user; emits 'auth-change' via SyncEngine.emit on transitions. No-op when SyncFlag.isEnabled() === false.
 js/sync-firestore.js            — Firestore SDK seam (single wrapper for getDoc/setDoc/getCollection/runTransaction/setBatch). Web branch lazy-imports firebase/firestore from gstatic CDN; native branch routes to window.Capacitor.Plugins.FirebaseFirestore. Errors normalized to { kind, message, isRetryable, originalError }. SYNC_DISABLED fast-path when flag is off.
 js/backup.js                    — F12 mandatory local backup. Backup.exportLocal() reuses Export.buildBackupData() then offers via Web Share API (mobile) or <a download> (desktop). Backup.importLocal() ships dormant as the D-1 restore hook. Returns { ok, bytesWritten?, error? }.
@@ -72,7 +73,7 @@ icons/                          — 192px and 512px PNG icons.
 
 ### Script Load Order
 ```
-utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-engine → sync-auth → audio → themes → history → export → backup → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → global-bfrb → tempo-nav → app
+utils → dom-utils → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-engine → sync-manual-dedupe → sync-auth → audio → themes → history → export → backup → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → pomodoro-ui → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → global-bfrb → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -110,6 +111,7 @@ Additional localStorage keys used for UI/config preferences:
 - `tempo_sync_stage_d_handoff` (B-3; flag set when B-3's read-cloud-first guard detects existing cloud data from another device. D-1 will consume this to trigger the imported-bucket migration UI.)
 - `tempo_sync_hydrated_rest_log` / `tempo_sync_hydrated_meds` / `tempo_sync_hydrated_presets` / `tempo_sync_hydrated_history` (C-1; per-store hydrate completion markers, set to `'1'` after each cloud-pull store finishes; missing markers trigger re-pull on next boot.)
 - `tempo_sync_hydrated_all` (C-1; set to `'1'` after all 4 per-store markers complete. Acts as the short-circuit gate — once set, `SyncEngine.hydrateFromCloud()` is a no-op.)
+- `history_hide_imported` (D-1; UI toggle in the History panel filter bar. `'0'` (default) shows imported pre-sync rows; `'1'` filters them out of the rendered list. Only the chip + filter bar are gated on the presence of any imported rows.)
 
 ## What Has Been Built
 

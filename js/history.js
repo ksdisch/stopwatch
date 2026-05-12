@@ -246,6 +246,12 @@ const History = (() => {
       laps: session.laps || [],
       note: session.note || '',
       tags: session.tags || [],
+      // F17 (D-1): Stage D imported bucket. New writes default to 'synced';
+      // the reconcile path passes `bucket: 'imported'` explicitly. Legacy
+      // rows that pre-date this overlay stay absent on read until the
+      // reconcile pass back-tags them — `addSession` is the only mint site
+      // so the default `'synced'` applies to all new authoring after D-1.
+      bucket: session.bucket || 'synced',
     };
     // legacyId derivation when the caller didn't provide one but did pass
     // a numeric/legacy-shaped id (e.g. a pre-F2 history backup being
@@ -461,9 +467,72 @@ const History = (() => {
     return { ok: true, count: written, skipped };
   }
 
+  // D-1: privileged reconcile write path for History. Twin of
+  // `_hydrateWriteRaw` (kept as a named pair for grep-clarity per the
+  // audit's "do not unify" decision). The reconcile orchestrator has
+  // already (a) flipped SyncState to 'hydrating', and (b) computed the
+  // merged cloud ∪ tagged-local snapshot. This path bypasses the
+  // `canWrite()` gate that `addSession` consults: we clear + bulk-put
+  // the merged records atomically in a single IDB readwrite transaction.
+  //
+  // Differences from `_hydrateWriteRaw` are scoped to caller intent —
+  // both helpers structurally do clear+put. Reconcile writes the
+  // tagged-then-merged snapshot (some records carry `bucket: 'imported'`,
+  // others carry `bucket: 'synced'`); hydrate writes a verbatim cloud
+  // replace.
+  //
+  // F19a: records are written verbatim — no `Schema.stamp()` call. The
+  // reconcile orchestrator skipped future-schema rows during the
+  // tag-stamp loop, so any future-schema records in the input already
+  // came from cloud and stay byte-clean. Schema-version preservation
+  // matches the hydrate path.
+  function _reconcileWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    return ready().then(() => new Promise((resolve, reject) => {
+      let written = 0;
+      let skipped = 0;
+      let tx;
+      try {
+        tx = db.transaction(STORE_NAME, 'readwrite');
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      const store = tx.objectStore(STORE_NAME);
+
+      const clearReq = store.clear();
+      clearReq.onerror = () => { /* defer to tx.onerror */ };
+      clearReq.onsuccess = () => {
+        for (const rec of records) {
+          if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+            skipped++;
+            continue;
+          }
+          try {
+            store.put(rec);
+            written++;
+          } catch (e) {
+            skipped++;
+          }
+        }
+      };
+
+      tx.oncomplete = () => {
+        if (skipped > 0) {
+          try { console.warn('[History] reconcile skipped ' + skipped + ' malformed record(s)'); }
+          catch (e) {}
+        }
+        resolve({ written, skipped });
+      };
+      tx.onerror = (e) => reject(tx.error || (e && e.target && e.target.error) || new Error('IDB transaction error'));
+      tx.onabort = (e) => reject(tx.error || new Error('IDB transaction aborted'));
+    }));
+  }
+
   return {
     init, getSessions, addSession, updateNote, deleteSession, clearAll,
     addTag, removeTag, getAllTags, getDeviceId, snapshotForSync,
     hydrateFromCloud, _hydrateWriteRaw,
+    _reconcileWriteRaw,
   };
 })();

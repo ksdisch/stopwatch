@@ -29,6 +29,13 @@ const KNOWN_MED_KEYS = new Set([
   // V2 schema (current)
   'id', 'name', 'dose', 'frequency',
   'lastTakenAt', 'doseLog',
+  // F17 (D-1): immutable provenance marker set once at reconcile time.
+  // Distinct from `deviceId` (F10) which updates on every write — this is
+  // the device that authored the record pre-sync. Distinguishes "this
+  // Adderall came from phone" vs "this Adderall came from laptop" when
+  // both were independently created pre-sync, so `ManualDedupe.scan()`
+  // can surface candidate dupes by `medId` to the user (D-2+ UI).
+  'originDeviceId',
   // F10 record-level LWW stamps
   'updatedAt', 'deviceId',
   // F19a schema version
@@ -64,6 +71,15 @@ function createMed(id) {
   // sync's per-field LWW for name/dose/frequency has a stable comparator.
   let updatedAt = Date.now();
   let deviceId = _medsGetDeviceId();
+  // F17 (D-1): immutable provenance marker. Set once by the reconcile
+  // orchestrator (sync-engine.reconcileImportedBucket) on records that
+  // lacked one pre-sync; never mutated thereafter. Distinct from `deviceId`
+  // (which bumps on every write). loadState reads this guarded by `!= null`
+  // so re-loads of records without the field don't blow away the in-memory
+  // value, and the field is emitted by getState() so MedsManager.loadAll()
+  // → med.getState() roundtrips it for downstream consumers (manual-dedupe,
+  // idempotency check in reconcileImportedBucket).
+  let originDeviceId = null;
   // F19a: set by loadState when the on-disk record was minted on a newer
   // schema (state.schemaVersion > SCHEMA_VERSION). MedsManager.saveAll
   // and .remove consult this flag and refuse the operation, leaving the
@@ -212,6 +228,7 @@ function createMed(id) {
       id, name, dose, frequency,
       lastTakenAt,
       updatedAt, deviceId,
+      originDeviceId,
       doseLog: doseLog.slice(),
     };
     // F19b: merge __forward back into the wire format. The loader's
@@ -311,6 +328,10 @@ function createMed(id) {
       ? state.updatedAt
       : (lastTakenAt || Date.now());
     deviceId = typeof state.deviceId === 'string' ? state.deviceId : localDevice;
+    // F17 (D-1): set-once-immutable provenance marker. Read guarded by
+    // `!= null` so a re-load of a record that lacks the field (e.g. a
+    // pre-reconcile snapshot) doesn't blow away the in-memory value.
+    if (state.originDeviceId != null) originDeviceId = state.originDeviceId;
   }
 
   return {
@@ -555,12 +576,69 @@ const MedsManager = (() => {
     return Promise.resolve({ ok: true, count: written, skipped });
   }
 
+  // D-1: privileged reconcile write path. Twin of `_hydrateWriteRaw`
+  // (kept as a named pair for grep-clarity per the audit's "do not
+  // unify" decision). The reconcile orchestrator has already (a) flipped
+  // SyncState to 'hydrating', and (b) computed the merged cloud ∪
+  // tagged-local snapshot. This path bypasses the `SyncState.canWrite()`
+  // gate that `saveAll` consults.
+  //
+  // Caller intent differs from hydrate: hydrate writes a verbatim cloud
+  // payload onto an empty-local target; reconcile writes the merged
+  // tagged-local-∪-cloud payload, where the meds collision rule keeps
+  // BOTH records (distinguished by `originDeviceId`). The wire shape is
+  // identical (per-med localStorage keys under `meds/{medId}`), so the
+  // clear-then-bulk-write algorithm is structurally the same.
+  //
+  // F19a: records are written verbatim — no `Schema.stamp()` call.
+  // Future-schema cloud records keep their original schemaVersion on
+  // disk; loadAll() re-reads them and the standard loader populates
+  // `_fromFutureSchema` / `_forwardBag`.
+  function _reconcileWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    // Clear every existing meds/* key. The reconcile orchestrator passes
+    // the merged snapshot (tagged-local-∪-cloud) so a stale local record
+    // not in the merge must not survive.
+    try {
+      const keysToClear = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) keysToClear.push(k);
+      }
+      for (const k of keysToClear) {
+        try { localStorage.removeItem(k); } catch (e) {}
+      }
+    } catch (e) { /* localStorage unavailable */ }
+
+    let written = 0;
+    let skipped = 0;
+    for (const rec of records) {
+      if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+        skipped++;
+        continue;
+      }
+      try {
+        localStorage.setItem(STORAGE_PREFIX + rec.id, JSON.stringify(rec));
+        written++;
+      } catch (e) {
+        skipped++;
+      }
+    }
+    if (skipped > 0) {
+      try { console.warn('[MedsManager] reconcile skipped ' + skipped + ' malformed/un-writable record(s)'); }
+      catch (e) {}
+    }
+    loadAll();
+    return { written, skipped };
+  }
+
   return {
     all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
     onMergeComplete,
     snapshotForSync,
     hydrateFromCloud,
     _hydrateWriteRaw,
+    _reconcileWriteRaw,
     MAX_MEDS,
   };
 })();

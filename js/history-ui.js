@@ -127,10 +127,37 @@ function initHistoryPanel() {
 let activeTagFilter = null;
 let activeDateRange = null;
 
+// D-1: hide-imported filter persistence. localStorage key is 'history_hide_imported'
+// with values '0' (default — show) or '1' (hide). Read on every renderHistory()
+// call so cross-tab flips reflect immediately.
+const HIDE_IMPORTED_KEY = 'history_hide_imported';
+
+function isHideImportedActive() {
+  try {
+    return typeof localStorage !== 'undefined' &&
+      localStorage.getItem(HIDE_IMPORTED_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function setHideImportedActive(hide) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(HIDE_IMPORTED_KEY, hide ? '1' : '0');
+  } catch (_) {}
+}
+
 async function renderHistory() {
   const list = document.getElementById('history-list');
   const filterEl = document.getElementById('history-filter');
   let sessions = (await History.getSessions()).reverse();
+
+  // D-1: detect whether any imported-bucket rows exist so we only
+  // render the hide-imported toggle when it's actually useful. Avoids
+  // surface clutter on pre-reconcile (and post-reconcile-empty) accounts.
+  const hasImported = sessions.some(s => s && s.bucket === 'imported');
+  const hideImported = isHideImportedActive();
 
   // Render date range pills
   const ranges = [
@@ -153,7 +180,15 @@ async function renderHistory() {
       ).join('') + '</div>';
   }
 
-  filterEl.innerHTML = dateBarHtml + tagBarHtml;
+  // D-1: hide-imported toggle. Lives in its own row so it doesn't
+  // shove the date or tag chips off-screen on narrow viewports.
+  // Mirrors the .filter-chip / .filter-chip-active pattern.
+  let importedBarHtml = '';
+  if (hasImported) {
+    importedBarHtml = `<div class="imported-filter-bar"><button class="filter-chip ${hideImported ? 'filter-chip-active' : ''}" data-filter-imported="1" aria-label="${hideImported ? 'Show imported sessions' : 'Hide imported sessions'}" aria-pressed="${hideImported ? 'true' : 'false'}">${hideImported ? 'Show imported' : 'Hide imported'}</button></div>`;
+  }
+
+  filterEl.innerHTML = dateBarHtml + tagBarHtml + importedBarHtml;
 
   filterEl.querySelectorAll('[data-date-range]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -165,6 +200,13 @@ async function renderHistory() {
   filterEl.querySelectorAll('[data-filter-tag]').forEach(btn => {
     btn.addEventListener('click', () => {
       activeTagFilter = btn.dataset.filterTag || null;
+      renderHistory();
+    });
+  });
+
+  filterEl.querySelectorAll('[data-filter-imported]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setHideImportedActive(!isHideImportedActive());
       renderHistory();
     });
   });
@@ -194,6 +236,12 @@ async function renderHistory() {
     );
   }
 
+  // D-1: apply hide-imported filter. Reads from localStorage each render
+  // so a cross-tab flip or a fresh reconcile-complete reflects immediately.
+  if (hideImported) {
+    sessions = sessions.filter(s => s.bucket !== 'imported');
+  }
+
   if (sessions.length === 0) {
     list.innerHTML = activeTagFilter
       ? '<div class="history-empty">No sessions with this tag</div>'
@@ -216,7 +264,16 @@ async function renderHistory() {
       : `<button class="history-add-note" data-note-id="${s.id}">+ note</button>`;
 
     const tags = Array.isArray(s.tags) ? s.tags : [];
+    // D-1: "Imported (pre-sync)" chip for rows reconciled from this
+    // device's pre-sync local data. Non-interactive (no delete button),
+    // visually distinct from user-editable tag-chips. The chip renders
+    // inside the existing .history-tags container so it shares the same
+    // wrap/spacing as the user tag chips beside it.
+    const importedChipHtml = s.bucket === 'imported'
+      ? `<span class="history-tag-imported" aria-label="Imported from pre-sync local data">Imported (pre-sync)</span>`
+      : '';
     const tagsHtml = `<div class="history-tags">` +
+      importedChipHtml +
       tags.map(tag =>
         `<span class="tag-chip">${escapeHistoryHtml(tag)}<button class="tag-chip-delete" data-session-id="${s.id}" data-tag="${escapeHistoryHtml(tag)}">&times;</button></span>`
       ).join('') +
