@@ -631,21 +631,54 @@ describe('MedsManager.snapshotForSync — F4 regression', () => {
 
 describe('MedsManager.snapshotForSync — F19a future-record passthrough', () => {
   it('inner record schemaVersion=2 survives; envelope schemaVersion stays at current', () => {
-    // PLACEHOLDER — deferred to dedicated F19a-fix PR.
+    // F19a-fix PR (feat/sync-stage-a-f19a-passthrough-fix) restored this
+    // assertion. Pre-fix, createMed.getState() unconditionally wrote
+    // schemaVersion = Schema.SCHEMA_VERSION, downgrading future-schema
+    // records on the wire-format passthrough. Post-fix, loadState captures
+    // the on-disk schemaVersion when it's > SCHEMA_VERSION, and getState
+    // emits the captured value verbatim.
     //
-    // Pre-existing bug in js/meds.js: createMed.getState() unconditionally
-    // writes schemaVersion: Schema.SCHEMA_VERSION, downgrading future-schema
-    // records on read. The bug predates B-1 (introduced in PR #52's F19a
-    // implementation) and applies to MedsManager + History snapshot paths
-    // (Presets is unaffected — getAll() reads raw localStorage).
-    //
-    // When the F19a-fix PR lands (probable name:
-    // feat/sync-stage-a-f19a-passthrough-fix; must land before B-3 ships),
-    // restore the real assertion: stub a med whose getState() returns
-    // { id: 'm1', schemaVersion: 2, ... }, call snapshotForSync(), assert
-    // result.payload.meds[0].schemaVersion === 2 while envelope
-    // schemaVersion === Schema.SCHEMA_VERSION.
-    assert(true, 'F19a passthrough test deferred to follow-up PR');
+    // End-to-end snapshot path: seed a future record on disk → loadAll →
+    // snapshotForSync → assert envelope stays current (wrapper version)
+    // while the inner record preserves its future schemaVersion.
+    const medsSnapshot = snapshotMedsKeys();
+    try {
+      clearMedsKeys();
+      MedsManager.clear();
+      localStorage.setItem('meds/f19a-1', JSON.stringify({
+        id: 'f19a-1',
+        schemaVersion: 2,
+        name: 'FutureMed',
+        dose: '15 mg',
+        frequency: 'once-daily',
+        doseLog: [],
+        updatedAt: 1700000000000,
+        deviceId: 'd-test',
+      }));
+      MedsManager.loadAll();
+
+      stubHistoryForSync({ deviceId: 'mock-device-abc' });
+      try {
+        const snap = MedsManager.snapshotForSync();
+        // Envelope stays at the current wrapper version — the envelope
+        // version is the snapshot adapter's wrapper, not a per-record stamp.
+        assertEqual(snap.schemaVersion, Schema.SCHEMA_VERSION,
+          'envelope schemaVersion is the wrapper version (current)');
+        assertEqual(snap.deviceId, 'mock-device-abc',
+          'envelope deviceId comes from History.getDeviceId stub');
+        // Inner record preserves its original future schemaVersion.
+        const target = snap.payload.meds.find(x => x.id === 'f19a-1');
+        assert(target !== undefined, 'f19a-1 med present in payload');
+        assertEqual(target.schemaVersion, 2,
+          'inner record schemaVersion=2 preserved end-to-end through load → getState → snapshot');
+      } finally {
+        restoreSyncStubs();
+      }
+    } finally {
+      MedsManager.clear();
+      restoreMedsKeys(medsSnapshot);
+      MedsManager.loadAll();
+    }
   });
 });
 

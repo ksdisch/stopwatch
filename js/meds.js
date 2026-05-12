@@ -69,6 +69,11 @@ function createMed(id) {
   // and .remove consult this flag and refuse the operation, leaving the
   // future record on disk byte-clean for the newer client to consume.
   let _fromFutureSchema = false;
+  // F19a: when the on-disk record is a future record, capture its exact
+  // schemaVersion so getState() can re-emit it verbatim. Without this the
+  // wire-format passthrough (e.g. snapshotForSync) would silently downgrade
+  // future records to SCHEMA_VERSION. Null for current/legacy records.
+  let _originalSchemaVersion = null;
   // F19b: unknown top-level fields collected from the on-disk record at
   // load time. getState() merges these back into the wire format so a
   // downlevel client doesn't strip future-schema fields it can't parse.
@@ -199,8 +204,11 @@ function createMed(id) {
     // F19a: stamp the schema version at every write. The cloud-sync
     // engine isn't wired yet, but per-record stamping is the contract
     // that lets mixed-version devices safely share data later.
+    // For future-schema records captured by loadState, emit the original
+    // version verbatim so wire-format passthrough (snapshotForSync) does
+    // not silently downgrade them; current/legacy records stamp to current.
     const out = {
-      schemaVersion: Schema.SCHEMA_VERSION,
+      schemaVersion: _originalSchemaVersion ?? Schema.SCHEMA_VERSION,
       id, name, dose, frequency,
       lastTakenAt,
       updatedAt, deviceId,
@@ -223,6 +231,13 @@ function createMed(id) {
     // newer client to consume. Pre-F19a records (no schemaVersion) are
     // NOT future; they get stamped to v1 on their next save, lazily.
     _fromFutureSchema = Schema.isFutureRecord(state);
+    // F19a: capture the exact on-disk schemaVersion for future records so
+    // getState() emits it verbatim instead of downgrading to SCHEMA_VERSION.
+    // Reset to null on every load so a subsequent loadState of a non-future
+    // record properly forgets the prior captured value.
+    _originalSchemaVersion = (_fromFutureSchema && typeof state.schemaVersion === 'number')
+      ? state.schemaVersion
+      : null;
 
     // F19b: collect unrecognized top-level fields into __forward so a
     // downlevel client doesn't strip future-schema data on roundtrip.

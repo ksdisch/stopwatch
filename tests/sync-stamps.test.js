@@ -414,3 +414,219 @@ describe('F21 — alarmFired per-device (Interval)', () => {
     assertEqual(fires, 1);
   });
 });
+
+// ── F19a — Meds future-record schemaVersion passthrough (post-fix) ──
+//
+// Pre-F19a-fix: createMed.getState() unconditionally stamped schemaVersion =
+// Schema.SCHEMA_VERSION on every read, silently downgrading future-schema
+// records on the wire-format passthrough (snapshotForSync → cloud upload).
+// Post-F19a-fix: loadState captures the on-disk schemaVersion into a
+// closed-over _originalSchemaVersion field when Schema.isFutureRecord(state)
+// is true; getState emits _originalSchemaVersion ?? Schema.SCHEMA_VERSION.
+//
+// These tests exercise that contract directly against createMed (no
+// localStorage, no manager) to keep blast radius minimal, plus one
+// MedsManager.loadAll() roundtrip case for the integration shape.
+
+describe('F19a — Meds future-record schemaVersion passthrough', () => {
+  it('future-schema record (schemaVersion=2) preserves stamp on getState', () => {
+    const m = createMed('f19a-1');
+    m.loadState({
+      id: 'f19a-1',
+      name: 'FutureMed',
+      dose: '10 mg',
+      frequency: 'once-daily',
+      schemaVersion: 2,
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    const out = m.getState();
+    assertEqual(out.schemaVersion, 2,
+      'future schemaVersion preserved verbatim');
+    assertEqual(m.isFromFutureSchema(), true,
+      'future-record flag is set on load');
+  });
+
+  it('current-schema record (schemaVersion=1) stays at current on getState (regression)', () => {
+    // Existing pre-fix behavior must be preserved: a current-version record
+    // continues to emit Schema.SCHEMA_VERSION via the ?? fallback.
+    const m = createMed('f19a-2');
+    m.loadState({
+      id: 'f19a-2',
+      name: 'CurrentMed',
+      frequency: 'once-daily',
+      schemaVersion: Schema.SCHEMA_VERSION,
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    const out = m.getState();
+    assertEqual(out.schemaVersion, Schema.SCHEMA_VERSION,
+      'current schemaVersion still emits SCHEMA_VERSION');
+    assertEqual(m.isFromFutureSchema(), false,
+      'current record is NOT flagged as future');
+  });
+
+  it('legacy record (no schemaVersion field) gets stamped to current on getState (regression)', () => {
+    // Pre-F19a records with no schemaVersion field continue to be stamped
+    // to SCHEMA_VERSION on their next save, lazily. The fix's null-fallback
+    // path keeps this contract intact.
+    const m = createMed('f19a-3');
+    m.loadState({
+      id: 'f19a-3',
+      name: 'LegacyMed',
+      frequency: 'once-daily',
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    const out = m.getState();
+    assertEqual(out.schemaVersion, Schema.SCHEMA_VERSION,
+      'legacy record stamped to current SCHEMA_VERSION');
+    assertEqual(m.isFromFutureSchema(), false,
+      'legacy record is NOT flagged as future');
+  });
+
+  it('far-future schema version (99) preserved exactly (truthiness range check)', () => {
+    // Catches an off-by-one or truthiness bug in the ?? operator. If
+    // someone accidentally uses || instead, 0 / NaN would coerce wrong;
+    // 99 is the canonical "schema version we definitely don't understand"
+    // value that exercises the non-1, non-2 case.
+    const m = createMed('f19a-4');
+    m.loadState({
+      id: 'f19a-4',
+      name: 'FarFutureMed',
+      frequency: 'once-daily',
+      schemaVersion: 99,
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    const out = m.getState();
+    assertEqual(out.schemaVersion, 99,
+      'far-future schemaVersion=99 preserved exactly');
+    assertEqual(m.isFromFutureSchema(), true,
+      'far-future record is flagged as future');
+  });
+
+  it('future record + unknown forward field round-trip together (F19a + F19b interaction)', () => {
+    // Verifies the two preservation mechanisms (_originalSchemaVersion for
+    // schemaVersion, _forwardBag for unknown keys) don't collide and that
+    // schemaVersion isn't accidentally smuggled into _forwardBag — which
+    // would cause double-emission via getState's Object.assign(out, bag).
+    const m = createMed('f19a-5');
+    m.loadState({
+      id: 'f19a-5',
+      name: 'ForwardCompatMed',
+      frequency: 'once-daily',
+      schemaVersion: 2,
+      customFutureField: 'hi',
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    const out = m.getState();
+    assertEqual(out.schemaVersion, 2,
+      'schemaVersion preserved (via _originalSchemaVersion)');
+    assertEqual(out.customFutureField, 'hi',
+      'unknown field preserved (via _forwardBag)');
+  });
+
+  it('idempotence: _originalSchemaVersion resets to null on every loadState', () => {
+    // A subsequent loadState of a non-future record must properly forget
+    // the prior captured value. A stale _originalSchemaVersion would leak
+    // a future stamp onto a current record — subtle data corruption.
+    const m = createMed('f19a-6');
+    // First load: future record with schemaVersion=2.
+    m.loadState({
+      id: 'f19a-6',
+      name: 'TmpFuture',
+      frequency: 'once-daily',
+      schemaVersion: 2,
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    assertEqual(m.getState().schemaVersion, 2,
+      'first load: future stamp preserved');
+    assertEqual(m.isFromFutureSchema(), true);
+
+    // Second load on the SAME instance: current record (no future stamp).
+    m.loadState({
+      id: 'f19a-6',
+      name: 'TmpCurrent',
+      frequency: 'once-daily',
+      doseLog: [],
+      updatedAt: 1700000000000,
+      deviceId: 'd-test',
+    });
+    assertEqual(m.getState().schemaVersion, Schema.SCHEMA_VERSION,
+      'second load: future stamp from prior load was cleared');
+    assertEqual(m.isFromFutureSchema(), false,
+      'future flag also reset');
+  });
+
+  it('MedsManager.loadAll roundtrip: future record on disk preserves stamp through getState', () => {
+    // End-to-end integration shape: seed a meds/{id} key with a future
+    // record on disk, call loadAll(), read .getState() on the loaded med,
+    // assert the future schemaVersion survives. This mirrors what
+    // snapshotForSync does internally (all().map(m => m.getState())).
+    //
+    // Snapshot ALL meds/* keys + the legacy blob key so we restore the
+    // user's real meds data even if any assertion below throws.
+    const medsSnapshot = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('meds/') || k === 'wellness_meds')) {
+        medsSnapshot.push([k, localStorage.getItem(k)]);
+      }
+    }
+    try {
+      // Clear out current meds/* keys so loadAll only sees our fixture.
+      const toClean = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) toClean.push(k);
+      }
+      for (const k of toClean) localStorage.removeItem(k);
+      MedsManager.clear();
+
+      // Seed the disk with a future record + an unknown forward field.
+      localStorage.setItem('meds/f19a-rt', JSON.stringify({
+        id: 'f19a-rt',
+        name: 'RoundtripFuture',
+        dose: '30 mg',
+        frequency: 'once-daily',
+        schemaVersion: 2,
+        customFutureField: 'hi',
+        doseLog: [],
+        updatedAt: 1700000000000,
+        deviceId: 'd-test',
+      }));
+
+      MedsManager.loadAll();
+      const loaded = MedsManager.all();
+      assertEqual(loaded.length, 1, 'loadAll picked up the seeded med');
+      assertEqual(loaded[0].getId(), 'f19a-rt');
+      const wire = loaded[0].getState();
+      assertEqual(wire.schemaVersion, 2,
+        'future schemaVersion survives load → getState');
+      assertEqual(wire.customFutureField, 'hi',
+        'unknown forward field also survives');
+      assertEqual(loaded[0].isFromFutureSchema(), true,
+        'future-record flag is set');
+    } finally {
+      // Restore the user's real meds data.
+      const toClean = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('meds/') || k === 'wellness_meds')) toClean.push(k);
+      }
+      for (const k of toClean) localStorage.removeItem(k);
+      for (const [k, v] of medsSnapshot) localStorage.setItem(k, v);
+      MedsManager.clear();
+      MedsManager.loadAll();
+    }
+  });
+});
