@@ -1250,6 +1250,15 @@ const SyncEngine = (() => {
 
         const mergedHistory = _mergeHistory(localHistory, cloudData.history || []);
         const mergedMeds    = _mergeMeds(localMeds, cloudData.meds || [], localDeviceId);
+        // E-1 plug-in seam: after _mergeMeds() unions cloud ∪ local
+        // records by (medId, originDeviceId), iterate each merged med and
+        // call MedsManager.reconcileDoseLog(med, incomingEntries) to
+        // collapse cross-device ±15-min duplicates and clamp clock-skewed
+        // entries. Then assign result.entries onto med.doseLog and call
+        // MedsManager.onMergeComplete(medId) once per med. F1 + F16 are
+        // not enforced in D-1's reconcile path — D-2 ships the helper
+        // only; E-1 wires both call sites (D-1 reconcile + E-1 steady-
+        // state). No behavior change here.
         const mergedRestLog = _mergeRestLog(localRestLog, cloudData.rest_log || {});
         const mergedPresets = _mergeLWWArray(localPresets, cloudData.presets || [], (rec) => rec.id);
 
