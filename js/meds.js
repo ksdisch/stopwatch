@@ -481,10 +481,86 @@ const MedsManager = (() => {
     };
   }
 
+  // C-1: privileged hydrate write path. Cloud is canonical during hydrate
+  // — `_hydrateWriteRaw` writes directly to localStorage, bypassing the
+  // `SyncState.canWrite()` gate that `saveAll` consults. The orchestrator
+  // (SyncEngine.hydrateFromCloud) flips state to 'hydrating' BEFORE calling
+  // any engine's hydrateFromCloud, so the gate is closed; this path is the
+  // explicit, named exception. F19a: records are written verbatim — no
+  // `Schema.stamp()` call, so a future-schema cloud record (schemaVersion=2)
+  // lands on disk with its original version intact and loadAll() then
+  // surfaces it as `_fromFutureSchema = true`.
+  //
+  // Accepts the raw `records` array (each entry is the cloud doc's `data`
+  // field). Defensive-validates: an entry must be a non-null object with a
+  // string `id` field. Malformed entries are skipped and counted; a single
+  // batched warning is logged if any were dropped.
+  function _hydrateWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    // First clear every existing meds/* key so a stale local record (e.g.
+    // pre-existing default doesn't somehow shadow cloud) doesn't survive.
+    // Stage D guard already runs upstream, so we know local was empty for
+    // the audit's "empty hydrate target" contract — this clear is belt-and-
+    // suspenders for the resume path (mid-failure rerun).
+    try {
+      const keysToClear = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) keysToClear.push(k);
+      }
+      for (const k of keysToClear) {
+        try { localStorage.removeItem(k); } catch (e) {}
+      }
+    } catch (e) { /* localStorage unavailable */ }
+
+    let written = 0;
+    let skipped = 0;
+    for (const rec of records) {
+      if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+        skipped++;
+        continue;
+      }
+      try {
+        // Verbatim write — no Schema.stamp, no field allowlist. The cloud
+        // record's schemaVersion (including future versions) survives onto
+        // disk; loadAll then re-reads via the standard loader, which
+        // populates _fromFutureSchema / _forwardBag correctly.
+        localStorage.setItem(STORAGE_PREFIX + rec.id, JSON.stringify(rec));
+        written++;
+      } catch (e) {
+        // Quota or unavailable — count as skipped so partial writes surface
+        // up via the result count rather than silently succeeding.
+        skipped++;
+      }
+    }
+    if (skipped > 0) {
+      try { console.warn('[MedsManager] hydrate skipped ' + skipped + ' malformed/un-writable record(s)'); }
+      catch (e) {}
+    }
+    // Re-read disk into in-memory state. loadAll respects F19a (the loader
+    // populates _fromFutureSchema for any record with schemaVersion > current).
+    loadAll();
+    return { written, skipped };
+  }
+
+  // Public hydrate entry point. Sync — no async work happens inside
+  // (localStorage is synchronous). Returns the resolved promise to match
+  // History.hydrateFromCloud's async signature so the orchestrator can
+  // `await` uniformly across all four engines.
+  function hydrateFromCloud(records) {
+    if (!Array.isArray(records)) {
+      return Promise.reject(new Error('hydrateFromCloud: records must be an array'));
+    }
+    const { written, skipped } = _hydrateWriteRaw(records);
+    return Promise.resolve({ ok: true, count: written, skipped });
+  }
+
   return {
     all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
     onMergeComplete,
     snapshotForSync,
+    hydrateFromCloud,
+    _hydrateWriteRaw,
     MAX_MEDS,
   };
 })();

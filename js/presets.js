@@ -311,5 +311,59 @@ const Presets = (() => {
     };
   }
 
-  return { getAll, get, save, update, remove, applyPreset, captureCurrentConfig, formatDurationHint, init, snapshotForSync };
+  // C-1: privileged hydrate write path. Writes the cloud records as the
+  // full presets array to localStorage, bypassing the `SyncState.canWrite()`
+  // gate that save/update/remove consult. The orchestrator has flipped the
+  // gate to 'hydrating' so user UI is paused; this path is the explicit
+  // exception. F19a: records are written verbatim — no `Schema.stamp()`
+  // call, so any future-schema record (schemaVersion=2) keeps its original
+  // version on disk and the standard mutators (save/update/remove) then
+  // refuse writeback on them.
+  //
+  // Also sets `presets_seeded = '1'` so the next `init()` doesn't seed
+  // default presets over the cloud-supplied set.
+  function _hydrateWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    let written = 0;
+    let skipped = 0;
+    const valid = [];
+    for (const rec of records) {
+      if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+        skipped++;
+        continue;
+      }
+      valid.push(rec);
+      written++;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
+      // Mark seeded so `seedDefaults()` is a no-op on the next init —
+      // cloud-supplied presets are the canonical set.
+      localStorage.setItem(SEEDED_KEY, '1');
+    } catch (e) {
+      // Quota / storage unavailable. Mark all as skipped — orchestrator
+      // surfaces the count via its return shape.
+      skipped += written;
+      written = 0;
+    }
+    if (skipped > 0) {
+      try { console.warn('[Presets] hydrate skipped ' + skipped + ' malformed/un-writable record(s)'); }
+      catch (e) {}
+    }
+    return { written, skipped };
+  }
+
+  function hydrateFromCloud(records) {
+    if (!Array.isArray(records)) {
+      return Promise.reject(new Error('hydrateFromCloud: records must be an array'));
+    }
+    const { written, skipped } = _hydrateWriteRaw(records);
+    return Promise.resolve({ ok: true, count: written, skipped });
+  }
+
+  return {
+    getAll, get, save, update, remove, applyPreset, captureCurrentConfig,
+    formatDurationHint, init, snapshotForSync,
+    hydrateFromCloud, _hydrateWriteRaw,
+  };
 })();

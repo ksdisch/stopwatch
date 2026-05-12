@@ -337,6 +337,64 @@ Third sync infrastructure PR. Adds Google sign-in via `@capacitor-firebase/authe
 
 ---
 
+## Session 7 — 2026-05-12
+
+### What We Built
+
+**Device B fresh hydrate (C-1 — Stage C cloud-to-local pull path)**
+
+**Second observable cross-device milestone.** Device B with no local data signs in, pulls cloud state in strict dependency order, lands as canonical local state. Symmetric counterpart to B-3's push.
+
+**Engine layer:**
+- Extended `js/sync-engine.js` with `hydrateFromCloud()` orchestrator (~400 lines): F13 SyncState.set('hydrating') → Stage D non-empty-local guard → strict-order pull (`rest_log → meds → presets → history`) → per-store `_hydrateWriteRaw` dispatch with F19a future-record preservation → 5 markers (`tempo_sync_hydrated_<store>` + `_all`) → SyncState.set('ready'). Module-scoped `_hydrateInFlight` re-entry guard. New events `hydrate-progress { stage, store }` and `hydrate-complete { ok, kind, ... }`.
+- Added `MedsManager.hydrateFromCloud(records)` + `_hydrateWriteRaw(records)` — direct localStorage write bypassing `SyncState.canWrite()` gate; reloads in-memory state via existing `loadAll()` so F19a `_originalSchemaVersion` populates correctly.
+- Added `History.hydrateFromCloud(records)` + async `_hydrateWriteRaw(records)` — single IDB readwrite transaction clears `sessions` store, bulk-puts each cloud record verbatim.
+- Added `Presets.hydrateFromCloud(records)` + `_hydrateWriteRaw(records)` — writes `quick_presets` localStorage verbatim; also sets `presets_seeded=1` to prevent default-seeding from re-merging over cloud data on next boot.
+- Added `RecoveryUI.hydrateFromCloud(restLogMap)` + `_hydrateWriteRaw(restLogMap)` — writes `wellness_rest_log` localStorage verbatim (scope override for `*-ui.js` per audit's R1 rationale).
+- `SyncEngine.init()` subscribes to `SyncAuth.onAuthChange` to auto-trigger hydrate on first sign-in. `js/app.js` adds belt-and-suspenders backstop subscription (harmless double-fire prevented by `_hydrateInFlight`).
+- Stage D non-empty-local guard: ignores default-seeded presets (otherwise every first-time user would hit Stage D); checks meds OR history OR rest_log non-empty → routes to handoff, sets `tempo_sync_stage_d_handoff` flag, NO writes.
+
+**Tests (21 new cases in `tests/sync-hydrate.test.js`):**
+- Strict pull order, per-store markers, partial-failure recovery.
+- F13 gate behavior + `_hydrateWriteRaw` bypass (writes succeed when SyncState='hydrating').
+- Stage D handoff for non-empty meds / history / rest_log / all-four scenarios.
+- Presets-only-non-empty STILL hydrates (corrected per engine-implementer's pragmatic call — default seeds are not user data).
+- F19a future-schema record from cloud written verbatim, F19a-fix machinery captures `_originalSchemaVersion` on post-write `loadAll`.
+- Re-entry guard, `_all` short-circuit, sentinel rejections (no auth / flag off / state hydrating / state error), state transitions (`ready → hydrating → ready` on success / `→ error` on failure), boot trigger smoke, malformed-record skipping, empty cloud handling.
+- Full suite: **358/358 pass** via kapture (337 baseline + 21 new C-1).
+
+**UI:**
+- New boot-time `#tempo-hydrate-overlay` — full-screen blocking modal with spinner, title "Loading from cloud…", live progress text ("Loading medications…"), and error state with Retry + Skip for now buttons.
+- `prefers-reduced-motion` fallback for the spinner (opacity pulse instead of rotation).
+- 5 new `data-progress` states on the existing `.tempo-cloud-sync-status` block (hydrate-rest_log / hydrate-meds / hydrate-presets / hydrate-history / hydrate-done) so the settings drawer status row tracks hydrate in parallel.
+- `js/tempo-nav.js` `wireCloudSync` extended with `SyncEngine.on('hydrate-progress')` + `on('hydrate-complete')` subscriptions. Complete event routes by `kind`: `done` auto-hides after 1s with "Loaded ✓"; `stage-d-handoff` hides overlay, surfaces B-3 drawer copy; `error` reveals overlay error state with Retry + Skip; `already-hydrated` quietly hides; sentinels quietly hide.
+- All user-controllable text passes through `escapeHtml`.
+
+**5 new persistence keys:** `tempo_sync_hydrated_rest_log`, `_meds`, `_presets`, `_history`, `_all`.
+
+**`sw.js` cache bump:** `stopwatch-v70-sync-uploader-share-fallback` → `stopwatch-v71-sync-hydrate`.
+
+**Audit:** `docs/sync-impl/audits/C-1-AUDIT.md` (14 affected files, 12 risks: 0 high / 4 med / 8 low).
+
+### Suggested Next Steps
+
+- **Manual physical-device verification** (the canonical proof — first real laptop-to-phone data flow): on iPhone, install the latest build via Capacitor, fresh-install (clear app data if it has anything), enable Cloud Sync, sign in. Hydrate overlay should appear with "Loading from cloud…", progress through each store, then dismiss revealing your data (the meds + history + presets + rest_log you pushed from the laptop via B-3). This is THE moment that proves laptop-to-phone sync works.
+- **B-4** — health-data arrival toast (F15). Will light up in E-1.
+- **D-1** (`feat/sync-stage-d-imported-bucket`) — handles the case where Device B has its OWN local data + cloud also has data. Currently routes to handoff with a dead-end status message; D-1 ships the proper "Imported (pre-sync)" bucket migration + UI.
+- **D-2** — doseLog reconcile + clock-skew clamp (engine-only).
+- **E-1** — steady-state merge loop (the actual "ongoing bidirectional sync" engine).
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy firestore.rules via Console" step. (Bit Kyle during B-3 manual e2e.)
+
+### Commits
+```
+<SHA>   feat(sync): Device B fresh hydrate orchestrator + boot overlay (C-1)
+<SHA>   docs(sync-impl): move C-1 to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

@@ -466,5 +466,73 @@ const RecoveryUI = (() => {
     };
   }
 
-  return { init, snapshotForSync };
+  // C-1: hydrate adapter — bypasses SyncState.canWrite (privileged write
+  // path; cloud is canonical during hydrate). Per the R1 scope decision
+  // documented in B-1's audit, RecoveryUI owns the rest_log state directly
+  // (no separate engine module), so its `_hydrateWriteRaw` lives here.
+  //
+  // Cloud stores one Firestore doc per `YYYY-MM-DD` key; the orchestrator
+  // (SyncEngine.hydrateFromCloud) converts the array of cloud docs into
+  // the local `{YYYY-MM-DD: {sleep, naps}}` map shape and passes it here.
+  // We strip the redundant `date` field that B-3's upload path stamped
+  // onto each inner record (the date is the doc key itself).
+  function _hydrateWriteRaw(restLogMap) {
+    if (!restLogMap || typeof restLogMap !== 'object' || Array.isArray(restLogMap)) {
+      restLogMap = {};
+    }
+    // Defensive: rebuild the on-disk shape from the supplied map. Drops
+    // entries whose value isn't an object (e.g. a corrupt cloud doc that
+    // somehow came through as null). The `date` field that B-3's upload
+    // shim added to each inner record (so per-record merge code in E-1
+    // can find it without re-deriving) is stripped here because the local
+    // map's key IS the date.
+    const out = {};
+    let written = 0;
+    let skipped = 0;
+    for (const key of Object.keys(restLogMap)) {
+      const entry = restLogMap[key];
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        skipped++;
+        continue;
+      }
+      // Shallow copy + drop `date` (it's redundant once the map key is the date).
+      const clean = Object.assign({}, entry);
+      delete clean.date;
+      // Also drop the Firestore doc `id` if it leaked through (the
+      // orchestrator's array→map conversion shouldn't include it, but be
+      // defensive — `id` is metadata, not a rest_log field).
+      delete clean.id;
+      out[key] = clean;
+      written++;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+    } catch (e) {
+      skipped += written;
+      written = 0;
+    }
+    if (skipped > 0) {
+      try { console.warn('[RecoveryUI] hydrate skipped ' + skipped + ' malformed/un-writable record(s)'); }
+      catch (e) {}
+    }
+    return { written, skipped };
+  }
+
+  function hydrateFromCloud(restLogMap) {
+    if (!restLogMap || typeof restLogMap !== 'object') {
+      return Promise.reject(new Error('hydrateFromCloud: restLogMap must be an object'));
+    }
+    const { written, skipped } = _hydrateWriteRaw(restLogMap);
+    return Promise.resolve({ ok: true, count: written, skipped });
+  }
+
+  // C-1: expose loadLog so SyncEngine.isLocalEmpty() can probe rest_log
+  // for the Stage D guard without reaching into DOM-bound surfaces. Pure
+  // localStorage read, no DOM touch — safe to expose alongside the
+  // snapshot adapter.
+  return {
+    init, snapshotForSync,
+    hydrateFromCloud, _hydrateWriteRaw,
+    loadLog,
+  };
 })();

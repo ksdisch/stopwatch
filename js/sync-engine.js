@@ -32,12 +32,38 @@ const SyncEngine = (() => {
   let _pushInFlight = false;
   let _currentPushPromise = null;
 
+  // C-1: re-entry guard for hydrateFromCloud. The boot-trigger
+  // (SyncAuth.onAuthChange) can fire twice during cold boot (once for
+  // the SDK rehydrate, once for the platform shim seed). The second call
+  // returns the in-flight promise — same pattern as _pushInFlight.
+  let _hydrateInFlight = false;
+  let _currentHydratePromise = null;
+
+  // C-1: tracks whether init() already wired the SyncAuth.onAuthChange
+  // subscription so re-calling init() doesn't register the handler twice.
+  let _authChangeUnsubscribe = null;
+
   // B-3: localStorage keys this module owns. tempo_sync_partial_upload_uid
   // records "this UID's cloud is mid-upload, not Stage D territory" so a
   // network-failure retry doesn't incorrectly route to the Stage D handoff.
   // tempo_sync_stage_d_handoff is the persistent flag D-1 will consume.
   const PARTIAL_UPLOAD_KEY = 'tempo_sync_partial_upload_uid';
   const STAGE_D_HANDOFF_KEY = 'tempo_sync_stage_d_handoff';
+
+  // C-1: per-store + per-`all` hydrate markers. Audit Headline #3 — five
+  // separate keys (rather than a single JSON-encoded value) for cheaper
+  // primitives, no parse cost, and easier debugging via dev tools. Each
+  // per-store marker is written ONLY after that store's hydrateFromCloud
+  // resolves; _all is written ONLY after every store completes AND the
+  // success branch is reached. Boot-trigger short-circuits on _all.
+  const HYDRATE_MARKER_PREFIX = 'tempo_sync_hydrated_';
+  const HYDRATE_MARKER_ALL    = HYDRATE_MARKER_PREFIX + 'all';
+  // C-1: strict pull order is rest_log → meds → presets → history. Matches
+  // B-3's upload order. History last because it's IDB-backed (async) and
+  // can be large — keeping it at the tail lets the synchronous-store
+  // hydrates (rest_log/meds/presets) finish quickly and progress events
+  // fire crisply for UX.
+  const HYDRATE_STORE_ORDER = ['rest_log', 'meds', 'presets', 'history'];
 
   // ── Store registry ────────────────────────────────────────────────────
   //
@@ -73,9 +99,47 @@ const SyncEngine = (() => {
       _initialized = true;               // flag-off branch still marks initialized
       return;                            // so a double-init from app.js is cheap
     }
-    // Flag-on branch is still a no-op in B-1: no auth, no snapshot, no
-    // listener registration. B-2 wires the auth handshake here.
     _initialized = true;
+
+    // C-1: subscribe to auth-change so a first sign-in (cold boot SDK
+    // rehydrate, or user clicking "Sign in" later) auto-triggers hydrate
+    // when the four-condition gate is satisfied. Defensive `typeof` guard
+    // keeps the engine usable in test contexts that don't load sync-auth.js.
+    if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.onAuthChange === 'function') {
+      // Capture the unsubscribe so a future teardown helper can clean up.
+      // _authChangeUnsubscribe stays null in flag-off / test-mode branches.
+      try {
+        _authChangeUnsubscribe = SyncAuth.onAuthChange((user) => {
+          _maybeAutoHydrate(user);
+        });
+      } catch (e) {
+        // Surface to the orchestrator's error path on retry; do not block
+        // boot. The user can still trigger hydrate manually (E-1 follow-up).
+        try { console.warn('[SyncEngine] auth-change subscription failed:', e); }
+        catch (_e) {}
+      }
+    }
+  }
+
+  // C-1: four-condition gate per audit Headline #4. Called from the
+  // onAuthChange subscription registered in init(). Defensive try/catch so
+  // a thrown error inside hydrateFromCloud never bubbles up through the
+  // auth event chain — boot stays alive regardless.
+  function _maybeAutoHydrate(user) {
+    try {
+      if (!user) return;                                                  // signed out — nothing to do
+      if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+      if (isAllHydrated()) return;                                        // already done — short-circuit
+      if (getStageDHandoff()) return;                                     // D-1 owns reconciliation
+      // Fire-and-forget; hydrateFromCloud handles its own state + UI events.
+      hydrateFromCloud().catch((err) => {
+        try { console.warn('[SyncEngine] auto-hydrate failed:', err); }
+        catch (e) {}
+      });
+    } catch (err) {
+      try { console.warn('[SyncEngine] _maybeAutoHydrate threw:', err); }
+      catch (e) {}
+    }
   }
 
   function enable() {
@@ -448,6 +512,331 @@ const SyncEngine = (() => {
     return promise;
   }
 
+  // ── C-1: Cloud hydrate (hydrateFromCloud) ────────────────────────────
+  //
+  // Public flow:
+  //   1. Re-entry guard: second concurrent call returns first call's promise.
+  //   2. Preconditions: flag on, signed in, gate not already hydrating.
+  //   3. Short-circuit: if tempo_sync_hydrated_all === '1', no-op.
+  //   4. Stage D non-empty-local guard. If ANY synced store is non-empty
+  //      locally, set tempo_sync_stage_d_handoff = '1', emit
+  //      hydrate-complete { kind: 'stage-d-handoff' }, return WITHOUT
+  //      pulling, WITHOUT flipping SyncState.
+  //   5. F13 flip: SyncState.set('hydrating'). Blocks every gated engine
+  //      write path (saveAll/addSession/save/saveLog) while we replace.
+  //   6. Per-store pull loop in strict order: rest_log → meds → presets →
+  //      history. Skips stores whose per-store marker is already set
+  //      (resume after partial failure). Each store:
+  //        a. Pull collection from Firestore.
+  //        b. Call engine.hydrateFromCloud(records) — the engine writes
+  //           via its private _hydrateWriteRaw helper, which bypasses
+  //           SyncState.canWrite().
+  //        c. Set per-store marker on success.
+  //   7. All stores complete: set _all marker, flip SyncState to 'ready',
+  //      emit hydrate-complete { ok: true, hydrated }.
+  //   8. Any error: flip SyncState to 'error', emit hydrate-complete
+  //      { ok: false, kind, error }, leave per-store markers for completed
+  //      stores in place so resume picks up where we left off.
+
+  function _getStorageSafe() {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage;
+  }
+
+  function _getHydratedMarker(storeKey) {
+    const ls = _getStorageSafe();
+    if (!ls) return false;
+    try { return ls.getItem(HYDRATE_MARKER_PREFIX + storeKey) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function _setHydratedMarker(storeKey) {
+    const ls = _getStorageSafe();
+    if (!ls) return;
+    try { ls.setItem(HYDRATE_MARKER_PREFIX + storeKey, '1'); } catch (_) {}
+  }
+
+  function isAllHydrated() {
+    const ls = _getStorageSafe();
+    if (!ls) return false;
+    try { return ls.getItem(HYDRATE_MARKER_ALL) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function _setAllHydrated() {
+    const ls = _getStorageSafe();
+    if (!ls) return;
+    try { ls.setItem(HYDRATE_MARKER_ALL, '1'); } catch (_) {}
+  }
+
+  // C-1: dev-only / test helper — clears every per-store + _all marker so
+  // the next hydrate trigger re-pulls from scratch. NOT wired to any UI in
+  // C-1 (E-1 may add a "Refresh from cloud" button). The audit's manual e2e
+  // smoke (step 13) instructs users to clear specific keys via dev tools;
+  // this exists for tests that need a clean baseline between cases.
+  function clearHydrationMarkers() {
+    const ls = _getStorageSafe();
+    if (!ls) return;
+    for (const storeKey of HYDRATE_STORE_ORDER) {
+      try { ls.removeItem(HYDRATE_MARKER_PREFIX + storeKey); } catch (_) {}
+    }
+    try { ls.removeItem(HYDRATE_MARKER_ALL); } catch (_) {}
+  }
+
+  // C-1: Stage D non-empty-local guard. Probes every synced store for
+  // local data. Returns { isEmpty, counts }. Audit decision: presets'
+  // default-seeded entries are EXCLUDED from the emptiness check (a fresh
+  // first-launch device always has default presets — counting them would
+  // route every first-launch user to Stage D handoff and prevent hydrate
+  // from ever firing). The audit's strict-empty stance covers user data:
+  // meds, history, rest_log are the load-bearing stores.
+  async function _isLocalEmpty() {
+    const counts = { rest_log: 0, meds: 0, presets: 0, history: 0 };
+    try {
+      if (typeof MedsManager !== 'undefined' && typeof MedsManager.count === 'function') {
+        counts.meds = MedsManager.count();
+      }
+    } catch (_) {}
+    try {
+      if (typeof History !== 'undefined' && typeof History.getSessions === 'function') {
+        const sessions = await History.getSessions();
+        counts.history = Array.isArray(sessions) ? sessions.length : 0;
+      }
+    } catch (_) {}
+    try {
+      if (typeof RecoveryUI !== 'undefined' && typeof RecoveryUI.loadLog === 'function') {
+        const log = RecoveryUI.loadLog() || {};
+        counts.rest_log = Object.keys(log).length;
+      }
+    } catch (_) {}
+    // Presets emptiness deliberately ignores default seeds — see the
+    // function header. Future polish PR can route Stage D for presets if
+    // we mint a more robust "user touched a preset" signal.
+    counts.presets = 0;
+
+    const totalUserData = counts.meds + counts.history + counts.rest_log;
+    return { isEmpty: totalUserData === 0, counts };
+  }
+
+  // C-1: pull one store's collection from Firestore. Returns an array of
+  // record data (the doc `data` field), augmented with `id` for stores
+  // where the id is the doc key (rest_log uses the date as the doc id).
+  async function _pullCloudStore(uid, storeKey) {
+    const result = await SyncFirestore.getCollection(`users/${uid}/${storeKey}`);
+    const docs = (result && Array.isArray(result.docs)) ? result.docs : [];
+    if (storeKey === 'rest_log') {
+      // Convert array-of-docs → date-keyed map for RecoveryUI.hydrateFromCloud.
+      // B-3's upload stamps `date: <doc-id>` onto each inner record so E-1's
+      // future merge code can find it without re-deriving; the engine's
+      // hydrate path strips that redundant field before persisting.
+      const out = {};
+      for (const d of docs) {
+        if (!d || typeof d.id !== 'string' || !d.id) continue;
+        out[d.id] = d.data || {};
+      }
+      return out;
+    }
+    // Array-of-records for meds / history / presets. Inner record's `id`
+    // field is the doc key — preserved from the upload path.
+    const records = [];
+    for (const d of docs) {
+      if (!d) continue;
+      const rec = (d.data && typeof d.data === 'object') ? d.data : null;
+      if (!rec) continue;
+      // Be defensive — if a record somehow lacks an inner id (shouldn't
+      // happen post-B-3 upload, but cloud is canonical and we don't trust
+      // it), use the doc key as the fallback.
+      if (typeof rec.id !== 'string' || !rec.id) {
+        if (typeof d.id === 'string' && d.id) rec.id = d.id;
+      }
+      records.push(rec);
+    }
+    return records;
+  }
+
+  async function hydrateFromCloud() {
+    // Re-entry guard — concurrent call returns the in-flight promise.
+    if (_hydrateInFlight && _currentHydratePromise) {
+      return _currentHydratePromise;
+    }
+
+    _hydrateInFlight = true;
+    _currentHydratePromise = (async () => {
+      try {
+        // ── Preconditions ───────────────────────────────────────────
+        if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) {
+          const result = { ok: false, kind: 'sync-not-enabled' };
+          emit('hydrate-complete', result);
+          return result;
+        }
+        if (typeof SyncAuth === 'undefined' || typeof SyncAuth.getCurrentUser !== 'function') {
+          const result = { ok: false, kind: 'sign-in-required' };
+          emit('hydrate-complete', result);
+          return result;
+        }
+        const user = SyncAuth.getCurrentUser();
+        if (!user || !user.uid) {
+          const result = { ok: false, kind: 'sign-in-required' };
+          emit('hydrate-complete', result);
+          return result;
+        }
+        // SyncState gate — if already hydrating from another code path
+        // (e.g. push raced hydrate), refuse with already-in-flight. The
+        // _hydrateInFlight latch above handles the "two hydrate calls"
+        // case; this handles the "push owns the gate" case.
+        if (typeof SyncState !== 'undefined') {
+          const state = SyncState.get();
+          if (state === 'hydrating') {
+            const result = { ok: false, kind: 'already-in-flight' };
+            emit('hydrate-complete', result);
+            return result;
+          }
+          if (state === 'error') {
+            // The UI maps this to "Retry sync" — caller decides to
+            // SyncState.set('ready') then re-invoke.
+            const result = { ok: false, kind: 'sync-error-state' };
+            emit('hydrate-complete', result);
+            return result;
+          }
+        }
+
+        // ── Short-circuit: already fully hydrated ───────────────────
+        if (isAllHydrated()) {
+          const result = { ok: true, kind: 'already-hydrated' };
+          emit('hydrate-complete', result);
+          return result;
+        }
+
+        // ── Stage D non-empty-local guard ───────────────────────────
+        // Runs BEFORE any cloud read AND BEFORE SyncState flip — if local
+        // has any user data, we route to handoff without touching cloud
+        // or the write gate.
+        emit('hydrate-progress', { stage: 'checking-local' });
+        let localProbe;
+        try {
+          localProbe = await _isLocalEmpty();
+        } catch (err) {
+          const result = { ok: false, kind: 'unknown', error: err };
+          emit('hydrate-complete', result);
+          return result;
+        }
+        if (!localProbe.isEmpty) {
+          setStageDHandoff();
+          const result = {
+            ok: false,
+            kind: 'stage-d-handoff',
+            counts: localProbe.counts,
+          };
+          emit('hydrate-complete', result);
+          return result;
+        }
+
+        // ── F13 flip: enter 'hydrating' before first per-store call ──
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('hydrating'); } catch (_) {}
+        }
+
+        // ── Per-store pull loop ─────────────────────────────────────
+        const hydrated = { rest_log: 0, meds: 0, presets: 0, history: 0 };
+        for (const storeKey of HYDRATE_STORE_ORDER) {
+          // Resume support: skip stores already done on a prior partial run.
+          if (_getHydratedMarker(storeKey)) continue;
+
+          emit('hydrate-progress', { stage: 'pulling', store: storeKey });
+
+          let payload;
+          try {
+            payload = await _pullCloudStore(user.uid, storeKey);
+          } catch (err) {
+            // Map normalized SyncFirestore error kinds onto the hydrate
+            // result kind. permission-denied bubbles directly; everything
+            // else folds into 'network' / 'unknown'.
+            const kind = (err && err.kind === 'permission-denied') ? 'permission-denied'
+                       : (err && err.kind === 'network')           ? 'network'
+                       : (err && err.kind === 'not-found')         ? 'unknown'
+                       : 'unknown';
+            if (typeof SyncState !== 'undefined') {
+              try { SyncState.set('error'); } catch (_) {}
+            }
+            const result = { ok: false, kind, store: storeKey, error: err, hydrated };
+            emit('hydrate-complete', result);
+            return result;
+          }
+
+          // Dispatch to per-engine hydrate. Each engine returns { ok, count, skipped }.
+          let storeResult;
+          try {
+            if (storeKey === 'rest_log') {
+              if (typeof RecoveryUI === 'undefined' || typeof RecoveryUI.hydrateFromCloud !== 'function') {
+                throw new Error('RecoveryUI.hydrateFromCloud unavailable');
+              }
+              storeResult = await RecoveryUI.hydrateFromCloud(payload);
+            } else if (storeKey === 'meds') {
+              if (typeof MedsManager === 'undefined' || typeof MedsManager.hydrateFromCloud !== 'function') {
+                throw new Error('MedsManager.hydrateFromCloud unavailable');
+              }
+              storeResult = await MedsManager.hydrateFromCloud(payload);
+            } else if (storeKey === 'presets') {
+              if (typeof Presets === 'undefined' || typeof Presets.hydrateFromCloud !== 'function') {
+                throw new Error('Presets.hydrateFromCloud unavailable');
+              }
+              storeResult = await Presets.hydrateFromCloud(payload);
+            } else if (storeKey === 'history') {
+              if (typeof History === 'undefined' || typeof History.hydrateFromCloud !== 'function') {
+                throw new Error('History.hydrateFromCloud unavailable');
+              }
+              storeResult = await History.hydrateFromCloud(payload);
+            }
+          } catch (err) {
+            if (typeof SyncState !== 'undefined') {
+              try { SyncState.set('error'); } catch (_) {}
+            }
+            const result = { ok: false, kind: 'unknown', store: storeKey, error: err, hydrated };
+            emit('hydrate-complete', result);
+            return result;
+          }
+
+          hydrated[storeKey] = (storeResult && typeof storeResult.count === 'number')
+            ? storeResult.count : 0;
+
+          // Per-store marker set AFTER successful write — partial-failure
+          // resume relies on this ordering. A mid-flight kill leaves the
+          // marker absent → next boot re-pulls that store.
+          _setHydratedMarker(storeKey);
+        }
+
+        // ── Success ─────────────────────────────────────────────────
+        _setAllHydrated();
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('ready'); } catch (_) {}
+        }
+        const success = { ok: true, hydrated, kind: 'done' };
+        emit('hydrate-complete', success);
+        return success;
+      } catch (err) {
+        // Defensive catch — anything unexpected (throw inside a per-engine
+        // hydrate, missing module, etc.) lands here. Flip to 'error' so
+        // local writes stay paused until the UI surfaces a retry.
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('error'); } catch (_) {}
+        }
+        const result = { ok: false, kind: 'unknown', error: err };
+        emit('hydrate-complete', result);
+        return result;
+      }
+    })();
+
+    // Always clear the in-flight latch when the promise settles —
+    // regardless of success / failure / throw. Without this, a failed
+    // hydrate would permanently wedge the re-entry guard.
+    const promise = _currentHydratePromise;
+    promise.finally(() => {
+      _hydrateInFlight = false;
+      _currentHydratePromise = null;
+    });
+    return promise;
+  }
+
   return {
     init, enable, disable, getState, getSnapshot,
     on, off, emit,
@@ -457,5 +846,9 @@ const SyncEngine = (() => {
     setStageDHandoff,
     setPartialUploadMarker,
     clearPartialUploadMarker,
+    // C-1: cloud hydrate + marker helpers.
+    hydrateFromCloud,
+    isAllHydrated,
+    clearHydrationMarkers,
   };
 })();

@@ -391,5 +391,79 @@ const History = (() => {
     };
   }
 
-  return { init, getSessions, addSession, updateNote, deleteSession, clearAll, addTag, removeTag, getAllTags, getDeviceId, snapshotForSync };
+  // C-1: privileged hydrate write path for History. Async — IDB writes are
+  // promise-shaped. The orchestrator has already flipped SyncState to
+  // 'hydrating' and Stage D guard has confirmed local IDB is empty. This
+  // path bypasses the `canWrite()` gate addSession consults: we write
+  // directly to the `sessions` store in a single readwrite transaction
+  // that clears + bulk-puts atomically (per IDB spec, the transaction
+  // either commits entirely or rolls back). On rollback, the next-boot
+  // resume sees the absent per-store marker and re-pulls history.
+  //
+  // F19a: records are written verbatim — no `Schema.stamp()` call, so a
+  // future-schema cloud record (schemaVersion=2) lands on disk with its
+  // original version intact. The standard read paths (getSessions →
+  // updateNote / addTag / etc.) consult Schema.isFutureRecord and refuse
+  // writeback on those rows.
+  function _hydrateWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    return ready().then(() => new Promise((resolve, reject) => {
+      let written = 0;
+      let skipped = 0;
+      let tx;
+      try {
+        tx = db.transaction(STORE_NAME, 'readwrite');
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      const store = tx.objectStore(STORE_NAME);
+
+      // Clear the store first, then put each record. Both operations
+      // live in the same transaction so a mid-loop failure rolls back the
+      // whole replace cleanly.
+      const clearReq = store.clear();
+      clearReq.onerror = () => { /* defer to tx.onerror */ };
+      clearReq.onsuccess = () => {
+        for (const rec of records) {
+          if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+            skipped++;
+            continue;
+          }
+          try {
+            // Verbatim put — cloud record's id is the IDB keyPath and its
+            // schemaVersion (including future) is preserved on disk.
+            store.put(rec);
+            written++;
+          } catch (e) {
+            skipped++;
+          }
+        }
+      };
+
+      tx.oncomplete = () => {
+        if (skipped > 0) {
+          try { console.warn('[History] hydrate skipped ' + skipped + ' malformed record(s)'); }
+          catch (e) {}
+        }
+        resolve({ written, skipped });
+      };
+      tx.onerror = (e) => reject(tx.error || (e && e.target && e.target.error) || new Error('IDB transaction error'));
+      tx.onabort = (e) => reject(tx.error || new Error('IDB transaction aborted'));
+    }));
+  }
+
+  async function hydrateFromCloud(records) {
+    if (!Array.isArray(records)) {
+      throw new Error('hydrateFromCloud: records must be an array');
+    }
+    const { written, skipped } = await _hydrateWriteRaw(records);
+    return { ok: true, count: written, skipped };
+  }
+
+  return {
+    init, getSessions, addSession, updateNote, deleteSession, clearAll,
+    addTag, removeTag, getAllTags, getDeviceId, snapshotForSync,
+    hydrateFromCloud, _hydrateWriteRaw,
+  };
 })();

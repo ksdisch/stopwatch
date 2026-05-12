@@ -28,6 +28,32 @@ try {
 // ── Initialize modules ──
 SyncEngine.init();
 SyncAuth.init();
+
+// C-1: boot-trigger backstop for hydrate-from-cloud.
+//
+// SyncEngine.init() already subscribes to SyncAuth.onAuthChange internally
+// (audit Headline #4). This second subscription is a belt-and-suspenders
+// hook for two scenarios:
+//   1. If a future PR ever decouples the engine's auth subscription from
+//      init() (e.g. tears it down on disable), the app-level subscription
+//      keeps the boot trigger alive.
+//   2. The four-condition gate is re-asserted here (signed in + flag on +
+//      not hydrated + not Stage D), so this layer guards the engine entry
+//      point against a stale auth event firing post-Stage-D-flag-set.
+// hydrateFromCloud()'s _hydrateInFlight re-entry guard makes the double
+// subscription harmless — concurrent calls share one promise.
+if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.onAuthChange === 'function') {
+  SyncAuth.onAuthChange((user) => {
+    if (!user) return;
+    if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+    if (typeof SyncEngine === 'undefined' || typeof SyncEngine.hydrateFromCloud !== 'function') return;
+    if (typeof SyncEngine.isAllHydrated === 'function' && SyncEngine.isAllHydrated()) return;
+    if (typeof SyncEngine.getStageDHandoff === 'function' && SyncEngine.getStageDHandoff()) return;
+    SyncEngine.hydrateFromCloud().catch((err) => {
+      try { console.warn('[app] initial hydrate failed:', err); } catch (e) {}
+    });
+  });
+}
 Themes.init();
 Presets.init();
 OffsetInput.init();
