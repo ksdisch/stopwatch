@@ -456,6 +456,138 @@ C-1 landed Device B fresh-hydrate but left Stage D (Device B with pre-existing l
 
 ---
 
+## Session 9 — 2026-05-12
+
+### What We Built
+
+**Stage D doseLog reconcile + clock-skew clamp (D-2 — final Stage D PR)**
+
+D-1 landed the imported-bucket reconcile pipeline but left per-record `doseLog`
+arrays untouched on collision. D-2 ships the per-med reconcile helper that
+collapses cross-device near-duplicates (F1) and clamps clock-skewed entries
+(F16), plus wires A-1's dead-code `MedsManager.onMergeComplete(medId)` /
+`recomputeLastTakenAt(med)` helpers live for the first time. Engine-only —
+no UI, no DOM, no new persistence keys. Phase 4 ui-wirer skipped per
+audit-driven autonomous transition (zero UI files in the affected-files
+table). D-1's `reconcileImportedBucket()` is NOT retrofitted to call the new
+helper in D-2 (Decision #2 — E-1 owns both wire-up sites); only a no-op
+comment seam lands inside D-1's meds-merge path.
+
+**Engine layer (Phase 2):**
+- `js/meds.js` — new module-level `const RECONCILE_WINDOW_MS = 15 * 60 * 1000`
+  exposed on `MedsManager.RECONCILE_WINDOW_MS` for tests (Decision #5 ties
+  F1 + F16 to one shared constant). New `MedsManager.reconcileDoseLog(med,
+  incomingEntries)` pure helper returning `{ entries, dropped, collapsed,
+  warnings }`. Algorithm in order: F19a refuse-writeback gate (returns
+  unchanged with `'skipped: future-schema record'` warning if
+  `Schema.isFutureRecord(med)`) → union `med.doseLog ∪ incomingEntries` →
+  capture `localNow = Date.now()` ONCE → F16 clamp non-local entries outside
+  `localNow ± RECONCILE_WINDOW_MS` (inclusive boundary per Decision #4) →
+  dedup by `(deviceId, takenAt)` exact-match → sort ascending by `takenAt` →
+  F1 walk: for each adjacent pair within window, if same `deviceId` PRESERVE
+  both (Decision #1 — intentional same-device re-doses), else keep `a` +
+  drop `b` + increment `collapsed`, continue from `a` (handles 3-entry
+  cross-device clusters) → F14 cap enforcement (drop oldest until length ≤
+  1000). Per-entry try/catch wraps clamp/dedup logic per Decision #3 — a
+  single bad entry pushes a warning but never aborts the merge cycle.
+  No mutation of input `med.doseLog`; caller assigns `result.entries` and
+  persists.
+- `js/meds.js` — wires A-1's dead-code `MedsManager.onMergeComplete(medId)`
+  live: looks up the med, calls `recomputeLastTakenAt(med)` to re-derive
+  `lastTakenAt` from the doseLog tail per F4 (or `null` for empty doseLog),
+  persists via `saveState`, emits an `onMergeComplete` event on
+  `SyncEngine.emit` so E-1 + B-4's future toast subscriber can wire the F15
+  ≥2-entry remote-arrival surface.
+- `js/sync-engine.js` — comment-only seam inside `reconcileImportedBucket()`
+  near the `_mergeMeds` call site documenting where E-1 will plug in the
+  `MedsManager.reconcileDoseLog` + `MedsManager.onMergeComplete` calls per
+  Decision #2. No behavior change.
+
+**Six decisions resolved up-front** (Kyle accepted all defaults during D-2
+brief draft):
+1. Same-`deviceId` ±15min duplicates → PRESERVE (intentional re-doses).
+2. Call-sites → D-2 ships helper only; no retrofit of D-1's reconcile flow.
+3. Per-entry error handling → skip failing entry, push warning, continue.
+4. ±15min window boundary → INCLUSIVE (`<=`, not `<`).
+5. F1 + F16 → one shared `RECONCILE_WINDOW_MS` constant.
+6. Warning log → console-only, batched per merge cycle (no toast).
+
+**Tests (Phase 3):**
+- 15 new cases under `describe('reconcileDoseLog')` in `tests/meds.test.js`
+  (14 audit-mandated + 1 `RECONCILE_WINDOW_MS` sanity assertion the dispatch
+  brief explicitly requested): exact-match dedup; F1 cross-device collapse;
+  F1 same-device preserve; F16 far-future drop; F16 far-past drop; F16
+  does-NOT clamp same-device; F1+F16 inclusive boundary; `recomputeLastTakenAt`
+  re-derives correctly; empty-incoming no-op; idempotent (reconcile twice =
+  same result, critical mitigation for Risk #1); F14 cap enforcement (1500
+  → 1000, oldest dropped); `onMergeComplete(medId)` event fires once
+  per-med; three-cluster cross-device walk rule; F19a future-schema skip
+  case.
+- Full suite: **396/396 pass** via kapture against real Chrome (381 baseline
+  + 15 new D-2 cases). Run verified in a real browser per the no-Node-runner
+  convention.
+
+**Tooling observation worth flagging for E-1:** The engine-tester hit
+service-worker cache poisoning on `http://localhost:8765` during the test
+verification run — the SW registered by `js/app.js` had cached D-1's
+`tests/meds.test.js` and `js/meds.js`, masking the new D-2 test cases until
+the tester switched to `http://127.0.0.1:8766`. Worth folding into the
+`tests/index.html` harness refactor queued for E-1: either honor a
+`?nosw=1` query param that skips SW registration, or add a `tests/` path
+exemption in the SW fetch handler. (Independent of the inherited
+`History`-coupling harness gap from D-1.)
+
+**`sw.js` cache bump:** `stopwatch-v72-d1-reconcile` →
+`stopwatch-v73-d2-doseLog-reconcile`. No new `ASSETS` entries (D-2 modifies
+existing cached files only).
+
+**Audit:** `docs/sync-impl/audits/D-2-AUDIT.md`. **Per-PR brief:**
+`docs/sync-impl/prompts/D-2-PROMPT.md` (mirrors D-1's commit `f2f4639`
+two-file docs commit).
+
+**Stage D is now complete.** After D-2 merges, the remaining sync work is
+Stage E: E-1 (steady-state merge loop — largest single PR of the rollout;
+wires D-2's `reconcileDoseLog` into both call sites + retrofits D-1's
+reconcile path; owns the harness refactor) → E-2 (offline buffer with
+`originalWallClock` preservation) → E-3 (real-time `onSnapshot` listeners
++ refuse-writeback toast). After Stage E ships, cloud-sync is feature-
+complete; F19c manifest registry stays deferred.
+
+### Suggested Next Steps
+
+- **E-1** (`feat/sync-stage-e-merge-loop`) — steady-state push/pull merge
+  loop. Wires D-2's `reconcileDoseLog` into both the D-1 `reconcileImportedBucket`
+  meds-merge path AND the new steady-state merge path. Decides F3 (BFRB
+  stream consolidation) and F8 (distraction tombstones vs sessionId-keyed).
+  Owns the `tests/index.html` harness refactor (History-coupling gap from
+  D-1 + SW cache-poisoning gap surfaced in D-2).
+- **E-2** (`feat/sync-stage-e-offline-buffer`) — pending-op queue in
+  IndexedDB with `originalWallClock` preservation + op compaction + cap.
+- **E-3** (`feat/sync-stage-e-listeners`) — real-time `onSnapshot`
+  listeners + `Toast.downlevelWarning` for refuse-writeback events.
+- **Manual smoke (optional pre-E-1):** wire up a temporary scratch fixture
+  with a med whose doseLog has mixed local+remote entries spanning F1/F16
+  windows; call `MedsManager.reconcileDoseLog` directly from DevTools;
+  verify output by hand before discarding.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+- Amend `.claude/agents/engine-implementer.md` to make the brief-driven
+  scope-expansion mechanism explicit (still TODO since S0-1).
+- Fold the SW cache-poisoning workaround into E-1's harness refactor —
+  either `?nosw=1` query param or `tests/` path exemption in the SW fetch
+  handler.
+
+### Commits
+```
+<SHA>   docs(sync-impl): D-2 audit + per-PR brief
+<SHA>   feat(sync): Stage D doseLog reconcile + clock-skew clamp (D-2)
+<SHA>   docs(sync-impl): move D-2 to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

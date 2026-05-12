@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v72-d1-reconcile';
+const CACHE_NAME = 'stopwatch-v73-d2-doseLog-reconcile';
 const ASSETS = [
   './',
   './index.html',

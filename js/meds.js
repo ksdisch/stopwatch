@@ -16,6 +16,14 @@
 // values like a future 'three-times-daily' roundtrip cleanly on a V2 client).
 const MED_FREQUENCIES = ['once-daily', 'twice-daily', 'as-needed'];
 
+// D-2: F1 + F16 shared window. Same constant powers both the cross-device
+// ±15-min duplicate collapse (F1) and the cross-device clock-skew clamp
+// (F16) — decoupling them would create two knobs with overlapping
+// semantics. Inclusive at the boundary per Decision #4 (user mental model
+// is "doses within 15 minutes" — they don't distinguish 14:59 from 15:00).
+// Exposed on MedsManager.RECONCILE_WINDOW_MS for tests.
+const RECONCILE_WINDOW_MS = 15 * 60 * 1000;
+
 // F19b: known top-level keys on a med record. Anything NOT in this set
 // gets collected into the per-med `_forwardBag` on load and merged back
 // into the wire format on save, so unknown fields minted on a newer
@@ -472,12 +480,262 @@ const MedsManager = (() => {
   // (steady-state) or full hydrate (Stage C). Re-derives lastTakenAt from
   // the merged log so cross-device convergence stays consistent. No-op if
   // the med isn't loaded — saveAll on the next user action will re-emit a
-  // clean state. Doesn't trigger a save itself; the caller (SyncEngine)
-  // batches saves around the full merge cycle.
+  // clean state.
+  //
+  // D-2: wired live. Looks up the med, calls recomputeLastTakenAt, persists
+  // via saveAll (single-record persist via per-med localStorage write), and
+  // emits an 'onMergeComplete' event on SyncEngine's bus so E-1's
+  // steady-state merge loop + B-4's F15 ≥2-entry remote-arrival toast can
+  // subscribe. F13 write gate: the caller (D-1 reconcile or E-1 merge loop)
+  // is responsible for holding SyncState at 'hydrating' across the merge
+  // cycle. We do not toggle SyncState here. The per-record save below is
+  // gated by the standard saveAll → SyncState.canWrite() path; during a
+  // reconcile this is a no-op (gate closed) and the caller's
+  // _reconcileWriteRaw has already persisted the merged doseLog. During a
+  // post-merge replay outside the gate, the user-action save wins.
   function onMergeComplete(medId) {
     const m = get(medId);
     if (!m) return;
     m.recomputeLastTakenAt();
+    // Persist the recomputed lastTakenAt + (caller-assigned) doseLog. The
+    // F13 write gate decides whether this actually touches disk; either
+    // way the in-memory state is authoritative for any subsequent emit
+    // subscriber that reads from MedsManager.get(medId).
+    saveAll();
+    // Emit via the existing SyncEngine event bus. Guarded by typeof so
+    // engine-only unit tests that don't load sync-engine.js still pass.
+    if (typeof SyncEngine !== 'undefined'
+        && SyncEngine
+        && typeof SyncEngine.emit === 'function') {
+      try { SyncEngine.emit('onMergeComplete', { medId: medId }); }
+      catch (e) { /* listener errors must not break the merge cycle */ }
+    }
+  }
+
+  // D-2: per-med doseLog reconcile + cross-device clock-skew clamp.
+  //
+  // Pure helper. Returns a NEW array; does NOT mutate `med.doseLog`.
+  // Caller assigns the result onto `med.doseLog` and persists.
+  //
+  // Algorithm (in order, per audit row for js/meds.js):
+  //   0. F19a refuse-writeback gate. If Schema.isFutureRecord(med) is true,
+  //      return the original med.doseLog unchanged. Do NOT throw — a
+  //      downlevel client must not mutate a future-schema record's
+  //      doseLog because the newer client may have attached semantics we
+  //      don't understand.
+  //   1. Union med.doseLog ∪ incomingEntries. Capture localNow = Date.now()
+  //      ONCE at the top (not re-called inside the loop).
+  //   2. F16 clamp: for each entry where entry.deviceId !== localDeviceId,
+  //      drop if |entry.takenAt - localNow| > RECONCILE_WINDOW_MS. Push a
+  //      structured warning; increment `dropped`. Same-device entries are
+  //      NEVER clamped — the loadState clock-skew guard is the same-device
+  //      analog at load time. Boundary is INCLUSIVE per Decision #4.
+  //   3. Exact-match dedup by (deviceId, takenAt). Keep first occurrence;
+  //      do NOT increment `collapsed` (this is noise, not a reconcile
+  //      decision — exact duplicates are most likely a re-push of the same
+  //      record from a transient retry).
+  //   4. Sort ascending by takenAt.
+  //   5. F1 walk: for each adjacent pair (a, b) where
+  //      `b.takenAt - a.takenAt <= RECONCILE_WINDOW_MS`:
+  //      - If a.deviceId === b.deviceId: PRESERVE both (Decision #1 —
+  //        same-device duplicates are intentional re-doses).
+  //      - Else: keep `a` + drop `b` + increment `collapsed`. Continue
+  //        from `a` (do NOT advance past the kept entry) so a 3-entry
+  //        cross-device cluster within 15min collapses correctly.
+  //   6. F14 cap: if entries.length > 1000, drop OLDEST until length===1000
+  //      (preserve the most recent dose history — the F14 contract).
+  //
+  // Per-entry try/catch wraps the clamp + dedup loops so a single bad
+  // entry never aborts the merge cycle (Decision #3). The caller batches
+  // result.warnings into a single console.warn after each merge cycle
+  // (Decision #6 — console-only, no toast).
+  //
+  // F13 write gate: this helper is pure; it never writes. The caller
+  // holds the gate. F10 record envelope (deviceId / updatedAt /
+  // schemaVersion) is NOT touched here — that's the saveState path's job.
+  function reconcileDoseLog(med, incomingEntries) {
+    // F19a refuse-writeback. The med may be either a createMed() instance
+    // (with .isFromFutureSchema()) or a wire-format plain object (with
+    // .schemaVersion). Schema.isFutureRecord handles the wire-format case;
+    // also honor the instance accessor when present.
+    let isFuture = false;
+    try {
+      if (med && typeof med.isFromFutureSchema === 'function') {
+        isFuture = med.isFromFutureSchema();
+      } else if (typeof Schema !== 'undefined'
+                 && typeof Schema.isFutureRecord === 'function') {
+        isFuture = Schema.isFutureRecord(med);
+      }
+    } catch (e) { /* defensive — fall through to non-future path */ }
+    if (isFuture) {
+      // Surface the existing doseLog unchanged. Pull via the instance
+      // accessor when available (returns a defensive copy); otherwise
+      // copy the plain-object array.
+      let existing;
+      if (med && typeof med.getDoseLog === 'function') {
+        existing = med.getDoseLog();
+      } else if (med && Array.isArray(med.doseLog)) {
+        existing = med.doseLog.slice();
+      } else {
+        existing = [];
+      }
+      return {
+        entries: existing,
+        dropped: 0,
+        collapsed: 0,
+        warnings: ['skipped: future-schema record'],
+      };
+    }
+
+    // Capture localNow ONCE — avoids skew if Date.now() advances during a
+    // long-running merge cycle (the clamp window would shift, producing
+    // non-deterministic output).
+    const localNow = Date.now();
+    const localDeviceId = _medsGetDeviceId();
+
+    // Source the existing doseLog. Instance accessor (defensive copy) is
+    // preferred; fall back to direct array for plain-object meds.
+    let existing;
+    if (med && typeof med.getDoseLog === 'function') {
+      existing = med.getDoseLog();
+    } else if (med && Array.isArray(med.doseLog)) {
+      existing = med.doseLog.slice();
+    } else {
+      existing = [];
+    }
+    const incoming = Array.isArray(incomingEntries) ? incomingEntries : [];
+
+    const warnings = [];
+    let dropped = 0;
+    let collapsed = 0;
+
+    // Step 1: union. We allocate a fresh array — never alias internal state.
+    const union = existing.concat(incoming);
+
+    // Step 2: F16 clamp (cross-device only) + drop malformed entries.
+    // Per-entry try/catch (Decision #3): a single bad entry pushes a
+    // warning and is dropped; the merge cycle continues.
+    const clamped = [];
+    for (let i = 0; i < union.length; i++) {
+      const e = union[i];
+      try {
+        if (!e || typeof e.takenAt !== 'number' || !isFinite(e.takenAt)) {
+          // Malformed entry — drop with a warning but don't count as
+          // F16 dropped (that's the clock-skew counter specifically).
+          warnings.push(
+            '[MedsManager.reconcileDoseLog] dropped entry takenAt='
+            + (e && e.takenAt) + ' deviceId=' + (e && e.deviceId)
+            + ' reason=malformed localNow=' + localNow
+          );
+          continue;
+        }
+        const entryDeviceId = typeof e.deviceId === 'string' ? e.deviceId : null;
+        // F16 applies only to non-local entries. Same-device far-future /
+        // far-past values are handled by loadState's clock-skew guard at
+        // load time (60-second future cutoff).
+        if (entryDeviceId !== null && entryDeviceId !== localDeviceId) {
+          const delta = e.takenAt - localNow;
+          const absDelta = delta < 0 ? -delta : delta;
+          // Decision #4: inclusive boundary. > (strict greater) means an
+          // entry exactly at localNow ± RECONCILE_WINDOW_MS is kept.
+          if (absDelta > RECONCILE_WINDOW_MS) {
+            const reason = delta > 0 ? 'f16-future' : 'f16-past';
+            warnings.push(
+              '[MedsManager.reconcileDoseLog] dropped entry takenAt='
+              + e.takenAt + ' deviceId=' + entryDeviceId
+              + ' reason=' + reason + ' localNow=' + localNow
+            );
+            dropped++;
+            continue;
+          }
+        }
+        clamped.push(e);
+      } catch (err) {
+        warnings.push(
+          '[MedsManager.reconcileDoseLog] dropped entry takenAt='
+          + (e && e.takenAt) + ' deviceId=' + (e && e.deviceId)
+          + ' reason=exception localNow=' + localNow
+        );
+      }
+    }
+
+    // Step 3: exact-match dedup by (deviceId, takenAt). Keep first
+    // occurrence (preserve array order so a same-device duplicate from
+    // `existing` survives over an `incoming` re-push). Does NOT increment
+    // `collapsed` — exact-match dedup is noise, not a reconcile decision.
+    const seen = new Set();
+    const deduped = [];
+    for (let i = 0; i < clamped.length; i++) {
+      const e = clamped[i];
+      try {
+        const key = (e.deviceId == null ? '∅' : String(e.deviceId)) + '@' + e.takenAt;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(e);
+      } catch (err) {
+        // Per-entry safety net — see Decision #3.
+        warnings.push(
+          '[MedsManager.reconcileDoseLog] dropped entry takenAt='
+          + (e && e.takenAt) + ' deviceId=' + (e && e.deviceId)
+          + ' reason=dedup-exception localNow=' + localNow
+        );
+      }
+    }
+
+    // Step 4: sort ascending by takenAt. Stable sort isn't guaranteed in
+    // all engines, but exact-match dedup already removed (deviceId, takenAt)
+    // duplicates, so the ordering of equal-takenAt entries from different
+    // devices is fine either way (downstream F1 will preserve same-device,
+    // collapse cross-device — and an exact takenAt match cross-device is
+    // legitimately a reconcile decision, not noise).
+    deduped.sort((x, y) => x.takenAt - y.takenAt);
+
+    // Step 5: F1 walk. continue-from-`a` rule handles 3-entry clusters
+    // like A@t=0, B@t=5m, A@t=10m correctly: B collapses into A@t=0, then
+    // the walk stays on A@t=0 and checks A@t=10m — same-device → preserve.
+    const collapsedOut = [];
+    let i = 0;
+    while (i < deduped.length) {
+      const a = deduped[i];
+      collapsedOut.push(a);
+      let j = i + 1;
+      while (j < deduped.length) {
+        const b = deduped[j];
+        if (b.takenAt - a.takenAt > RECONCILE_WINDOW_MS) break;
+        // Decision #1: same-device entries within ±15min are intentional
+        // re-doses. Preserve both — and advance so future iterations can
+        // still collapse `b`'s cross-device neighbours.
+        if (a.deviceId === b.deviceId) {
+          // Don't collapse — break the inner walk; the outer loop picks
+          // up at `b` next iteration so we don't lose b's collapse window
+          // against subsequent entries.
+          break;
+        }
+        // Cross-device within window: keep `a`, drop `b`. Continue
+        // checking subsequent entries against `a` (continue-from-`a`).
+        collapsed++;
+        j++;
+      }
+      // If we broke out at a same-device boundary, resume the outer loop
+      // at `j` (so `b` is the next anchor). Otherwise `j` is past every
+      // entry collapsed into `a`, and we advance to `j` too.
+      i = j;
+    }
+
+    // Step 6: F14 cap. Drop OLDEST. The F14 contract preserves recent
+    // dose history; trimming from the tail would discard the user's
+    // most-recent doses, which is the opposite of intent.
+    let final = collapsedOut;
+    if (final.length > 1000) {
+      final = final.slice(final.length - 1000);
+    }
+
+    return {
+      entries: final,
+      dropped: dropped,
+      collapsed: collapsed,
+      warnings: warnings,
+    };
   }
 
   // B-1: read-only snapshot adapter for SyncEngine.getSnapshot().
@@ -635,10 +893,14 @@ const MedsManager = (() => {
   return {
     all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
     onMergeComplete,
+    reconcileDoseLog,
     snapshotForSync,
     hydrateFromCloud,
     _hydrateWriteRaw,
     _reconcileWriteRaw,
     MAX_MEDS,
+    // D-2: exposed for tests + E-1 call-site reuse. Module-scope const
+    // is the source of truth; this is a read-only mirror.
+    RECONCILE_WINDOW_MS: RECONCILE_WINDOW_MS,
   };
 })();
