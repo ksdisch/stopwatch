@@ -108,6 +108,8 @@ Additional localStorage keys used for UI/config preferences:
 - `tempo_sync_enabled` (B-1; cloud-sync feature flag, off by default — separate from `tempo_sync_state` which gates writes in `persistence.js`)
 - `tempo_sync_partial_upload_uid` (B-3; mid-upload marker — set on push failure, cleared on success. On retry, if marker matches current user's UID, resume upload instead of routing to Stage D handoff.)
 - `tempo_sync_stage_d_handoff` (B-3; flag set when B-3's read-cloud-first guard detects existing cloud data from another device. D-1 will consume this to trigger the imported-bucket migration UI.)
+- `tempo_sync_hydrated_rest_log` / `tempo_sync_hydrated_meds` / `tempo_sync_hydrated_presets` / `tempo_sync_hydrated_history` (C-1; per-store hydrate completion markers, set to `'1'` after each cloud-pull store finishes; missing markers trigger re-pull on next boot.)
+- `tempo_sync_hydrated_all` (C-1; set to `'1'` after all 4 per-store markers complete. Acts as the short-circuit gate — once set, `SyncEngine.hydrateFromCloud()` is a no-op.)
 
 ## What Has Been Built
 

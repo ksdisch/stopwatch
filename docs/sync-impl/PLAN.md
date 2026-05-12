@@ -30,6 +30,7 @@ Backend selection (Phase 6): Firebase / Firestore. Two accepted tradeoffs: (1) n
 | — | F19a-fix: preserve future-schema schemaVersion on meds.js getState | #59 |
 | — | Stage B: Google sign-in + settings drawer Cloud Sync section | #60 |
 | — | Stage B: first cloud upload + F13 gap fixes (recovery-ui + presets) + Push-to-cloud UI | #61 |
+| — | Stage C: Device B fresh hydrate + boot overlay + Stage D handoff guard | #62 |
 
 **What's pending (sync-strategy items + wire/infra):**
 

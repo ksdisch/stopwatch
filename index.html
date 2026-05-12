@@ -13,6 +13,34 @@
   <title>Tempo</title>
 </head>
 <body>
+  <!-- C-1: Boot-time hydrate overlay. Hidden by default. Shown when
+       SyncEngine.hydrateFromCloud() is in flight (first sign-in on a
+       fresh Device B). Auto-dismisses on hydrate-complete with ok=true.
+       Error state reveals Retry + Skip buttons so the user is never
+       wedged. Lives ABOVE #app so it stacks over every render path. -->
+  <div id="tempo-hydrate-overlay" class="tempo-hydrate-overlay"
+       role="status" aria-live="polite" hidden>
+    <div class="tempo-hydrate-overlay-content">
+      <div class="tempo-hydrate-overlay-spinner" aria-hidden="true"></div>
+      <h2 class="tempo-hydrate-overlay-title">Loading from cloud…</h2>
+      <p class="tempo-hydrate-overlay-detail">
+        Pulling your data from cloud sync. This usually takes 2–5 seconds.
+      </p>
+      <p id="tempo-hydrate-overlay-progress" class="tempo-hydrate-overlay-progress"></p>
+      <div id="tempo-hydrate-overlay-error" class="tempo-hydrate-overlay-error" hidden>
+        <p class="tempo-hydrate-overlay-error-message">
+          Couldn't load from cloud: <span id="tempo-hydrate-overlay-error-text"></span>
+        </p>
+        <button id="tempo-hydrate-overlay-retry" type="button"
+                class="tempo-hydrate-overlay-retry"
+                aria-label="Retry loading from cloud">Retry</button>
+        <button id="tempo-hydrate-overlay-dismiss" type="button"
+                class="tempo-hydrate-overlay-dismiss"
+                aria-label="Skip cloud load and continue offline">Skip for now</button>
+      </div>
+    </div>
+  </div>
+
   <div id="app">
     <!-- Tempo shell: top bar + sub-nav.
          Replaces the legacy mode selector. Wordmark on the left, History

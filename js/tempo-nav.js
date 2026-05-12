@@ -547,6 +547,169 @@ const TempoNav = (() => {
       });
     }
 
+    // ── C-1: hydrate-from-cloud overlay + status-row wiring ─────────
+    // The overlay lives at <body>/#tempo-hydrate-overlay (above #app)
+    // so it stacks over every renderer. It blocks UI behind a
+    // "Loading from cloud…" message during boot-time hydrate. On
+    // hydrate-progress, we update the overlay's progress line AND
+    // the settings-drawer status row (so the drawer reflects state
+    // when the user opens it post-hydrate). On hydrate-complete, the
+    // overlay auto-dismisses on success and reveals retry/skip on
+    // error. The overlay is queried at document scope; the drawer's
+    // statusEl is shared with the push pipeline.
+    const overlay = document.getElementById('tempo-hydrate-overlay');
+    const overlayProgress = document.getElementById('tempo-hydrate-overlay-progress');
+    const overlayError = document.getElementById('tempo-hydrate-overlay-error');
+    const overlayErrorText = document.getElementById('tempo-hydrate-overlay-error-text');
+    const overlayRetry = document.getElementById('tempo-hydrate-overlay-retry');
+    const overlayDismiss = document.getElementById('tempo-hydrate-overlay-dismiss');
+
+    // Pretty labels for the per-store progress events. Cloud payload
+    // store keys are wire-format (rest_log, meds, presets, history);
+    // the user-facing label is friendlier ("rest log", "medications").
+    const HYDRATE_STORE_LABELS = {
+      'rest_log': 'rest log',
+      'meds': 'medications',
+      'presets': 'presets',
+      'history': 'history',
+    };
+
+    function showHydrateError(message) {
+      if (!overlay) return;
+      overlay.hidden = false;
+      if (overlayProgress) overlayProgress.textContent = '';
+      if (overlayError) overlayError.hidden = false;
+      if (overlayErrorText) overlayErrorText.textContent = message || 'unknown error';
+    }
+
+    function hideHydrateOverlay() {
+      if (!overlay) return;
+      overlay.hidden = true;
+      if (overlayError) overlayError.hidden = true;
+      if (overlayProgress) overlayProgress.textContent = '';
+    }
+
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      SyncEngine.on('hydrate-progress', (payload) => {
+        if (!payload || !payload.stage) return;
+        // Reveal overlay only for stages that actually do work; the
+        // 'checking-local' stage flashes briefly so we still show the
+        // overlay (avoids a render-then-replace race).
+        if (overlay) {
+          overlay.hidden = false;
+          if (overlayError) overlayError.hidden = true;
+        }
+
+        if (payload.stage === 'checking-local') {
+          if (overlayProgress) overlayProgress.textContent = 'Checking local data…';
+          setProgress('hydrate-checking-local');
+          if (statusEl) statusEl.textContent = 'Checking local data…';
+          return;
+        }
+
+        if (payload.stage === 'pulling' && payload.store) {
+          const friendly = HYDRATE_STORE_LABELS[payload.store] || payload.store;
+          const message = 'Loading ' + friendly + '…';
+          if (overlayProgress) overlayProgress.textContent = message;
+          setProgress('hydrate-' + payload.store);
+          if (statusEl) statusEl.textContent = message;
+        }
+      });
+
+      SyncEngine.on('hydrate-complete', (payload) => {
+        if (!payload) return;
+
+        // Success — show "Loaded ✓" briefly, then auto-hide overlay.
+        if (payload.ok && payload.kind === 'done') {
+          if (overlayProgress) overlayProgress.textContent = 'Loaded ✓';
+          setProgress('hydrate-done');
+          if (statusEl) statusEl.textContent = 'Loaded from cloud ✓';
+          setTimeout(hideHydrateOverlay, 1000);
+          renderCloudSyncUI();
+          return;
+        }
+
+        // Already hydrated on a prior boot — overlay should never have
+        // shown, but defensively hide and clear drawer status.
+        if (payload.ok && payload.kind === 'already-hydrated') {
+          hideHydrateOverlay();
+          renderCloudSyncUI();
+          return;
+        }
+
+        // Stage D handoff — local has data + cloud has data; D-1 owns
+        // reconciliation. Hide the overlay; surface in the drawer row.
+        if (payload.kind === 'stage-d-handoff') {
+          hideHydrateOverlay();
+          setProgress('stage-d-handoff');
+          if (statusEl) {
+            statusEl.textContent =
+              'Cloud has existing data. Manual reconciliation will ship in a follow-up.';
+          }
+          renderCloudSyncUI();
+          return;
+        }
+
+        // Sign-in / sync-not-enabled / sync-error-state / already-in-flight —
+        // engine refused to run; no overlay treatment, just clear it.
+        if (payload.kind === 'sign-in-required' ||
+            payload.kind === 'sync-not-enabled' ||
+            payload.kind === 'sync-error-state' ||
+            payload.kind === 'already-in-flight') {
+          hideHydrateOverlay();
+          renderCloudSyncUI();
+          return;
+        }
+
+        // Real error path (permission-denied, network, unknown, etc.)
+        // Surface in the overlay with retry + skip buttons.
+        const kind = payload.kind || 'unknown';
+        const errMsg = (payload.error &&
+          (payload.error.message || payload.error.code)) || '';
+        const userFacing = errMsg
+          ? kind + ' — ' + errMsg
+          : kind;
+        showHydrateError(userFacing);
+        setProgress('error');
+        if (statusEl) {
+          statusEl.textContent = 'Load failed: ' + escapeHtml(userFacing);
+        }
+        renderCloudSyncUI();
+      });
+    }
+
+    // Retry button — re-runs hydrate. hydrate-complete handler above
+    // will then route to the success / error path on resolve.
+    if (overlayRetry) {
+      overlayRetry.addEventListener('click', async () => {
+        if (overlayError) overlayError.hidden = true;
+        if (overlayProgress) overlayProgress.textContent = 'Retrying…';
+        if (typeof SyncEngine === 'undefined' ||
+            typeof SyncEngine.hydrateFromCloud !== 'function') {
+          showHydrateError('Sync engine unavailable.');
+          return;
+        }
+        try {
+          await SyncEngine.hydrateFromCloud();
+        } catch (err) {
+          // The hydrate-complete handler renders the error; this catch
+          // exists to keep the click handler from rejecting unhandled.
+        }
+      });
+    }
+
+    // Skip button — escape valve. Tempo is local-first; the user must
+    // always be able to use the app even if cloud sync is broken. This
+    // does NOT clear the per-store hydrate markers — next boot will
+    // re-try the hydrate path automatically. Per audit Open question
+    // #8, a manual "Retry hydrate" button in the settings drawer ships
+    // in E-1; for now, signing out + back in is the recovery path.
+    if (overlayDismiss) {
+      overlayDismiss.addEventListener('click', () => {
+        hideHydrateOverlay();
+      });
+    }
+
     // Subscribe to ongoing auth changes (covers cold-boot rehydrate
     // landing after the drawer is already populated, plus system-level
     // account changes on native).
