@@ -87,9 +87,18 @@ const Backup = (() => {
             await navigator.share({ files: [file], title: 'Tempo backup' });
             return { ok: true, bytesWritten: blob.size };
           } catch (err) {
-            // AbortError = user dismissed share sheet. Treat as failure
-            // per the F12 contract.
-            return { ok: false, error: err };
+            // AbortError = user explicitly dismissed the share sheet.
+            // Per the F12 contract, an offer the user dismissed counts
+            // as failure — do NOT fall through to a silent download.
+            if (err && err.name === 'AbortError') {
+              return { ok: false, error: err };
+            }
+            // Any other error means Web Share API isn't viable in this
+            // context (Chrome desktop NotAllowedError when user
+            // activation expires across awaits; iOS WKWebView quirks;
+            // TypeError on unsupported file payloads; etc.). Fall
+            // through to the <a download> Path B below by NOT
+            // returning here.
           }
         }
       }

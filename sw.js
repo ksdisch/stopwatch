@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v69-sync-uploader';
+const CACHE_NAME = 'stopwatch-v70-sync-uploader-share-fallback';
 const ASSETS = [
   './',
   './index.html',
