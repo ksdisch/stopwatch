@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v67-f19a-passthrough-fix';
+const CACHE_NAME = 'stopwatch-v68-sync-auth';
 const ASSETS = [
   './',
   './index.html',
@@ -13,8 +13,10 @@ const ASSETS = [
   './js/pomodoro.js',
   './js/flow.js',
   './js/persistence.js',
+  './js/sync-firebase-config.js',
   './js/sync-flag.js',
   './js/sync-engine.js',
+  './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
   './js/history.js',

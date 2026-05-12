@@ -78,6 +78,44 @@
           </label>
           <input id="bfrb-volume-slider" type="range" min="0" max="100" step="5" value="55">
         </div>
+        <!-- Cloud Sync section (B-2). Surfaces the developer toggle for
+             tempo_sync_enabled, plus Google sign-in / current-user / sign-out
+             once the flag is on. Wired by tempo-nav.js. -->
+        <div class="tempo-settings-item tempo-cloud-sync-section" role="group"
+             aria-label="Cloud Sync">
+          <div class="tempo-cloud-sync-heading">Cloud Sync</div>
+          <div class="tempo-cloud-sync-row">
+            <span class="tempo-settings-item-label">Enable cloud sync</span>
+            <button id="cloud-sync-toggle" type="button"
+                    class="tempo-cloud-sync-toggle"
+                    role="switch" aria-checked="false"
+                    aria-label="Toggle cloud sync"
+                    data-keep-drawer-open>
+              <span class="tempo-cloud-sync-toggle-track">
+                <span class="tempo-cloud-sync-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+          <div id="cloud-sync-identity" class="tempo-cloud-sync-row" hidden>
+            <div class="tempo-cloud-sync-user">
+              <img id="cloud-sync-photo" class="tempo-cloud-sync-photo" alt="" hidden>
+              <div class="tempo-cloud-sync-user-text">
+                <span id="cloud-sync-display-name" class="tempo-cloud-sync-name"></span>
+                <span id="cloud-sync-email" class="tempo-cloud-sync-email"></span>
+              </div>
+            </div>
+            <button id="cloud-sync-signout-btn" type="button"
+                    class="tempo-cloud-sync-link"
+                    aria-label="Sign out of cloud sync">Sign out</button>
+          </div>
+          <button id="cloud-sync-signin-btn" type="button"
+                  class="tempo-cloud-sync-primary"
+                  aria-label="Sign in with Google" hidden>
+            Sign in with Google
+          </button>
+          <div id="cloud-sync-status" class="tempo-cloud-sync-status"
+               aria-live="polite" hidden></div>
+        </div>
       </div>
     </header>
 
@@ -860,8 +898,10 @@
   <script src="js/flow.js"></script>
   <script src="js/interval.js"></script>
   <script src="js/persistence.js"></script>
+  <script src="js/sync-firebase-config.js"></script>
   <script src="js/sync-flag.js"></script>
   <script src="js/sync-engine.js"></script>
+  <script src="js/sync-auth.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>
   <script src="js/history.js?v=2"></script>

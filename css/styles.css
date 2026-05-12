@@ -2600,6 +2600,168 @@ body.focus-mode .global-bfrb-fab {
   accent-color: #ff9f0a;
 }
 
+/* ── Cloud Sync (B-2) — settings drawer section ── */
+.tempo-cloud-sync-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--separator);
+  margin-top: 4px;
+}
+
+.tempo-cloud-sync-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.tempo-cloud-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The bare `hidden` attribute should win over `display: flex` above. */
+.tempo-cloud-sync-row[hidden],
+.tempo-cloud-sync-photo[hidden] {
+  display: none;
+}
+
+.tempo-cloud-sync-row .tempo-settings-item-label {
+  flex: 1 1 auto;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+/* iOS-style toggle switch (no extra deps). */
+.tempo-cloud-sync-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  flex: 0 0 auto;
+}
+
+.tempo-cloud-sync-toggle-track {
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  background: var(--btn-border);
+  border-radius: 11px;
+  position: relative;
+  transition: background-color 150ms ease;
+}
+
+.tempo-cloud-sync-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 150ms ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.tempo-cloud-sync-toggle[aria-checked="true"] .tempo-cloud-sync-toggle-track {
+  background: var(--green);
+}
+
+.tempo-cloud-sync-toggle[aria-checked="true"] .tempo-cloud-sync-toggle-thumb {
+  transform: translateX(16px);
+}
+
+.tempo-cloud-sync-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tempo-cloud-sync-photo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--btn-bg);
+  flex: 0 0 auto;
+  object-fit: cover;
+}
+
+.tempo-cloud-sync-user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tempo-cloud-sync-name {
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.tempo-cloud-sync-email {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.tempo-cloud-sync-link {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  color: var(--green);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  flex: 0 0 auto;
+}
+
+.tempo-cloud-sync-link:hover { filter: brightness(1.15); }
+
+.tempo-cloud-sync-primary {
+  background: var(--green);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center;
+}
+
+.tempo-cloud-sync-primary:hover { filter: brightness(1.1); }
+
+.tempo-cloud-sync-status {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.tempo-cloud-sync-status[data-error] {
+  color: var(--red);
+}
+
 /* ── Flow Block Mode ── */
 .flow-area {
   display: flex;

@@ -171,6 +171,271 @@ const Platform = (() => {
     try { return Notification.requestPermission(); } catch (_) { return Promise.resolve('denied'); }
   }
 
+  // ── Auth (B-2) ───────────────────────────────────────────────────────────
+  //
+  // Google sign-in shim. Mirrors the haptic/notify pattern: same public
+  // method names work on web and native; the internal branch picks the
+  // backend.
+  //
+  // - Web build: lazy dynamic import() of the modular firebase-app +
+  //   firebase-auth bundles from gstatic CDN on first call (signIn / init).
+  //   The SDK is NEVER imported at boot — only when the user opts into
+  //   cloud sync AND triggers an auth flow. This keeps the dormant web
+  //   boot byte-equivalent to pre-sync builds.
+  // - Native build: routes to window.Capacitor.Plugins.FirebaseAuthentication
+  //   (provided by @capacitor-firebase/authentication, installed in S0-1).
+  //   No bundler needed — the plugin is injected into the WebView at
+  //   native-shell boot.
+  //
+  // Returns a normalized User shape on both branches so the SyncAuth
+  // facade stays platform-agnostic:
+  //   { uid, email, displayName, photoURL }
+  //
+  // Contract:
+  //   - All methods are no-ops when SyncFlag.isEnabled() === false.
+  //   - signIn() returns null on user cancellation (popup-closed on web,
+  //     plugin cancellation code on native) — never throws for cancellation.
+  //   - getCurrentUser() returns the cached user; init() seeds the cache
+  //     from the SDK's persisted state (handles cold-boot rehydrate).
+
+  const FIREBASE_APP_URL  = 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
+  const FIREBASE_AUTH_URL = 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+
+  // Module-scoped caches so subsequent calls don't re-import or rebuild.
+  let _webAuthSdk = null;            // { initializeApp, getApps, getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  let _webAuthInstance = null;       // the Auth instance returned by getAuth(app)
+  let _webProvider = null;           // cached GoogleAuthProvider instance
+  let _authCachedUser = null;        // in-shim cache of the current user (normalized)
+  const _authListeners = [];         // callbacks registered via Platform.auth.onAuthChange
+  let _authInitialized = false;      // idempotence guard for Platform.auth.init()
+  let _authNativeUnavailableLogged = false;
+
+  function _flagOn() {
+    return typeof SyncFlag !== 'undefined' && SyncFlag.isEnabled();
+  }
+
+  function _normalizeUser(raw) {
+    if (!raw) return null;
+    return {
+      uid: raw.uid || null,
+      email: raw.email || null,
+      displayName: raw.displayName || null,
+      photoURL: raw.photoURL || null,
+    };
+  }
+
+  function _emitAuth(user) {
+    _authCachedUser = user || null;
+    for (const cb of _authListeners.slice()) {
+      try { cb(_authCachedUser); }
+      catch (_e) { /* listener errors must not break the chain */ }
+    }
+  }
+
+  // Load the modular firebase-app + firebase-auth bundles on demand. Cached
+  // on the module so repeat calls are free. Returns the auth-module exports.
+  async function _loadWebAuthSdk() {
+    if (_webAuthSdk) return _webAuthSdk;
+    const [appMod, authMod] = await Promise.all([
+      import(/* @vite-ignore */ FIREBASE_APP_URL),
+      import(/* @vite-ignore */ FIREBASE_AUTH_URL),
+    ]);
+    _webAuthSdk = {
+      initializeApp:    appMod.initializeApp,
+      getApps:          appMod.getApps,
+      getAuth:          authMod.getAuth,
+      GoogleAuthProvider: authMod.GoogleAuthProvider,
+      signInWithPopup:  authMod.signInWithPopup,
+      signOut:          authMod.signOut,
+      onAuthStateChanged: authMod.onAuthStateChanged,
+    };
+    return _webAuthSdk;
+  }
+
+  async function _getWebAuth() {
+    const sdk = await _loadWebAuthSdk();
+    if (!_webAuthInstance) {
+      const config = (typeof window !== 'undefined' && window.FirebaseConfig) || null;
+      if (!config) throw new Error('FirebaseConfig missing — js/sync-firebase-config.js not loaded');
+      const apps = sdk.getApps();
+      const app = apps.length ? apps[0] : sdk.initializeApp(config);
+      _webAuthInstance = sdk.getAuth(app);
+    }
+    if (!_webProvider) _webProvider = new sdk.GoogleAuthProvider();
+    return { sdk, auth: _webAuthInstance, provider: _webProvider };
+  }
+
+  function _nativePlugin() {
+    const fa = plugins && plugins.FirebaseAuthentication;
+    if (!fa) {
+      if (!_authNativeUnavailableLogged) {
+        // Plugin missing — most likely cause is that `npx cap sync ios`
+        // hasn't been re-run since S0-1 added the Podfile entry. Surface
+        // once so a developer notices, but don't throw — SyncAuth's UI
+        // layer will degrade gracefully.
+        try { console.warn('[Platform.auth] FirebaseAuthentication plugin unavailable — rebuild iOS app via `npx cap sync ios`.'); } catch (_e) {}
+        _authNativeUnavailableLogged = true;
+      }
+      return null;
+    }
+    return fa;
+  }
+
+  function authInit() {
+    if (_authInitialized) return;
+    if (!_flagOn()) return;       // flag-off: don't even mark initialized;
+                                  // a later flag-flip + re-init should still work
+    _authInitialized = true;
+
+    if (isNative) {
+      const fa = _nativePlugin();
+      if (!fa) return;
+      // Subscribe to the plugin's authStateChange event so signOut/signIn
+      // performed outside our flow (e.g., system-level account removal)
+      // still propagate to listeners.
+      try {
+        if (typeof fa.addListener === 'function') {
+          fa.addListener('authStateChange', (event) => {
+            const u = event && event.user ? _normalizeUser(event.user) : null;
+            _emitAuth(u);
+          });
+        }
+      } catch (_e) {}
+      // Rehydrate the cached user (cold-boot path — the plugin persists
+      // the auth state at the OS level via Firebase iOS SDK's keychain).
+      try {
+        const p = fa.getCurrentUser();
+        if (p && typeof p.then === 'function') {
+          p.then((result) => {
+            const u = result && result.user ? _normalizeUser(result.user) : null;
+            if (u) _emitAuth(u);
+          }).catch(() => {});
+        }
+      } catch (_e) {}
+      return;
+    }
+
+    // Web cold-boot rehydrate. The Firebase SDK persists auth state in
+    // IndexedDB by default; loading the SDK and subscribing to
+    // onAuthStateChanged seeds _authCachedUser with the previously
+    // signed-in user (if any) without showing a popup.
+    _loadWebAuthSdk()
+      .then(() => _getWebAuth())
+      .then(({ sdk, auth }) => {
+        sdk.onAuthStateChanged(auth, (firebaseUser) => {
+          _emitAuth(_normalizeUser(firebaseUser));
+        });
+      })
+      .catch(() => {
+        // CDN unreachable or import blocked — SyncAuth degrades to
+        // "sign-in unavailable until next attempt." Don't throw; the
+        // user's manual signIn() call will surface the failure path.
+      });
+  }
+
+  async function authSignIn() {
+    if (!_flagOn()) return null;
+
+    if (isNative) {
+      const fa = _nativePlugin();
+      if (!fa) return null;
+      try {
+        const result = await fa.signInWithGoogle({ scopes: ['profile', 'email'] });
+        const u = result && result.user ? _normalizeUser(result.user) : null;
+        if (u) _emitAuth(u);
+        return u;
+      } catch (e) {
+        // Capacitor Firebase Auth plugin throws on user cancellation.
+        // Common shapes: { code: '12501' } (Android-style), or message
+        // containing 'cancel'/'canceled' on iOS. Map all of these to
+        // null so SyncAuth treats it as a no-op.
+        if (_isCancellationError(e)) return null;
+        throw e;
+      }
+    }
+
+    // Web: lazy-load SDK, run popup flow.
+    let ctx;
+    try {
+      ctx = await _getWebAuth();
+    } catch (e) {
+      throw e; // CDN/SDK load failure — surface to caller.
+    }
+    try {
+      const result = await ctx.sdk.signInWithPopup(ctx.auth, ctx.provider);
+      const u = _normalizeUser(result && result.user);
+      if (u) _emitAuth(u);
+      return u;
+    } catch (e) {
+      // Cancellation shapes on Firebase web:
+      //   'auth/popup-closed-by-user'
+      //   'auth/cancelled-popup-request'
+      //   'auth/user-cancelled' (rare)
+      if (_isCancellationError(e)) return null;
+      throw e;
+    }
+  }
+
+  function _isCancellationError(e) {
+    if (!e) return false;
+    const code = e.code || (e.error && e.error.code) || '';
+    if (typeof code === 'string') {
+      if (code.indexOf('popup-closed-by-user') !== -1) return true;
+      if (code.indexOf('cancelled-popup-request') !== -1) return true;
+      if (code.indexOf('user-cancelled') !== -1) return true;
+      if (code === '12501') return true;
+    }
+    const msg = (e.message || e.errorMessage || '') + '';
+    if (/cancel(l)?ed/i.test(msg)) return true;
+    return false;
+  }
+
+  async function authSignOut() {
+    if (!_flagOn()) {
+      _emitAuth(null);
+      return;
+    }
+
+    if (isNative) {
+      const fa = _nativePlugin();
+      if (!fa) {
+        _emitAuth(null);
+        return;
+      }
+      try { await fa.signOut(); } catch (_e) {}
+      _emitAuth(null);
+      return;
+    }
+
+    // Web: only signOut from SDK if it's been loaded — otherwise nothing
+    // to clean up.
+    if (_webAuthSdk && _webAuthInstance) {
+      try { await _webAuthSdk.signOut(_webAuthInstance); } catch (_e) {}
+    }
+    _emitAuth(null);
+  }
+
+  function authGetCurrentUser() {
+    return _authCachedUser;
+  }
+
+  function authOnChange(callback) {
+    if (typeof callback !== 'function') return () => {};
+    _authListeners.push(callback);
+    return function unsubscribe() {
+      const idx = _authListeners.indexOf(callback);
+      if (idx !== -1) _authListeners.splice(idx, 1);
+    };
+  }
+
+  const auth = {
+    init:           authInit,
+    signIn:         authSignIn,
+    signOut:        authSignOut,
+    getCurrentUser: authGetCurrentUser,
+    onAuthChange:   authOnChange,
+  };
+
   return {
     isNative,
     haptic,
@@ -178,5 +443,6 @@ const Platform = (() => {
     scheduleNotification,
     cancelNotification,
     requestNotificationPermission,
+    auth,
   };
 })();

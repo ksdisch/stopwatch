@@ -234,8 +234,54 @@ Targeted engine patch for the bug B-1's tests surfaced. `js/meds.js` `createMed.
 
 ### Commits
 ```
-<SHA>   fix(meds): preserve future-schema schemaVersion on loadState/getState (F19a-fix)
-<SHA>   docs(sync-impl): move F19a-fix to shipped
+c853b1b fix(meds): preserve future-schema schemaVersion on loadState/getState (F19a-fix)
+4d1ce13 docs(sync-impl): move F19a-fix to shipped
+992836d Merge pull request #59 from ksdisch/feat/sync-stage-a-f19a-passthrough-fix
+```
+
+---
+
+## Session 5 — 2026-05-11
+
+### What We Built
+
+**Cloud sync auth (B-2 — Google sign-in + settings drawer Cloud Sync section)**
+
+Third sync infrastructure PR. Adds Google sign-in via `@capacitor-firebase/authentication` on native + `firebase/auth` popup flow on web, plus a visible Cloud Sync section in the settings drawer with a toggle, sign-in button, current-user display, and status row.
+
+**Engine layer (Phase 2):**
+- New `js/sync-auth.js` — IIFE singleton. Public API: `init / signIn / signOut / getCurrentUser / onAuthChange`. Caches normalized user shape (`{ uid, email, displayName, photoURL }`). Delegates to `Platform.auth.*`. Emits `'auth-change'` via `SyncEngine.emit` on every transition. No-op when `SyncFlag.isEnabled() === false`. Idempotent `init()`.
+- Extended `js/platform.js` with `Platform.auth` namespace mirroring the existing `haptic` / `notify` shim shape. **Web path lazy-imports** `firebase-app` + `firebase-auth` from gstatic CDN v11.10.0 on first `init()`/`signIn()` — boot stays byte-equivalent for flag-off users. **Native path** routes to `window.Capacitor.Plugins.FirebaseAuthentication.signInWithGoogle({ scopes: ['profile','email'] })`. Both normalize to the user shape; cancellation returns `null` (no throw).
+- One-line wire in `js/app.js`: `SyncAuth.init();` after `SyncEngine.init();`.
+- Defensive on missing native plugin: degrades silently with a `console.warn` if `Capacitor.Plugins.FirebaseAuthentication` is undefined.
+- Auth state does NOT toggle `tempo_sync_state` (F13 write gate) — that's B-3's job.
+
+**Tests (Phase 3):**
+- 14 new cases in `tests/sync-auth.test.js` covering: flag-off no-op, idempotent init, signIn/signOut success paths, onAuthChange subscription/unsubscribe, cancellation returns null, cold-boot rehydrate, web vs native routing (native via stubbed plugin), F13 guard. Web dynamic-import case is a placeholder (stubbing top-level `import()` requires import-maps or SW intercept — out of test-harness scope).
+- Async-aware helpers introduced (`async ... return await fn(...)`) to fix a real bug discovered during testing where sync try/finally pattern restored stubs before awaited callbacks completed.
+- Full suite: **310/310 pass** via kapture against real Chrome.
+
+**UI wire-up (Phase 4):**
+- New "Cloud Sync" section in the settings drawer (after BFRB chime slider). 13 new CSS classes (all using CSS vars; no hardcoded hex except white toggle thumb).
+- Toggle row uses `data-keep-drawer-open` so flipping it doesn't auto-close the drawer.
+- Identity row (sign-in user, photo, email, display name) shows when signed in; sign-in button when signed out; both hidden when flag is off.
+- Status row shows transient messages (`"Signing in…"`, `"Sign-in error: …"`) with `aria-live="polite"`.
+- `js/tempo-nav.js` extended: `wireSettingsDrawer` honors `[data-keep-drawer-open]` (filter for the existing auto-close button loop); new `wireCloudSync` subscribes to `SyncAuth.onAuthChange` and re-renders on every drawer open.
+- iOS `Info.plist`: added `CFBundleURLTypes` with the verbatim `REVERSED_CLIENT_ID` from `GoogleService-Info.plist` for the OAuth deep-link callback. Validated with `xmllint --noout`.
+- Visual verification via kapture: toggle works (aria-checked flips, primary button appears/disappears), no console errors, neighbor route `#/wellness/meds` regression-tests cleanly.
+
+**Coordination note:** S0-1 + B-1 + F19a-fix have all merged to main during this session. B-2 branched from main after S0-1+B-1 landed; rebased once after F19a-fix merged to resolve a CACHE_NAME line conflict in sw.js (resolved by keeping v68-sync-auth, the higher version).
+
+### Suggested Next Steps
+
+- **B-3** (`feat/sync-stage-b-uploader`) — first cloud upload. Stage B0 read-cloud-first guard (F9) + mandatory backup (F12) + `pushSnapshot()`. Now fully unblocked.
+- **B-4** — health-data arrival toast (F15) on remote doseLog entries.
+- **Manual physical-device verification** (request reviewer): walk through Google sign-in on (a) Chrome/Safari incognito, (b) iPhone via the `iOS-BUILD.md` 7-day free-cert refresh path. Confirm the OAuth round-trip completes + the user identity surfaces correctly in the Cloud Sync section.
+
+### Commits
+```
+3ae0c03 feat(sync): Google sign-in + settings drawer Cloud Sync section (B-2)
+<SHA>   docs(sync-impl): move B-2 to shipped
 ```
 
 ---
