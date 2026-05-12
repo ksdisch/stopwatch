@@ -19,6 +19,9 @@ const Presets = (() => {
   }
 
   function save(preset) {
+    // F13: cross-store write gate. The `typeof` guard keeps the engine
+    // usable in test contexts that don't load persistence.js.
+    if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     const presets = getAll();
     preset.id = preset.id || Date.now().toString(36);
     preset.createdAt = preset.createdAt || Date.now();
@@ -33,6 +36,8 @@ const Presets = (() => {
   }
 
   function update(id, changes) {
+    // F13: cross-store write gate.
+    if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     const presets = getAll();
     const idx = presets.findIndex(p => p.id === id);
     if (idx === -1) return;
@@ -47,6 +52,8 @@ const Presets = (() => {
   }
 
   function remove(id) {
+    // F13: cross-store write gate.
+    if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     const presets = getAll();
     const target = presets.find(p => p.id === id);
     // F19a: future-schema records are read-only — refuse to delete. The

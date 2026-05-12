@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v68-sync-auth';
+const CACHE_NAME = 'stopwatch-v70-sync-uploader-share-fallback';
 const ASSETS = [
   './',
   './index.html',
@@ -15,12 +15,14 @@ const ASSETS = [
   './js/persistence.js',
   './js/sync-firebase-config.js',
   './js/sync-flag.js',
+  './js/sync-firestore.js',
   './js/sync-engine.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
   './js/history.js',
   './js/export.js',
+  './js/backup.js',
   './js/analog.js',
   './js/offset-input.js',
   './js/ui.js',

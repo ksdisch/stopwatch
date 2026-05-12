@@ -36,6 +36,13 @@ const RecoveryUI = (() => {
   }
 
   function saveLog(log) {
+    // F13: cross-store write gate. Default 'ready' preserves current
+    // behavior. The `typeof` guard keeps the UI usable in test contexts
+    // that don't load persistence.js. Without this, a nap completing
+    // mid-upload would write `wellness_rest_log` between the snapshot
+    // read and the per-record setDoc loop, leaving local divergence the
+    // upload doesn't see.
+    if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
   }
 

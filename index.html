@@ -113,6 +113,16 @@
                   aria-label="Sign in with Google" hidden>
             Sign in with Google
           </button>
+          <!-- B-3: "Push to cloud" button. Visible only when the sync flag
+               is on AND the user is signed in. Disabled while a push is
+               in-flight (gate at 'hydrating'). tempo-nav.js wires the
+               click handler and progress/status subscriptions. -->
+          <button id="cloud-sync-push-btn" type="button"
+                  class="tempo-cloud-sync-primary"
+                  aria-label="Push local data to cloud"
+                  data-keep-drawer-open hidden>
+            Push to cloud
+          </button>
           <div id="cloud-sync-status" class="tempo-cloud-sync-status"
                aria-live="polite" hidden></div>
         </div>
@@ -900,12 +910,14 @@
   <script src="js/persistence.js"></script>
   <script src="js/sync-firebase-config.js"></script>
   <script src="js/sync-flag.js"></script>
+  <script src="js/sync-firestore.js"></script>
   <script src="js/sync-engine.js"></script>
   <script src="js/sync-auth.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>
   <script src="js/history.js?v=2"></script>
   <script src="js/export.js"></script>
+  <script src="js/backup.js"></script>
   <script src="js/analog.js"></script>
   <script src="js/offset-input.js"></script>
   <script src="js/ui.js"></script>

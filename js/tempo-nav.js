@@ -315,6 +315,12 @@ const TempoNav = (() => {
     const emailEl = drawer.querySelector('#cloud-sync-email');
     const nameEl = drawer.querySelector('#cloud-sync-display-name');
     const photoEl = drawer.querySelector('#cloud-sync-photo');
+    // B-3: "Push to cloud" button + a local in-flight latch so the
+    // button stays disabled across the click handler's awaits. The
+    // SyncEngine has its own _pushInFlight guard; this one is purely
+    // UI-side for rendering the disabled state synchronously.
+    const pushBtn = drawer.querySelector('#cloud-sync-push-btn');
+    let _pushInFlightLocal = false;
     if (!toggleBtn) return; // markup not present — feature disabled
 
     function setStatus(msg, isError) {
@@ -323,12 +329,44 @@ const TempoNav = (() => {
         statusEl.textContent = '';
         statusEl.hidden = true;
         statusEl.removeAttribute('data-error');
+        statusEl.removeAttribute('data-progress');
         return;
       }
       statusEl.textContent = msg;
       statusEl.hidden = false;
       if (isError) statusEl.setAttribute('data-error', '');
       else statusEl.removeAttribute('data-error');
+    }
+
+    // B-3: orthogonal to data-error — data-progress drives the per-stage
+    // color. Passing null clears both the attribute and the row.
+    function setProgress(stage) {
+      if (!statusEl) return;
+      if (!stage) {
+        statusEl.removeAttribute('data-progress');
+        statusEl.hidden = true;
+        statusEl.textContent = '';
+        return;
+      }
+      statusEl.setAttribute('data-progress', stage);
+      statusEl.hidden = false;
+    }
+
+    // B-3: push button is gated behind flag-on AND signed-in. It's
+    // additionally disabled while a push is in-flight (either this UI's
+    // local latch or the global SyncState.isHydrating() gate).
+    function renderPushBtn() {
+      if (!pushBtn) return;
+      const enabled = (typeof SyncFlag !== 'undefined') && SyncFlag.isEnabled();
+      const user = (typeof SyncAuth !== 'undefined') ? SyncAuth.getCurrentUser() : null;
+      const hydrating = (typeof SyncState !== 'undefined' && SyncState.isHydrating())
+        || _pushInFlightLocal;
+      const visible = enabled && user !== null;
+      pushBtn.hidden = !visible;
+      if (visible) {
+        pushBtn.disabled = hydrating;
+        pushBtn.setAttribute('aria-disabled', hydrating ? 'true' : 'false');
+      }
     }
 
     function renderCloudSyncUI() {
@@ -340,6 +378,7 @@ const TempoNav = (() => {
       if (!enabled) {
         if (identityRow) identityRow.hidden = true;
         if (signInBtn) signInBtn.hidden = true;
+        renderPushBtn();
         return;
       }
 
@@ -361,6 +400,8 @@ const TempoNav = (() => {
         if (identityRow) identityRow.hidden = true;
         if (signInBtn) signInBtn.hidden = false;
       }
+
+      renderPushBtn();
     }
 
     // Toggle the feature flag. Enabling lazy-inits SyncAuth so the cold-
@@ -411,6 +452,98 @@ const TempoNav = (() => {
           setStatus('Sign-out error: ' + msg, true);
         }
         renderCloudSyncUI();
+      });
+    }
+
+    // ── B-3: "Push to cloud" click handler ───────────────────────────
+    // Drives SyncEngine.pushSnapshot() and renders the result into the
+    // existing status row. Live per-stage progress is wired through
+    // SyncEngine.on('push-progress', ...) below; this handler only
+    // renders the final state because it owns the "done" / error copy.
+    if (pushBtn) {
+      pushBtn.addEventListener('click', async () => {
+        if (_pushInFlightLocal) return;
+        if (typeof SyncEngine === 'undefined' ||
+            typeof SyncEngine.pushSnapshot !== 'function') {
+          setStatus('Sync engine unavailable.', true);
+          return;
+        }
+        _pushInFlightLocal = true;
+        renderPushBtn();
+        try {
+          const result = await SyncEngine.pushSnapshot();
+          if (result && result.ok) {
+            setProgress('done');
+            if (statusEl) {
+              const skipped = result.skippedFutureRecords || 0;
+              statusEl.textContent = skipped > 0
+                ? 'Synced. ' + skipped + ' newer record' +
+                  (skipped === 1 ? '' : 's') +
+                  ' kept local — update Tempo on your other device.'
+                : 'Synced ✓';
+            }
+          } else if (result && result.kind === 'stage-d-handoff') {
+            setProgress('stage-d-handoff');
+            if (statusEl) {
+              statusEl.textContent =
+                'Cloud has existing data. Manual reconciliation will ship in a follow-up.';
+            }
+          } else {
+            const kind = (result && result.kind) || 'unknown';
+            const errMsg = (result && result.error &&
+              (result.error.message || result.error.code)) || '';
+            setProgress('error');
+            if (statusEl) {
+              statusEl.textContent = errMsg
+                ? 'Push failed (' + escapeHtml(kind) + '): ' + escapeHtml(errMsg)
+                : 'Push failed: ' + escapeHtml(kind);
+            }
+          }
+        } catch (err) {
+          setProgress('error');
+          if (statusEl) {
+            const msg = (err && (err.message || err.code)) || String(err);
+            statusEl.textContent = 'Push error: ' + escapeHtml(msg);
+          }
+        } finally {
+          _pushInFlightLocal = false;
+          renderPushBtn();
+        }
+      });
+    }
+
+    // Live progress updates from the engine. The click handler above
+    // renders the FINAL state (done / error / stage-d-handoff); these
+    // subscriptions paint the in-flight transitions.
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      SyncEngine.on('push-progress', (payload) => {
+        if (!payload || !payload.stage) return;
+        const stage = payload.stage;
+        setProgress(stage);
+        if (!statusEl) return;
+        if (stage === 'backup') {
+          statusEl.textContent = 'Backing up local data…';
+        } else if (stage === 'checking-cloud') {
+          statusEl.textContent = 'Checking cloud…';
+        } else if (stage === 'uploading') {
+          const store = payload.store ? escapeHtml(payload.store) : '';
+          const current = (typeof payload.current === 'number') ? payload.current : null;
+          const total = (typeof payload.total === 'number') ? payload.total : null;
+          if (store && current !== null && total !== null) {
+            statusEl.textContent = 'Uploading ' + store +
+              ' (' + current + '/' + total + ')…';
+          } else if (store) {
+            statusEl.textContent = 'Uploading ' + store + '…';
+          } else {
+            statusEl.textContent = 'Uploading…';
+          }
+        }
+      });
+      // Re-render the button on push-complete so its disabled state
+      // tracks the engine's _pushInFlight latch (mostly useful if a
+      // future code path triggers pushSnapshot from outside this UI).
+      SyncEngine.on('push-complete', () => {
+        renderPushBtn();
       });
     }
 
