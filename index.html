@@ -151,6 +151,19 @@
                   data-keep-drawer-open hidden>
             Push to cloud
           </button>
+          <!-- D-1: "Reconcile now" button. Visible only when the Stage D
+               handoff flag is set (i.e. local has data AND cloud has data
+               from another device). Drives SyncEngine.reconcileImportedBucket():
+               tags pre-existing local rows as 'imported', pulls cloud,
+               merges, and pushes the combined snapshot. tempo-nav.js wires
+               the click handler + reconcile-progress / reconcile-complete
+               subscriptions and toggles visibility based on the flag. -->
+          <button id="cloud-sync-reconcile-btn" type="button"
+                  class="tempo-cloud-sync-primary"
+                  aria-label="Reconcile local data with cloud data"
+                  data-keep-drawer-open hidden>
+            Reconcile now
+          </button>
           <div id="cloud-sync-status" class="tempo-cloud-sync-status"
                aria-live="polite" hidden></div>
         </div>
@@ -940,6 +953,7 @@
   <script src="js/sync-flag.js"></script>
   <script src="js/sync-firestore.js"></script>
   <script src="js/sync-engine.js"></script>
+  <script src="js/sync-manual-dedupe.js"></script>
   <script src="js/sync-auth.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>

@@ -39,6 +39,13 @@ const SyncEngine = (() => {
   let _hydrateInFlight = false;
   let _currentHydratePromise = null;
 
+  // D-1: re-entry guard for reconcileImportedBucket. Same shape as
+  // _hydrateInFlight — a re-click on the "Reconcile now" button while a
+  // reconcile is mid-flight returns the in-flight promise rather than
+  // starting a fresh pull/merge/push race.
+  let _reconcileInFlight = false;
+  let _currentReconcilePromise = null;
+
   // C-1: tracks whether init() already wired the SyncAuth.onAuthChange
   // subscription so re-calling init() doesn't register the handler twice.
   let _authChangeUnsubscribe = null;
@@ -247,6 +254,15 @@ const SyncEngine = (() => {
     const ls = _getStorage();
     if (!ls) return;
     try { ls.setItem(STAGE_D_HANDOFF_KEY, '1'); } catch (_) {}
+  }
+
+  // D-1: cleared by step 7 of `reconcileImportedBucket()` on success.
+  // Left set on reconcile failure so the user can retry — idempotent
+  // re-run is the documented rollback strategy (audit Headline #5).
+  function clearStageDHandoff() {
+    const ls = _getStorage();
+    if (!ls) return;
+    try { ls.removeItem(STAGE_D_HANDOFF_KEY); } catch (_) {}
   }
 
   function _getPartialUploadUid() {
@@ -837,6 +853,567 @@ const SyncEngine = (() => {
     return promise;
   }
 
+  // ── D-1: Stage D imported-bucket reconcile (reconcileImportedBucket) ──
+  //
+  // Resolves the path C-1's `tempo_sync_stage_d_handoff` guard short-
+  // circuits to: tag every pre-existing local record as "imported (pre-
+  // sync)", pull cloud, merge cloud ∪ tagged-local, push the combined
+  // snapshot to both local and cloud, and clear the handoff flag on
+  // success.
+  //
+  // 9-step contract (per audit Headline #3 + D-1-PROMPT.md):
+  //   1. Re-entry guard + preconditions (sign-in, flag, gate-not-busy).
+  //   2. `SyncState.set('hydrating')` before any stamp/pull/push.
+  //   3. Stamp local idempotently:
+  //        - History rows missing `bucket` AND not future-schema get
+  //          `bucket: 'imported'` + `originDeviceId: getDeviceId()`.
+  //          Future-schema rows are skipped per F19a and surfaced as
+  //          `result.skippedFutureRecords`.
+  //        - Meds records missing `originDeviceId` get it stamped to
+  //          the local device's id. Idempotent — already-stamped
+  //          records are no-ops.
+  //        - Privileged writes via `_reconcileWriteRaw` (bypasses F13).
+  //   4. Pull cloud per-store in dependency order: rest_log → meds →
+  //      presets → history. Reuses C-1's `_pullCloudStore(uid, key)`.
+  //   5. Merge per collision rules:
+  //        - history (sessionId): prefer cloud + console.warn.
+  //        - meds (medId): keep BOTH records (distinguished by
+  //          originDeviceId — D-2+ UI surfaces dedup candidates).
+  //        - rest_log (date key): LWW via `updatedAt`.
+  //        - presets (presetId): LWW via `updatedAt`.
+  //   6. Write merged snapshot:
+  //        - Local: history + meds via the new `_reconcileWriteRaw`
+  //          helpers; rest_log + presets via C-1's existing
+  //          `_hydrateWriteRaw` helpers (LWW collapses to "replace
+  //          local with canonical payload" semantics).
+  //        - Cloud: per-record `SyncFirestore.setDoc` reusing B-3's
+  //          per-record write pattern.
+  //   7. Set all 5 hydrate markers (so subsequent boots short-circuit
+  //      C-1's auto-hydrate).
+  //   8. Clear `tempo_sync_stage_d_handoff`.
+  //   9. `SyncState.set('ready')` + emit
+  //      `reconcile-complete { ok: true, kind: 'reconciled', counts,
+  //                            skippedFutureRecords }`.
+  //
+  // Failure handling: on any step failure, `SyncState.set('error')`,
+  // emit `reconcile-complete { ok: false, kind: 'reconcile-error',
+  // error }`, LEAVE the handoff flag set AND the 5 hydrate markers
+  // unset. Idempotent re-run is the documented rollback (Headline #5);
+  // the stamp loop in step 3 uses `if (bucket == null) ...` so partial
+  // stamps from a prior failed attempt are stable across retries.
+
+  function _allHydrateMarkerKeys() {
+    const keys = [];
+    for (const storeKey of HYDRATE_STORE_ORDER) {
+      keys.push(HYDRATE_MARKER_PREFIX + storeKey);
+    }
+    keys.push(HYDRATE_MARKER_ALL);
+    return keys;
+  }
+
+  function _setAllHydrateMarkers() {
+    for (const storeKey of HYDRATE_STORE_ORDER) {
+      _setHydratedMarker(storeKey);
+    }
+    _setAllHydrated();
+  }
+
+  // D-1 merge helpers — collision-rule application per the audit's
+  // "Merge" section. Pure functions; the orchestrator wires them in
+  // step 5.
+
+  // History: prefer cloud on `sessionId` collision; emit a console.warn
+  // per collision so post-merge debugging surfaces the (rare) cases
+  // where device-prefixed IDs happened to alias.
+  function _mergeHistory(localRecords, cloudRecords) {
+    const cloudById = new Map();
+    for (const rec of cloudRecords) {
+      if (rec && typeof rec.id === 'string' && rec.id) {
+        cloudById.set(rec.id, rec);
+      }
+    }
+    const out = [];
+    const seen = new Set();
+    // Cloud records win on collision — emit them first, mark as seen.
+    for (const rec of cloudRecords) {
+      if (rec && typeof rec.id === 'string' && rec.id) {
+        out.push(rec);
+        seen.add(rec.id);
+      }
+    }
+    // Tagged-local records appended where the id isn't in cloud.
+    for (const rec of localRecords) {
+      if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
+      if (seen.has(rec.id)) {
+        try {
+          console.warn('[SyncEngine] reconcile history sessionId collision (cloud wins): ' + rec.id);
+        } catch (_) {}
+        continue;
+      }
+      out.push(rec);
+      seen.add(rec.id);
+    }
+    return out;
+  }
+
+  // Meds: keep BOTH records on `medId` collision. The user resolves
+  // later via `ManualDedupe.scan()`. No console.warn — duplication is
+  // the expected outcome of independently-authored same-name meds.
+  // To preserve "both" without violating the per-record localStorage
+  // contract (one key per medId), the cloud record's id is rewritten
+  // by prepending an originDeviceId-derived suffix when collision is
+  // detected AND the cloud record's `originDeviceId` differs from the
+  // local one. This is the simplest way to keep both rows visible in
+  // the meds panel without auto-merging dose logs (which is D-2).
+  function _mergeMeds(localRecords, cloudRecords, localDeviceId) {
+    const out = [];
+    const localById = new Map();
+    for (const rec of localRecords) {
+      if (rec && typeof rec.id === 'string' && rec.id) {
+        localById.set(rec.id, rec);
+        out.push(rec);
+      }
+    }
+    for (const rec of cloudRecords) {
+      if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
+      const local = localById.get(rec.id);
+      if (!local) {
+        // No collision — cloud record joins as-is.
+        out.push(rec);
+        continue;
+      }
+      // Collision: keep BOTH. If cloud's originDeviceId is missing,
+      // assume it's the local device's already-stamped tag — fall back
+      // to cloud's `deviceId` for the suffix.
+      const cloudOrigin = (typeof rec.originDeviceId === 'string' && rec.originDeviceId)
+        ? rec.originDeviceId
+        : (typeof rec.deviceId === 'string' ? rec.deviceId : 'cloud');
+      // Skip if cloud's originDeviceId matches our local device's id —
+      // same authoring device, this is a steady-state reconcile of a
+      // record we already own. Cloud wins by LWW intent (will be
+      // refined in D-2/E-1; D-1 keeps the rule conservative).
+      if (cloudOrigin === localDeviceId) {
+        // Replace local with cloud (cloud is canonical for our own
+        // device's later writes). Find and overwrite the entry in `out`.
+        for (let i = 0; i < out.length; i++) {
+          if (out[i] && out[i].id === rec.id) {
+            out[i] = rec;
+            break;
+          }
+        }
+        continue;
+      }
+      // Genuine cross-device collision — re-key cloud copy with the
+      // origin suffix so both survive the per-record localStorage write.
+      const newId = rec.id + '@' + cloudOrigin;
+      const cloned = Object.assign({}, rec, { id: newId });
+      out.push(cloned);
+    }
+    return out;
+  }
+
+  // LWW for rest_log + presets. Both store per-record `updatedAt`
+  // stamps; cloud wins on tie (matches push-then-hydrate convergence
+  // in steady state). `keyOf` lets the caller pick `date` (rest_log)
+  // or `id` (presets) — the merge logic is otherwise identical.
+  function _mergeLWWArray(localRecords, cloudRecords, keyOf) {
+    const merged = new Map();
+    for (const rec of localRecords) {
+      if (!rec) continue;
+      const key = keyOf(rec);
+      if (key == null) continue;
+      merged.set(key, rec);
+    }
+    for (const rec of cloudRecords) {
+      if (!rec) continue;
+      const key = keyOf(rec);
+      if (key == null) continue;
+      const local = merged.get(key);
+      if (!local) {
+        merged.set(key, rec);
+        continue;
+      }
+      const localAt = typeof local.updatedAt === 'number' ? local.updatedAt : 0;
+      const cloudAt = typeof rec.updatedAt === 'number' ? rec.updatedAt : 0;
+      if (cloudAt >= localAt) {
+        merged.set(key, rec);
+      }
+    }
+    return Array.from(merged.values());
+  }
+
+  // rest_log specifically: cloud comes through as a `{date: entry}`
+  // object (per C-1's `_pullCloudStore` array→map conversion). Local is
+  // the same shape via `RecoveryUI.loadLog()`. We merge on the date key
+  // with LWW on `updatedAt` — but rest_log entries don't currently
+  // carry `updatedAt` themselves (the strategy doc keeps the rest_log
+  // payload as the raw YYYY-MM-DD-keyed object). For D-1, prefer cloud
+  // on collision so the user's cross-device most-recent edit wins
+  // (matches push-then-hydrate convergence semantics).
+  function _mergeRestLog(localMap, cloudMap) {
+    const out = Object.assign({}, localMap || {});
+    if (cloudMap && typeof cloudMap === 'object') {
+      for (const date of Object.keys(cloudMap)) {
+        const cloudEntry = cloudMap[date];
+        if (!cloudEntry || typeof cloudEntry !== 'object') continue;
+        out[date] = cloudEntry;
+      }
+    }
+    return out;
+  }
+
+  async function reconcileImportedBucket() {
+    // Step 1a: re-entry guard — concurrent call returns the in-flight promise.
+    if (_reconcileInFlight && _currentReconcilePromise) {
+      return _currentReconcilePromise;
+    }
+
+    _reconcileInFlight = true;
+    _currentReconcilePromise = (async () => {
+      try {
+        // ── Step 1b: Preconditions ──────────────────────────────────
+        if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) {
+          const result = { ok: false, kind: 'sync-not-enabled' };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        if (typeof SyncAuth === 'undefined' || typeof SyncAuth.getCurrentUser !== 'function') {
+          const result = { ok: false, kind: 'sign-in-required' };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        const user = SyncAuth.getCurrentUser();
+        if (!user || !user.uid) {
+          const result = { ok: false, kind: 'sign-in-required' };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        // SyncState gate — if already 'hydrating' from another code path
+        // (push or hydrate owns the gate), refuse with `busy`. The
+        // _reconcileInFlight latch handles the "two reconcile calls"
+        // case; this handles the "push/hydrate owns the gate" case.
+        if (typeof SyncState !== 'undefined') {
+          const state = SyncState.get();
+          if (state === 'hydrating') {
+            const result = { ok: false, kind: 'busy' };
+            emit('reconcile-complete', result);
+            return result;
+          }
+          if (state === 'error') {
+            const result = { ok: false, kind: 'sync-error-state' };
+            emit('reconcile-complete', result);
+            return result;
+          }
+        }
+
+        // ── Step 2: Flip F13 write gate ─────────────────────────────
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('hydrating'); } catch (_) {}
+        }
+
+        // ── Step 3: Stamp local idempotently ────────────────────────
+        emit('reconcile-progress', { stage: 'stamping', store: 'history' });
+        const localDeviceId = (typeof History !== 'undefined' && typeof History.getDeviceId === 'function')
+          ? History.getDeviceId()
+          : null;
+        let skippedFutureRecords = 0;
+        let historyStampedCount = 0;
+        let medsStampedCount = 0;
+
+        // 3a: history rows
+        let historyRows = [];
+        try {
+          if (typeof History === 'undefined' || typeof History.getSessions !== 'function') {
+            throw new Error('History module unavailable');
+          }
+          historyRows = await History.getSessions();
+          if (!Array.isArray(historyRows)) historyRows = [];
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        const stampedHistory = [];
+        for (const session of historyRows) {
+          if (!session || typeof session !== 'object') continue;
+          // F19a: skip future-schema rows. Downlevel client would corrupt
+          // semantics on writeback. Count + skip + keep on disk as-is.
+          if (typeof Schema !== 'undefined' && typeof Schema.isFutureRecord === 'function' &&
+              Schema.isFutureRecord(session)) {
+            skippedFutureRecords++;
+            stampedHistory.push(session);
+            continue;
+          }
+          // Idempotent stamp — only tag if `bucket` is absent.
+          if (session.bucket == null) {
+            session.bucket = 'imported';
+            if (localDeviceId) session.originDeviceId = localDeviceId;
+            historyStampedCount++;
+          }
+          stampedHistory.push(session);
+        }
+
+        // 3b: meds records
+        emit('reconcile-progress', { stage: 'stamping', store: 'meds' });
+        let medsList = [];
+        try {
+          if (typeof MedsManager === 'undefined' || typeof MedsManager.all !== 'function') {
+            throw new Error('MedsManager module unavailable');
+          }
+          medsList = MedsManager.all().map(m => m.getState());
+          if (!Array.isArray(medsList)) medsList = [];
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        const stampedMeds = [];
+        for (const med of medsList) {
+          if (!med || typeof med !== 'object') continue;
+          if (med.originDeviceId == null && localDeviceId) {
+            med.originDeviceId = localDeviceId;
+            medsStampedCount++;
+          }
+          stampedMeds.push(med);
+        }
+
+        // 3c: write tagged local snapshot via privileged paths so the
+        // tag stamps are durable even if step 4+ fails (idempotent
+        // retry resumes with stamps already in place).
+        try {
+          if (typeof History._reconcileWriteRaw === 'function') {
+            await History._reconcileWriteRaw(stampedHistory);
+          }
+          if (typeof MedsManager._reconcileWriteRaw === 'function') {
+            MedsManager._reconcileWriteRaw(stampedMeds);
+          }
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+
+        // ── Step 4: Pull cloud per-store in dependency order ────────
+        const cloudData = { rest_log: null, meds: null, presets: null, history: null };
+        for (const storeKey of HYDRATE_STORE_ORDER) {
+          emit('reconcile-progress', { stage: 'pulling', store: storeKey });
+          try {
+            cloudData[storeKey] = await _pullCloudStore(user.uid, storeKey);
+          } catch (err) {
+            if (typeof SyncState !== 'undefined') {
+              try { SyncState.set('error'); } catch (_) {}
+            }
+            const result = {
+              ok: false,
+              kind: 'reconcile-error',
+              store: storeKey,
+              error: err,
+            };
+            emit('reconcile-complete', result);
+            return result;
+          }
+        }
+
+        // ── Step 5: Merge per collision rules ───────────────────────
+        // Read the freshly-stamped local snapshot back so the merge sees
+        // exactly the on-disk shape after step 3 (defensive — the
+        // stamping loop mutated objects in-place, but re-reading
+        // guarantees the merge input matches the privileged-write).
+        let localHistory = [];
+        try {
+          localHistory = await History.getSessions();
+          if (!Array.isArray(localHistory)) localHistory = [];
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+        const localMeds = MedsManager.all().map(m => m.getState());
+        const localRestLog = (typeof RecoveryUI !== 'undefined' && typeof RecoveryUI.loadLog === 'function')
+          ? (RecoveryUI.loadLog() || {})
+          : {};
+        const localPresets = (typeof Presets !== 'undefined' && typeof Presets.snapshotForSync === 'function')
+          ? ((Presets.snapshotForSync().payload || {}).presets || [])
+          : [];
+
+        const mergedHistory = _mergeHistory(localHistory, cloudData.history || []);
+        const mergedMeds    = _mergeMeds(localMeds, cloudData.meds || [], localDeviceId);
+        const mergedRestLog = _mergeRestLog(localRestLog, cloudData.rest_log || {});
+        const mergedPresets = _mergeLWWArray(localPresets, cloudData.presets || [], (rec) => rec.id);
+
+        // ── Step 6: Write merged snapshot to local + cloud ──────────
+        // 6a: local writes (reuse C-1 hydrate helpers for rest_log +
+        // presets where merge semantics collapse to "replace local
+        // with canonical payload"; D-1 reconcile helpers for history +
+        // meds where merge keeps tagged-local + cloud union).
+        emit('reconcile-progress', { stage: 'writing', store: 'history' });
+        try {
+          if (typeof History._reconcileWriteRaw === 'function') {
+            await History._reconcileWriteRaw(mergedHistory);
+          }
+          emit('reconcile-progress', { stage: 'writing', store: 'meds' });
+          if (typeof MedsManager._reconcileWriteRaw === 'function') {
+            MedsManager._reconcileWriteRaw(mergedMeds);
+          }
+          emit('reconcile-progress', { stage: 'writing', store: 'rest_log' });
+          if (typeof RecoveryUI !== 'undefined' && typeof RecoveryUI._hydrateWriteRaw === 'function') {
+            RecoveryUI._hydrateWriteRaw(mergedRestLog);
+          }
+          emit('reconcile-progress', { stage: 'writing', store: 'presets' });
+          if (typeof Presets !== 'undefined' && typeof Presets._hydrateWriteRaw === 'function') {
+            Presets._hydrateWriteRaw(mergedPresets);
+          }
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+
+        // 6b: cloud writes per-record via SyncFirestore.setDoc.
+        // history + meds: array-of-records with `record.id` as the doc key.
+        // presets: same. rest_log: object-keyed map; the key IS the doc id.
+        try {
+          // history
+          for (let i = 0; i < mergedHistory.length; i++) {
+            const rec = mergedHistory[i];
+            if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
+            // F19a: skip future-schema rows on cloud write too — they
+            // came from cloud (or were merged in untouched) and are
+            // canonical there already; pushing them again is a no-op
+            // setDoc but cheaper to skip.
+            if (typeof Schema !== 'undefined' && typeof Schema.isFutureRecord === 'function' &&
+                Schema.isFutureRecord(rec)) {
+              continue;
+            }
+            emit('reconcile-progress', {
+              stage: 'uploading',
+              store: 'history',
+              current: i + 1,
+              total: mergedHistory.length,
+            });
+            await SyncFirestore.setDoc(`users/${user.uid}/history/${rec.id}`, rec);
+          }
+          // meds
+          for (let i = 0; i < mergedMeds.length; i++) {
+            const rec = mergedMeds[i];
+            if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
+            emit('reconcile-progress', {
+              stage: 'uploading',
+              store: 'meds',
+              current: i + 1,
+              total: mergedMeds.length,
+            });
+            await SyncFirestore.setDoc(`users/${user.uid}/meds/${rec.id}`, rec);
+          }
+          // rest_log (map → per-date doc)
+          const restLogKeys = Object.keys(mergedRestLog);
+          for (let i = 0; i < restLogKeys.length; i++) {
+            const date = restLogKeys[i];
+            const entry = mergedRestLog[date];
+            if (!entry || typeof entry !== 'object') continue;
+            emit('reconcile-progress', {
+              stage: 'uploading',
+              store: 'rest_log',
+              current: i + 1,
+              total: restLogKeys.length,
+            });
+            // B-3 upload contract: stamp the date onto the inner record
+            // so E-1 per-record merge code can find it without
+            // re-deriving from the path.
+            await SyncFirestore.setDoc(
+              `users/${user.uid}/rest_log/${date}`,
+              Object.assign({ date }, entry)
+            );
+          }
+          // presets
+          for (let i = 0; i < mergedPresets.length; i++) {
+            const rec = mergedPresets[i];
+            if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
+            emit('reconcile-progress', {
+              stage: 'uploading',
+              store: 'presets',
+              current: i + 1,
+              total: mergedPresets.length,
+            });
+            await SyncFirestore.setDoc(`users/${user.uid}/presets/${rec.id}`, rec);
+          }
+        } catch (err) {
+          if (typeof SyncState !== 'undefined') {
+            try { SyncState.set('error'); } catch (_) {}
+          }
+          const result = { ok: false, kind: 'reconcile-error', error: err };
+          emit('reconcile-complete', result);
+          return result;
+        }
+
+        // ── Step 7: Set all 5 hydrate markers ───────────────────────
+        // Done ONLY after both local + cloud writes succeed — so a
+        // mid-flight failure leaves markers absent and the next boot's
+        // auto-hydrate path re-evaluates correctly.
+        _setAllHydrateMarkers();
+
+        // ── Step 8: Clear Stage D handoff flag ──────────────────────
+        clearStageDHandoff();
+
+        // ── Step 9: Flip back to 'ready' + emit success ─────────────
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('ready'); } catch (_) {}
+        }
+        const counts = {
+          rest_log: Object.keys(mergedRestLog).length,
+          meds: mergedMeds.length,
+          presets: mergedPresets.length,
+          history: mergedHistory.length,
+        };
+        const success = {
+          ok: true,
+          kind: 'reconciled',
+          counts,
+          stamped: { history: historyStampedCount, meds: medsStampedCount },
+          skippedFutureRecords,
+        };
+        emit('reconcile-complete', success);
+        return success;
+      } catch (err) {
+        // Defensive catch — anything unexpected (throw inside a merge
+        // helper, missing module, etc.) lands here. Leave handoff flag
+        // set + hydrate markers unset so retry resumes from scratch
+        // (Headline #5 — idempotent re-run as rollback).
+        if (typeof SyncState !== 'undefined') {
+          try { SyncState.set('error'); } catch (_) {}
+        }
+        const result = { ok: false, kind: 'reconcile-error', error: err };
+        emit('reconcile-complete', result);
+        return result;
+      }
+    })();
+
+    // Always clear the in-flight latch when the promise settles —
+    // regardless of success / failure / throw. Without this, a failed
+    // reconcile would permanently wedge the re-entry guard.
+    const promise = _currentReconcilePromise;
+    promise.finally(() => {
+      _reconcileInFlight = false;
+      _currentReconcilePromise = null;
+    });
+    return promise;
+  }
+
   return {
     init, enable, disable, getState, getSnapshot,
     on, off, emit,
@@ -850,5 +1427,8 @@ const SyncEngine = (() => {
     hydrateFromCloud,
     isAllHydrated,
     clearHydrationMarkers,
+    // D-1: imported-bucket reconcile + handoff-clear helper.
+    reconcileImportedBucket,
+    clearStageDHandoff,
   };
 })();

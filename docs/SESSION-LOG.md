@@ -395,6 +395,67 @@ Third sync infrastructure PR. Adds Google sign-in via `@capacitor-firebase/authe
 
 ---
 
+## Session 8 — 2026-05-12
+
+### What We Built
+
+**Stage D imported-bucket reconcile (D-1 — third observable cross-device milestone)**
+
+C-1 landed Device B fresh-hydrate but left Stage D (Device B with pre-existing local data + cloud also non-empty) as a dead-end status message in the settings drawer. D-1 ships the actual reconcile flow that C-1's `tempo_sync_stage_d_handoff` guard short-circuits to: tag local rows as "imported (pre-sync)" → pull cloud → merge per per-store collision rules → write combined snapshot to local + cloud → clear handoff flag. F17 Alternative 2 (separate-bucket imported history) is the strategy implemented here.
+
+**Engine layer (Phase 2):**
+- Extended `js/sync-engine.js` with `reconcileImportedBucket()` orchestrator (~400 lines, 9-step contract): (1) `SyncState.set('hydrating')` → (2) stamp local idempotently (history rows get `bucket: 'imported'`, meds get immutable `originDeviceId`) with F19a future-record skip → (3) pull cloud per-store via `_pullCloudStore` → (4) merge per collision rules (history append-merge by `id`; meds LWW by `updatedAt` with same-id+different-origin re-key to `${id}@${cloudOriginDeviceId}`; rest_log cloud-wins per day; presets LWW array) → (5) write combined to local + cloud via new `_reconcileWriteRaw` privileged helpers + push back to cloud → (6) set 5 hydrate markers → (7) clear `tempo_sync_stage_d_handoff` → (8) `SyncState.set('ready')` → (9) emit `reconcile-complete`. Failure path leaves handoff flag set + markers unset for idempotent re-run.
+- `js/history.js` — added `bucket: session.bucket || 'synced'` overlay default in `addSession`'s entry literal (spread pattern, no `KNOWN_HISTORY_KEYS` allowlist needed); new async `_reconcileWriteRaw(records)` twin of C-1's `_hydrateWriteRaw`. Bucket field is structural; `getAllTags()` continues to skip it.
+- `js/meds.js` — added `'originDeviceId'` to `KNOWN_MED_KEYS` (V2 block); new `let originDeviceId = null` closure with set-once-immutable read in `loadState`; emitted from `getState()`; new `_reconcileWriteRaw(records)` helper on `MedsManager`.
+- New `js/sync-manual-dedupe.js` — D-2+ hook surface placeholder. `ManualDedupe.scan()` reads `History.getSessions()`, partitions by bucket, pre-buckets by `(type, YYYY-MM-DD)`, yields `{ a, b, similarity }` pairs (1.0 exact-duration match; 0.9 for `|delta| <= 5000ms`).
+
+**UI wire-up (Phase 4):**
+- `js/history-ui.js` — new `.imported-filter-bar` filter chip (only renders when `hasImported`); persists toggle to `history_hide_imported`; prepends non-interactive `.history-tag-imported` chip (dashed outline, muted color) on imported session rows.
+- `js/tempo-nav.js` — replaced both dead-end "Manual reconciliation will ship in a follow-up" sites (B-3 push handler + C-1 hydrate-complete handler) with new `#cloud-sync-reconcile-btn` element + handler. Visibility gated on `SyncFlag.isEnabled() && SyncAuth.getCurrentUser() && tempo_sync_stage_d_handoff === '1'`. Subscribed to `reconcile-progress` / `reconcile-complete` events with per-stage status copy.
+- `css/styles.css` — `.history-tag-imported` + `.imported-filter-bar` blocks. Reused existing `.tempo-cloud-sync-primary` button class.
+- `index.html` — added `<script src="js/sync-manual-dedupe.js">` between sync-engine.js and sync-auth.js; added `#cloud-sync-reconcile-btn` element inside Cloud Sync drawer section.
+
+**Tests (Phase 3):**
+- 23 new cases in `tests/sync-imported-bucket.test.js`: MedsManager `_reconcileWriteRaw` (3); orchestrator happy path (5); failure paths (4); re-entry + events (3); merge collision rules (2); `ManualDedupe.scan` (6).
+- One downstream `tests/meds.test.js` regression patched: added `'originDeviceId'` to `expectedKeys` Set in the "fresh med (no loadState call) emits no __forward keys" test.
+- Full suite: **381/381 pass** via kapture (358 C-1 baseline + 23 new D-1 cases).
+
+**Headline findings — 5 spec-vs-code mismatches resolved at audit time** (documented in `docs/sync-impl/audits/D-1-AUDIT.md`):
+
+1. `KNOWN_HISTORY_KEYS` does not exist on `main` — `history.js:235` uses an F19b spread-then-overlay pattern instead, so `bucket` ships as a single overlay default (no allowlist edit needed).
+2. `originDeviceId` DOES need a `KNOWN_MED_KEYS` entry (V2 block) — meds.js uses the F19b allowlist+`__forward` pattern, unlike history; without the entry, `originDeviceId` would round-trip through `_forwardBag` as an opaque blob.
+3. The reconcile-flow ordering is pull → merge → push in 9 explicit steps — PLAN.md §D-1's "tag local … then upload" wording is shorthand; the audit re-sequenced it.
+4. `_reconcileWriteRaw` mirrors C-1's `_hydrateWriteRaw` line-for-line — future unification PR may collapse them into one `_privilegedWriteRaw(reason: 'hydrate' | 'reconcile')`.
+5. `js/sync-manual-dedupe.js` lives at the flat repo path, not `js/sync-impl/manual-dedupe.js` as PLAN.md §D-1 §"Files touched" suggested (the codebase doesn't use the `js/sync-impl/` subfolder).
+
+**Known harness gap (recommend follow-up before D-2):** Loading `js/history.js` in `tests/index.html` declares `const History` at script scope, which breaks ~22 pre-existing sync tests that mock `window.History`. As a result, 7 audit-listed D-1 cases that exercise the REAL History module (Test scope #1, #2, #3, #5, #11, #12, plus `getAllTags` regression) can't run — they're enforced manually via the audit's "Manual setup steps". A follow-up test-harness refactor PR (lazy-load History only inside isolated `describe` blocks, or move History tests to a separate `tests/history.html` page) should land before D-2 to fully exercise these paths.
+
+**`sw.js` cache bump:** `stopwatch-v71-sync-hydrate` → `stopwatch-v72-d1-reconcile`. Added `./js/sync-manual-dedupe.js` to `ASSETS`.
+
+**Audit:** `docs/sync-impl/audits/D-1-AUDIT.md` (already committed at `f2f4639` per A-1 precedent).
+
+### Suggested Next Steps
+
+- **Manual physical-device end-to-end verification (the canonical D-1 proof):** on Device B with pre-existing local data (meds, history, rest_log, presets), flip on Cloud Sync → sign in with the same Google account as Device A → C-1 hydrate routes to Stage D handoff → tap "Reconcile now" in the drawer → confirm: (1) status row progresses through `tagging` → `pulling-<store>` → `merging` → `writing` → `uploading-<store>` → `done`; (2) history panel shows "Imported (pre-sync)" chips on Device B's pre-existing rows + hide-imported filter chip in filter bar; (3) Device A's cloud-merged history is now visible; (4) Firestore Console shows the merged snapshot.
+- **Test-harness refactor (before D-2):** lazy-load History in `tests/index.html` so the 7 manual-only D-1 cases can be enforced. Likely scope: ~50 lines in `tests/index.html` + small `tests/test-runner.js` extension.
+- **D-2** (`feat/sync-stage-d-reconcile`) — per-med ±15-min doseLog reconcile (F1) + clock-skew clamp (F16). Engine-only PR. Builds on D-1's reconcile pipeline; touches `js/meds.js` only.
+- **B-4** — health-data arrival toast (F15). Lights up in E-1.
+- **E-1** (`feat/sync-stage-e-merge-loop`) — steady-state push/pull loop. The actual "ongoing bidirectional sync" engine. Largest PR of the rollout; touches every synced store with per-store merge files.
+
+**Coordination note:** D-1 branched from `feat/sync-stage-c-hydrate` (C-1's PR #62, still open at session start). The D-1 PR diff against `main` will include C-1's commits until C-1 merges; after the merge, GitHub auto-updates the PR view to show only D-1's diff. No rebase needed unless C-1 merges with conflict-touching changes.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+- Amend `.claude/agents/engine-implementer.md` to make the brief-driven scope-expansion mechanism explicit (still TODO since S0-1).
+
+### Commits
+```
+<SHA>   feat(sync): Stage D imported-bucket reconcile (D-1)
+<SHA>   docs(sync-impl): move D-1 to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

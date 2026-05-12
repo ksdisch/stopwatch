@@ -4890,6 +4890,35 @@ body.focus-mode .global-bfrb-fab {
   color: var(--green);
 }
 
+/* D-1: "Imported (pre-sync)" chip on history-session rows whose bucket
+   is 'imported'. Visually distinct from .tag-chip so it doesn't look
+   user-editable — slightly smaller text, dashed-outline border (matches
+   .tag-add-btn idiom but in a non-interactive shape), and no hover/active
+   affordance. pointer-events: none seals it as read-only. */
+.history-tag-imported {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed var(--btn-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* D-1: imported-filter-bar wraps the single "Hide imported" /
+   "Show imported" filter chip into its own row so it doesn't crowd the
+   date or tag chips on narrow viewports. Mirrors .date-filter-bar /
+   .tag-filter-bar layout — no new tokens. */
+.imported-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+}
+
 .tag-input {
   width: 80px;
   height: 22px;

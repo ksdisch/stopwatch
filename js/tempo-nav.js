@@ -321,6 +321,13 @@ const TempoNav = (() => {
     // UI-side for rendering the disabled state synchronously.
     const pushBtn = drawer.querySelector('#cloud-sync-push-btn');
     let _pushInFlightLocal = false;
+    // D-1: "Reconcile now" button + a local in-flight latch. Same shape
+    // as _pushInFlightLocal — keeps the button disabled across the click
+    // handler's awaits while SyncEngine.reconcileImportedBucket() runs.
+    // The engine has its own _reconcileInFlight guard; this UI-side
+    // latch renders the disabled state synchronously.
+    const reconcileBtn = drawer.querySelector('#cloud-sync-reconcile-btn');
+    let _reconcileInFlightLocal = false;
     if (!toggleBtn) return; // markup not present — feature disabled
 
     function setStatus(msg, isError) {
@@ -369,6 +376,29 @@ const TempoNav = (() => {
       }
     }
 
+    // D-1: reconcile button is gated behind flag-on AND signed-in AND
+    // the Stage D handoff flag being set. (B-3's push and C-1's hydrate
+    // both set the handoff when they detect "local + cloud both have
+    // data"; D-1's reconcileImportedBucket clears it on success.)
+    // Disabled while reconcile is in-flight, same idiom as renderPushBtn.
+    function renderReconcileBtn() {
+      if (!reconcileBtn) return;
+      const enabled = (typeof SyncFlag !== 'undefined') && SyncFlag.isEnabled();
+      const user = (typeof SyncAuth !== 'undefined') ? SyncAuth.getCurrentUser() : null;
+      const handoff = (typeof SyncEngine !== 'undefined' &&
+                       typeof SyncEngine.getStageDHandoff === 'function')
+        ? SyncEngine.getStageDHandoff()
+        : false;
+      const hydrating = (typeof SyncState !== 'undefined' && SyncState.isHydrating())
+        || _reconcileInFlightLocal;
+      const visible = enabled && user !== null && handoff;
+      reconcileBtn.hidden = !visible;
+      if (visible) {
+        reconcileBtn.disabled = hydrating;
+        reconcileBtn.setAttribute('aria-disabled', hydrating ? 'true' : 'false');
+      }
+    }
+
     function renderCloudSyncUI() {
       const enabled = (typeof SyncFlag !== 'undefined') && SyncFlag.isEnabled();
       const user = (typeof SyncAuth !== 'undefined') ? SyncAuth.getCurrentUser() : null;
@@ -379,6 +409,7 @@ const TempoNav = (() => {
         if (identityRow) identityRow.hidden = true;
         if (signInBtn) signInBtn.hidden = true;
         renderPushBtn();
+        renderReconcileBtn();
         return;
       }
 
@@ -402,6 +433,7 @@ const TempoNav = (() => {
       }
 
       renderPushBtn();
+      renderReconcileBtn();
     }
 
     // Toggle the feature flag. Enabling lazy-inits SyncAuth so the cold-
@@ -486,8 +518,11 @@ const TempoNav = (() => {
             setProgress('stage-d-handoff');
             if (statusEl) {
               statusEl.textContent =
-                'Cloud has existing data. Manual reconciliation will ship in a follow-up.';
+                'Cloud has existing data. Tap "Reconcile now" to merge your local data with cloud.';
             }
+            // D-1: handoff flag was set by the engine; surface the
+            // Reconcile button immediately so the user has an action.
+            renderReconcileBtn();
           } else {
             const kind = (result && result.kind) || 'unknown';
             const errMsg = (result && result.error &&
@@ -644,8 +679,10 @@ const TempoNav = (() => {
           setProgress('stage-d-handoff');
           if (statusEl) {
             statusEl.textContent =
-              'Cloud has existing data. Manual reconciliation will ship in a follow-up.';
+              'Cloud has existing data. Tap "Reconcile now" to merge your local data with cloud.';
           }
+          // D-1: handoff flag is set by the engine; renderCloudSyncUI
+          // surfaces the Reconcile button (renderReconcileBtn fires inside).
           renderCloudSyncUI();
           return;
         }
@@ -675,6 +712,130 @@ const TempoNav = (() => {
           statusEl.textContent = 'Load failed: ' + escapeHtml(userFacing);
         }
         renderCloudSyncUI();
+      });
+    }
+
+    // ── D-1: "Reconcile now" click handler + event subscriptions ─────
+    // Drives SyncEngine.reconcileImportedBucket() — pull cloud, merge
+    // with locally-stamped imported rows, push the combined snapshot.
+    // Live per-stage progress comes through SyncEngine.on(
+    // 'reconcile-progress'); the final state is rendered via
+    // 'reconcile-complete'. The click handler only kicks off the
+    // request + tracks the local in-flight latch.
+    //
+    // Pretty labels for the per-store progress payloads. Same shape
+    // as HYDRATE_STORE_LABELS above; redeclared locally so the label
+    // map is colocated with its consumer.
+    const RECONCILE_STORE_LABELS = {
+      'rest_log': 'rest log',
+      'meds': 'medications',
+      'presets': 'presets',
+      'history': 'history',
+    };
+
+    function startReconcile() {
+      if (_reconcileInFlightLocal) return;
+      if (typeof SyncEngine === 'undefined' ||
+          typeof SyncEngine.reconcileImportedBucket !== 'function') {
+        setStatus('Sync engine unavailable.', true);
+        return;
+      }
+      _reconcileInFlightLocal = true;
+      renderReconcileBtn();
+      // Engine emits reconcile-progress / reconcile-complete; the
+      // click handler simply awaits the promise so its `finally` can
+      // clear the local latch. The progress/complete handlers below
+      // own the user-facing copy.
+      SyncEngine.reconcileImportedBucket()
+        .catch(() => { /* engine routes errors via reconcile-complete */ })
+        .then(() => {
+          _reconcileInFlightLocal = false;
+          renderReconcileBtn();
+        });
+    }
+
+    if (reconcileBtn) {
+      reconcileBtn.addEventListener('click', () => {
+        // Clear any prior "Reconcile failed…" status before the new run.
+        setStatus('', false);
+        startReconcile();
+      });
+    }
+
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      SyncEngine.on('reconcile-progress', (payload) => {
+        if (!payload || !payload.stage) return;
+        // Reuse the existing setProgress() data-progress driver so the
+        // status row picks up the in-flight neutral color treatment
+        // (it falls back gracefully on unknown stage values).
+        setProgress('stage-d-handoff');
+        if (!statusEl) return;
+        const stage = payload.stage;
+        const friendly = payload.store
+          ? (RECONCILE_STORE_LABELS[payload.store] || payload.store)
+          : '';
+        if (stage === 'stamping') {
+          statusEl.textContent = friendly
+            ? 'Tagging local ' + friendly + '…'
+            : 'Tagging local data…';
+        } else if (stage === 'pulling') {
+          statusEl.textContent = friendly
+            ? 'Loading cloud ' + friendly + '…'
+            : 'Loading cloud data…';
+        } else if (stage === 'writing') {
+          statusEl.textContent = friendly
+            ? 'Merging ' + friendly + '…'
+            : 'Merging…';
+        } else if (stage === 'uploading') {
+          const current = (typeof payload.current === 'number') ? payload.current : null;
+          const total = (typeof payload.total === 'number') ? payload.total : null;
+          if (friendly && current !== null && total !== null) {
+            statusEl.textContent = 'Uploading ' + friendly +
+              ' (' + current + '/' + total + ')…';
+          } else if (friendly) {
+            statusEl.textContent = 'Uploading ' + friendly + '…';
+          } else {
+            statusEl.textContent = 'Uploading…';
+          }
+        }
+      });
+
+      SyncEngine.on('reconcile-complete', (payload) => {
+        if (!payload) return;
+        if (payload.ok === true) {
+          // Success — clear the in-flight latch + re-render. The engine
+          // already cleared `tempo_sync_stage_d_handoff` in step 8, so
+          // renderCloudSyncUI() hides the Reconcile button.
+          setProgress('done');
+          if (statusEl) {
+            const counts = payload.counts || {};
+            const n = (typeof counts.history === 'number') ? counts.history : 0;
+            const skipped = payload.skippedFutureRecords || 0;
+            const base = 'Imported ' + n + ' past session' +
+              (n === 1 ? '' : 's') + '. Synced ✓';
+            statusEl.textContent = skipped > 0
+              ? base + ' (' + skipped + ' newer record' +
+                (skipped === 1 ? '' : 's') + ' kept local)'
+              : base;
+          }
+          _reconcileInFlightLocal = false;
+          renderCloudSyncUI();
+          return;
+        }
+        // Failure path — engine left the handoff flag set, so the
+        // Reconcile button remains visible. Render a friendly error +
+        // keep the latch cleared so the user can immediately retry.
+        const kind = payload.kind || 'unknown';
+        const errMsg = (payload.error &&
+          (payload.error.message || payload.error.code)) || '';
+        setProgress('error');
+        if (statusEl) {
+          statusEl.textContent = errMsg
+            ? 'Reconcile failed (' + escapeHtml(kind) + '): ' + escapeHtml(errMsg)
+            : 'Reconcile failed: ' + escapeHtml(kind);
+        }
+        _reconcileInFlightLocal = false;
+        renderReconcileBtn();
       });
     }
 

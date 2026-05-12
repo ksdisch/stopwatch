@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v71-sync-hydrate';
+const CACHE_NAME = 'stopwatch-v72-d1-reconcile';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
   './js/sync-flag.js',
   './js/sync-firestore.js',
   './js/sync-engine.js',
+  './js/sync-manual-dedupe.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
