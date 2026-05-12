@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v66-sync-engine-scaffold';
+const CACHE_NAME = 'stopwatch-v67-f19a-passthrough-fix';
 const ASSETS = [
   './',
   './index.html',

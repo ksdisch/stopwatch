@@ -210,6 +210,36 @@ d703cc8 docs(sync-impl): move B-1 to shipped + add F19a-fix to pending
 
 ---
 
+## Session 4 — 2026-05-11
+
+### What We Built
+
+**F19a future-record schemaVersion passthrough fix (F19a-fix)**
+
+Targeted engine patch for the bug B-1's tests surfaced. `js/meds.js` `createMed.loadState` now captures the on-disk `schemaVersion` in a private `_originalSchemaVersion` field when it exceeds `Schema.SCHEMA_VERSION`; `getState()` emits `_originalSchemaVersion ?? Schema.SCHEMA_VERSION` so future-schema records round-trip through the wire format without being downgraded. New `isFromFutureSchema()` accessor for tests.
+
+- `js/history.js` was audited and confirmed clean (no equivalent bug — `addSession` preserves the future stamp; `getSessions` is raw IDB pass-through).
+- `js/presets.js` unaffected (existing tests in `tests/presets.test.js` already cover the raw-localStorage read path that surfaces future stamps naturally).
+- 7 new cases in `tests/sync-stamps.test.js` (future preserved / current regression / legacy regression / far-future / F19a+F19b interaction / idempotence / MedsManager.loadAll integration roundtrip).
+- B-1's placeholder test in `tests/sync-engine.test.js` un-placeholdered now that B-1 is merged. Real assertion: seed `schemaVersion: Schema.SCHEMA_VERSION + 1` med to localStorage, `loadAll()`, `snapshotForSync()`, assert envelope stays at current `Schema.SCHEMA_VERSION` while inner record preserves future stamp.
+- Full suite: 303/303 pass via kapture (was 296/296 in B-1).
+
+**Unblocks B-3.** With F19a-fix merged, B-3's first cloud upload will round-trip records cleanly without silently downgrading future-schema entries.
+
+### Suggested Next Steps
+
+- **B-2** (`feat/sync-stage-b-auth`) — Google sign-in + settings drawer Cloud Sync section. Currently auditing-in-progress in parallel; dispatch implementer once F19a-fix's PR lands.
+- **B-3** — first cloud upload (Stage B0 read-cloud-first guard F9 + mandatory backup F12 + `pushSnapshot()`). Now unblocked by F19a-fix.
+- **B-4** — health-data arrival toast (F15).
+
+### Commits
+```
+<SHA>   fix(meds): preserve future-schema schemaVersion on loadState/getState (F19a-fix)
+<SHA>   docs(sync-impl): move F19a-fix to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
