@@ -27,10 +27,11 @@ Backend selection (Phase 6): Firebase / Firestore. Two accepted tradeoffs: (1) n
 | — | Phase 6 backend-selection decision doc | #54 |
 | — | Stage 0: Firebase project + plugins + security rules | #57 |
 | — | Stage B: SyncEngine module scaffold + per-store snapshot adapters | #58 |
+| — | F19a-fix: preserve future-schema schemaVersion on meds.js getState | #59 |
 
 **What's pending (sync-strategy items + wire/infra):**
 
-Sync-strategy: F1 (per-med ±N-min reconcile), F3 (BFRB stream choice), F4 (re-derive `lastTakenAt` after merge), F6 (`phaseLog` (deviceId, phaseStartedAt) stamping), F7 (verify `loadState` recoveries never persist back), F8 (distraction tombstones vs sessionId-keyed), F9 (Stage B0 read-cloud-first), F12 (mandatory local backup before Stage B mutation), F15 (toast on ≥2-entry remote `doseLog` arrival), F16 (±15-min clock-skew clamp on non-local entries), F17 (Stage D imported bucket), F21 (`alarmFired` per-device — Device B must still chime). Also pending: **F19a-fix** — patch `createMed.getState()` (and `history.js` equivalent) to preserve original `schemaVersion` for future-schema records loaded from disk, instead of downgrading to current `Schema.SCHEMA_VERSION` on read. Surfaced by B-1's F19a passthrough test. Must land before B-3 (first PR that round-trips records).
+Sync-strategy: F1 (per-med ±N-min reconcile), F3 (BFRB stream choice), F4 (re-derive `lastTakenAt` after merge), F6 (`phaseLog` (deviceId, phaseStartedAt) stamping), F7 (verify `loadState` recoveries never persist back), F8 (distraction tombstones vs sessionId-keyed), F9 (Stage B0 read-cloud-first), F12 (mandatory local backup before Stage B mutation), F15 (toast on ≥2-entry remote `doseLog` arrival), F16 (±15-min clock-skew clamp on non-local entries), F17 (Stage D imported bucket), F21 (`alarmFired` per-device — Device B must still chime).
 
 Deferred: F19c (per-store manifest registry).
 
