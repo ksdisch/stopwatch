@@ -2752,6 +2752,15 @@ body.focus-mode .global-bfrb-fab {
 
 .tempo-cloud-sync-primary:hover { filter: brightness(1.1); }
 
+/* B-3: button-in-flight (mid-push) state. The `disabled` attribute and
+   aria-disabled="true" are both applied by tempo-nav.js. */
+.tempo-cloud-sync-primary:disabled,
+.tempo-cloud-sync-primary[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+}
+
 .tempo-cloud-sync-status {
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -2760,6 +2769,30 @@ body.focus-mode .global-bfrb-fab {
 
 .tempo-cloud-sync-status[data-error] {
   color: var(--red);
+}
+
+/* B-3: push-to-cloud progress states. data-progress mirrors the audit's
+   enum: backup | checking-cloud | uploading | done | stage-d-handoff |
+   error. Reuses the existing color tokens — no new design vars. */
+.tempo-cloud-sync-status[data-progress="backup"],
+.tempo-cloud-sync-status[data-progress="checking-cloud"],
+.tempo-cloud-sync-status[data-progress="uploading"] {
+  color: var(--text-secondary);
+}
+
+.tempo-cloud-sync-status[data-progress="done"] {
+  color: var(--green);
+}
+
+.tempo-cloud-sync-status[data-progress="error"] {
+  color: var(--red);
+}
+
+/* Stage D handoff is informational (cloud already has data) — use the
+   productivity-pillar blue to signal "next step lives elsewhere" rather
+   than "something failed". */
+.tempo-cloud-sync-status[data-progress="stage-d-handoff"] {
+  color: #007aff;
 }
 
 /* ── Flow Block Mode ── */

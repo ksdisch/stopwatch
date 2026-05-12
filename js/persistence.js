@@ -35,7 +35,15 @@ const SyncState = (() => {
     return get() === 'ready';
   }
 
-  return { get, set, canWrite, STORAGE_KEY };
+  // B-3: convenience for UI button-disabled + uploader re-entry guard.
+  // True iff the runtime gate is mid-upload / mid-hydrate (i.e. someone
+  // else owns the write window). Cheaper than re-deriving from get() at
+  // call sites and keeps "is the gate locked?" as one named query.
+  function isHydrating() {
+    return get() === 'hydrating';
+  }
+
+  return { get, set, canWrite, isHydrating, STORAGE_KEY };
 })();
 
 const Persistence = (() => {

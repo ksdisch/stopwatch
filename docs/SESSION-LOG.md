@@ -286,6 +286,57 @@ Third sync infrastructure PR. Adds Google sign-in via `@capacitor-firebase/authe
 
 ---
 
+## Session 6 — 2026-05-12
+
+### What We Built
+
+**First cloud upload (B-3 — Stage B uploader)**
+
+**The first PR that performs real cloud writes.** Device A can now push its full snapshot to Firestore. First observable cross-device milestone.
+
+**Engine layer (Phase 2):**
+- New `js/sync-firestore.js` — Firestore SDK seam (single wrapper for getDoc/setDoc/getCollection/runTransaction/setBatch). Web branch lazy-imports `firebase/firestore` from gstatic CDN v11.10.0 and reuses `Platform.auth`'s FirebaseApp via `getApps()`; native branch routes through `window.Capacitor.Plugins.FirebaseFirestore`. Errors normalized to `{ kind, message, isRetryable, originalError }` (4 kinds: `permission-denied`, `network`, `not-found`, `unknown`). `SYNC_DISABLED` fast-path bypasses SDK load when flag is off.
+- New `js/backup.js` — F12 mandatory local backup. `exportLocal()` reuses `Export.buildBackupData()` then offers via Web Share API (mobile) or `<a download>` (desktop / WKWebView fallback). `importLocal()` ships dormant as the D-1 restore hook. Returns `{ ok, bytesWritten?, error? }` for the uploader's hard gate.
+- Extended `js/sync-engine.js` with `pushSnapshot()` orchestrator (~330 lines): F12 mandatory backup → F9 read-cloud-first guard with partial-upload-marker resume → F13 gate flip → atomic in-memory snapshot → per-store upload loop (`rest_log → meds → presets → history`) with F19a future-record skipping. New events `push-progress { stage, store?, current?, total? }` and `push-complete { ok, kind?, ... }`. Module-scoped `_pushInFlight` re-entry guard returns the in-flight promise to the second caller.
+- Two new persistence keys: `tempo_sync_partial_upload_uid` (resume marker — set on failure, cleared on success), `tempo_sync_stage_d_handoff` (flag set when cloud is non-empty from another device; D-1 will consume).
+- Added `SyncState.isHydrating()` helper to `js/persistence.js`.
+
+**F13 gap fixes (engine):**
+- `js/recovery-ui.js` `saveLog()` and `js/presets.js` `save`/`update`/`remove` now consult `SyncState.canWrite()` before writing localStorage. Without these gates, mid-upload writes from the recovery UI (e.g. nap timer completing) or preset edits would leak into local state and race the snapshot. B-3 is the first PR that actually flips `tempo_sync_state = 'hydrating'`, so these latent gaps became real. Both fixes are 1-line guards matching the existing `js/meds.js saveAll()` pattern.
+
+**Tests (Phase 3):**
+- 18 new cases in `tests/sync-uploader.test.js`: cloud-empty path uploads in dependency order; cloud-non-empty without marker → Stage D handoff; cloud-non-empty WITH marker for same UID → resume upload; F12 backup-first ordering; F12 backup-failure abort; F19a future-record skipping with count surfaced; SyncState transitions on success + failure; snapshot read failure abort; re-entry guard; sentinel rejections (no auth, flag off, hydrating, error state); F13 gap regressions for Presets save/update/remove; 2 SyncFirestore stub-seam tests.
+- F13 gap regression for `RecoveryUI.saveLog` was skipped — `recovery-ui.js` isn't loaded by `tests/index.html`; manual e2e covers it.
+- Web SDK dynamic-import error-normalization tests deferred (same dynamic-import-stubbing limitation as B-2).
+- Full suite: **335/335 pass** via kapture against real Chrome (was 317 post-B-2).
+
+**UI wire-up (Phase 4):**
+- New "Push to cloud" button in Cloud Sync section (between sign-in button and status row). Visible only when flag enabled + signed in.
+- Status row extended with `data-progress` state attribute: `backup` → "Backing up local data…", `checking-cloud` → "Checking cloud…", `uploading` → "Uploading <store>…", `done` → green "Synced ✓" (or "Synced. N newer records kept local…"), `error` → red, `stage-d-handoff` → info blue.
+- `js/tempo-nav.js` `wireCloudSync` extended: push button handler, `renderPushBtn()` visibility logic (gated on `SyncFlag.isEnabled() && SyncAuth.getCurrentUser() && !SyncState.isHydrating()`), subscriptions to `SyncEngine.on('push-progress')` + `SyncEngine.on('push-complete')` for live status updates.
+- CSS extends B-2's `.tempo-cloud-sync-status` block with `[data-progress]` state colors using existing CSS vars. Button disabled state styled via `:disabled` + `[aria-disabled="true"]`.
+- Kapture verification: app boots without console errors; push button DOM exists; correctly hidden when signed out; renders in Cloud Sync section as designed; neighbor route `#/wellness/meds` regression-tests cleanly.
+- iOS `Info.plist` NOT touched in B-3 — Firebase iOS SDK reuses the B-2-shipped `CFBundleURLTypes`.
+
+**`sw.js` cache bump:** `stopwatch-v68-sync-auth` → `stopwatch-v69-sync-uploader`. Added `./js/sync-firestore.js` + `./js/backup.js` to `ASSETS`.
+
+**Audit:** `docs/sync-impl/audits/B-3-AUDIT.md` (788 lines, 13 affected files, 13 risks: 8 low / 5 med / 0 high).
+
+### Suggested Next Steps
+
+- **Manual physical-device end-to-end verification** (this is the key milestone for B-3): on Chrome / Safari incognito, flip on Cloud Sync → Sign in with Google → click Push to cloud → verify status row progresses through stages → verify Firestore Console shows `users/{uid}/...` paths populated. Repeat on iPhone via `iOS-BUILD.md` free-cert refresh path.
+- **B-4** — health-data arrival toast (F15). Lights up in E-1 when remote doseLog entries arrive; for B-3 it's still dormant.
+- **C-1** (`feat/sync-stage-c-hydrate`) — Device B fresh hydrate. Pulls down the snapshot B-3 just uploaded.
+- **Stage D / E** — the rest of the sync rollout (imported bucket, reconcile + clock-skew clamp, steady-state merge loop, offline buffer, real-time listeners).
+
+### Commits
+```
+<SHA>   feat(sync): first cloud upload + F13 gap fixes + Push-to-cloud UI (B-3)
+<SHA>   docs(sync-impl): move B-3 to shipped
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
