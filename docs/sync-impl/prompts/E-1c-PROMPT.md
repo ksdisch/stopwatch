@@ -8,7 +8,47 @@ shipped (PRs #46–#66, plus the chore PR #67 baking the scope-
 expansion mechanism into the engine-implementer agent def).
 
 E-1c is the **third of five Stage E sub-PRs** and the **first PR
-that ships real merge logic**. Three things land:
+that ships real merge logic**.
+
+---
+
+## RESOLUTIONS (Kyle, 2026-05-13 — all 7 TODOs accepted as recommended)
+
+The 7 TODO blocks below describe the original decision surface. Kyle
+accepted the auditor's recommended pick for each. **Engine-
+implementer reads `docs/sync-impl/audits/E-1c-AUDIT.md` for the
+authoritative spec; the deferral language in the TODO sections below
+is preserved for historical context but overridden by the audit.**
+
+- **TODO #1 (merge fn signature):** **Pick A** — Self-contained merge
+  fn. Calls `SyncFirestore.getCollection` internally. Signature is
+  `async merge(localSnapshot) → { ok, count, skipped, remoteArrivals, warnings }`.
+  Dispatcher API stable from E-1b.
+- **TODO #2 (F13 write gate):** **Pick B** — Dispatcher-wide flip
+  around the cycle. `_runMergeCycle` calls `SyncState.set('hydrating')`
+  before the per-store loop, restores `'ready'` after.
+- **TODO #3 (F15 counter):** **Pick A** — Per-med, per-cycle,
+  threshold ≥2 NEW remote entries. Emit `meds-arrival` with
+  `{ medId, count }` per qualifying med.
+- **TODO #4 (D-1 retrofit):** **Pick A** — Wire in-place at the
+  existing comment seam in `js/sync-engine.js:1278-1286`. Replace
+  the comment block with the 5-6 line loop.
+- **TODO #5 (F19a per-record):** **Pick C** — Pre-filter future-
+  schema records in merge fn (`skipped++`) AND keep
+  `reconcileDoseLog`'s existing future-schema gate as backup.
+- **TODO #6 (test files):** **Pick A** — New file
+  `tests/sync-merge-meds.test.js` per PLAN.md spec. E-1d and E-1e
+  will follow the same per-store-test-file pattern.
+- **TODO #7 (dev flag):** **Pick A** — Confirmed.
+  `tempo_sync_steady_state_enabled` stays default-off through E-1c
+  + E-1d. E-1e removes the gate.
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value.
+
+---
+
+Three things land:
 
 1. **`js/sync-merge-meds.js`** — replace the E-1b throwing stub with
    the real meds-store merge function. Inputs: local snapshot for
