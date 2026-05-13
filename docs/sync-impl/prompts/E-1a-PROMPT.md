@@ -18,6 +18,29 @@ in E-1b through E-1e.
 
 ---
 
+## RESOLUTIONS (Kyle, 2026-05-13 post-audit)
+
+The brief's "Approach options" section below originally listed three
+candidates (a/b/c) for the SW bypass mechanism and deferred the
+choice to sync-auditor + Kyle. All three of the audit's open
+questions are now resolved. **Engine-implementer reads
+`docs/sync-impl/audits/E-1a-AUDIT.md` for the authoritative spec;
+the deferral language below is preserved for historical context but
+overridden by the audit.**
+
+- **Q1 (approach choice):** Pick B — referrer-based bypass.
+  `sw.js` fetch handler inspects `event.request.referrer` (NOT
+  `event.request.url`) for `?nosw=1`. `tests/index.html` adds the
+  URL guard only — **no per-script-tag suffix changes** required.
+  The original Pick A description in this brief is superseded.
+- **Q2 (token format):** `searchParams.has('nosw')` (binary).
+- **Q3 (URL guard logging):** silent guard.
+
+The audit's revised affected-files table (rows for `sw.js` +
+`tests/index.html`) is the engine-implementer's source of truth.
+
+---
+
 ## What this PR ships
 
 A targeted fix to `tests/index.html` + `sw.js` (and possibly
