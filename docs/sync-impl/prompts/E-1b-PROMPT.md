@@ -11,6 +11,40 @@ scaffolding — no merge decisions, no F3 / F8 / F15 wire-up, no
 end-user-visible behavior change. Its single goal is to land the
 plumbing that E-1c/d/e will fill in:
 
+---
+
+## RESOLUTIONS (Kyle, 2026-05-13 — all 7 TODOs accepted as recommended)
+
+The 7 TODO blocks below describe the original decision surface. Kyle
+accepted the auditor's recommended pick for each. **Engine-
+implementer reads `docs/sync-impl/audits/E-1b-AUDIT.md` for the
+authoritative spec; the deferral language in the TODO sections below
+is preserved for historical context but overridden by the audit.**
+
+- **TODO #1 (merge files):** **Pick B** — Ship 4 stub `js/sync-merge-*.js`
+  files in E-1b. Each is an IIFE exposing `merge(snapshot)` that throws
+  `'not implemented until E-1c/d/e'`. Dispatcher invokes all four.
+- **TODO #2 (pause mechanism):** **Pick B** — `visibilitychange` +
+  feature-detect `Platform.network`. Forward-compatible with E-2.
+- **TODO #3 (interval config):** **Pick C** — Constant default
+  (30000ms) + `tempo_sync_steady_interval_ms` localStorage override.
+  Clamp to `[10000, 600000]`.
+- **TODO #4 (auto-invoke):** **Pick C** — Auto-start gated behind
+  `tempo_sync_steady_state_enabled` localStorage flag, default off.
+  E-1e removes the gate.
+- **TODO #5 (CAS wrapper):** **Pick A** — Read full remote doc + parse
+  schemaVersion (5a); web-only CAS for E-1b with documented native
+  follow-up (5b); add `kind: 'refuse-writeback'` to the error union (5c).
+- **TODO #6 (test files):** **Pick A** — Extend `tests/sync-engine.
+  test.js` + `tests/sync-uploader.test.js` with new describe blocks.
+- **TODO #7 (F19a layering):** **Pick A** — Confirmed. CAS-level
+  F19a only in E-1b; E-1e ships the per-store snapshot-read gate.
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value.
+
+---
+
 1. `SyncEngine.startSteadyState()` — periodic merge timer scaffold
 2. Per-store merge dispatcher — iterates the existing `SYNCED_STORES`
    registry and calls a per-store merge function
