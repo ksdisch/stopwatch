@@ -10,16 +10,20 @@
 //   SyncFirestore.getDoc(path)          : Promise<{ id, data } | null>
 //   SyncFirestore.setDoc(path, data)    : Promise<void>
 //   SyncFirestore.getCollection(path)   : Promise<{ docs: [{id,data}], count }>
-//   SyncFirestore.runTransaction(fn)    : Promise<any>   — STUB (throws in B-3)
+//   SyncFirestore.runTransaction(fn)    : Promise<any>   — CAS wrapper (E-1b; web-only)
 //   SyncFirestore.setBatch(writes)      : Promise<void>  — STUB (throws in B-3)
 //
 // Error normalization:
 //   All methods throw / reject with the same normalized error shape:
-//     { kind: 'permission-denied' | 'network' | 'not-found' | 'unknown',
+//     { kind: 'permission-denied' | 'network' | 'not-found' |
+//             'refuse-writeback' | 'unknown',
 //       message: string, isRetryable: boolean, originalError: any }
 //   Web `FirebaseError` codes + native plugin error codes are mapped to
 //   `kind`; the original error is preserved on `originalError` for
-//   debugging.
+//   debugging. `kind: 'refuse-writeback'` is E-1b's new addition for the
+//   F19a CAS gate — it's stamped by the caller's transaction body when
+//   `remote.schemaVersion > local SCHEMA_VERSION` and signals "downlevel
+//   client refused to overwrite future-schema record".
 //
 // No-op fast-path: when SyncFlag.isEnabled() === false, every method
 // throws `Error('SYNC_DISABLED')` synchronously (well, returns a rejected
@@ -140,6 +144,10 @@ const SyncFirestore = (() => {
       setDoc:          firestoreMod.setDoc,
       collection:      firestoreMod.collection,
       getDocs:         firestoreMod.getDocs,
+      // E-1b: pulled in alongside the existing imports so the CAS
+      // wrapper below can call `runTransaction(db, fn)` against the
+      // same lazy-loaded SDK without re-importing on every call.
+      runTransaction:  firestoreMod.runTransaction,
     };
     return _sdk;
   }
@@ -278,11 +286,97 @@ const SyncFirestore = (() => {
     }
   }
 
-  // E-1 will implement per-record CAS via Firestore transactions. B-3
-  // ships the stub so call-site code can land + tests can assert the
-  // seam exists. Throws so a stray call surfaces immediately.
-  async function runTransaction(/* fn */) {
-    throw _wrap('unknown', 'runTransaction not implemented until E-1', false, null);
+  // ── E-1b: CAS wrapper for per-record writes ─────────────────────────
+  //
+  // Caller-supplied `fn(tx)` is invoked inside a Firestore transaction.
+  // The `tx` argument is a thin adapter over the SDK's transaction
+  // primitive — exposes `get(path)`, `set(path, data)`, and a
+  // `refuseWriteback(remoteRecord, localSchemaVersion)` helper that
+  // throws the normalized refuse-writeback error so callers can encode
+  // the F19a check without re-implementing the error shape.
+  //
+  // F19a CAS gate (web):
+  //   const ref = `users/${uid}/${store}/${id}`;
+  //   await SyncFirestore.runTransaction(async (tx) => {
+  //     const snap = await tx.get(ref);
+  //     if (snap && snap.data && snap.data.schemaVersion > Schema.SCHEMA_VERSION) {
+  //       tx.refuseWriteback(snap.data, Schema.SCHEMA_VERSION);
+  //     }
+  //     tx.set(ref, mergedRecord);
+  //   });
+  //
+  // CRITICAL: the `tx.get` call MUST happen INSIDE the transaction
+  // callback (Risk #1). A separate `getDoc` outside the transaction
+  // would lose CAS atomicity — a write-after-read race could clobber
+  // a future-schema record between the schemaVersion check and the
+  // transaction-internal write.
+  //
+  // Native CAS parity is a documented follow-up — web-only in E-1b.
+  // The native branch throws `kind: 'unknown'` with "native parity
+  // pending" so downstream callers (E-1c/d/e merge functions) can
+  // defensive-skip the CAS path on `isNative === true` until the
+  // @capacitor-firebase/firestore plugin's `runTransaction` shape is
+  // verified and wired.
+  async function runTransaction(fn) {
+    if (!_flagOn()) throw _wrap('unknown', 'SYNC_DISABLED', false, null);
+    if (typeof fn !== 'function') {
+      throw _wrap('unknown', 'runTransaction requires a callback function', false, null);
+    }
+
+    if (isNative) {
+      // E-1b sub-decision 5b: native CAS parity is a documented
+      // follow-up. The plugin's `runTransaction` shape (if any) hasn't
+      // been verified — until it is, native iOS clients can't use the
+      // CAS wrapper. Downstream merge code should defensive-skip on
+      // `isNative === true`.
+      throw _wrap(
+        'unknown',
+        'runTransaction native parity pending — web-only in E-1b; see follow-up issue',
+        false,
+        null
+      );
+    }
+
+    try {
+      const { sdk, db } = await _getWebDb();
+      return await sdk.runTransaction(db, async (sdkTx) => {
+        // Build the thin adapter we hand to the caller. Paths are
+        // normalized via `_normPath` so callers can pass `/users/...`
+        // or `users/...` interchangeably (matching the rest of this
+        // module's public methods).
+        const tx = {
+          get: async (path) => {
+            const norm = _normPath(path);
+            const ref = sdk.doc(db, norm);
+            const snap = await sdkTx.get(ref);
+            if (!snap || typeof snap.exists !== 'function' || !snap.exists()) return null;
+            return { id: snap.id, data: snap.data() };
+          },
+          set: (path, data) => {
+            const norm = _normPath(path);
+            const ref = sdk.doc(db, norm);
+            sdkTx.set(ref, data);
+          },
+          refuseWriteback: (remoteRecord, localSchemaVersion) => {
+            const remoteVersion = (remoteRecord && remoteRecord.schemaVersion) || '?';
+            const msg = 'refuse-writeback: remote schemaVersion=' + remoteVersion +
+                        ' > local=' + (localSchemaVersion == null ? '?' : localSchemaVersion);
+            throw _wrap('refuse-writeback', msg, false, null);
+          },
+        };
+        return await fn(tx);
+      });
+    } catch (err) {
+      // Preserve the caller-stamped `kind: 'refuse-writeback'` shape —
+      // `_normalizeError` would re-route it through the Firebase code
+      // matcher and downgrade to `'unknown'`. If the inner throw is
+      // already a fully-wrapped error (has `kind` + `isRetryable`),
+      // re-throw it as-is.
+      if (err && typeof err.kind === 'string' && typeof err.isRetryable === 'boolean') {
+        throw err;
+      }
+      throw _normalizeError(err);
+    }
   }
 
   // Defined for future use; B-3 uses a per-record setDoc loop instead

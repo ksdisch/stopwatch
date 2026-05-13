@@ -50,6 +50,18 @@ const SyncEngine = (() => {
   // subscription so re-calling init() doesn't register the handler twice.
   let _authChangeUnsubscribe = null;
 
+  // E-1b: steady-state merge timer state. Module-scope slots so
+  // stopSteadyState() can `removeEventListener` with the SAME function
+  // reference that `addEventListener` got (anonymous inline handlers
+  // would leak — Risk #6 in the audit). `_steadyRunInFlight` is the
+  // coalesce-concurrent-ticks latch — overlapping interval fires (e.g.
+  // a slow IDB read on tick N still running when tick N+1 fires) return
+  // immediately instead of starting a second merge cycle.
+  let _steadyTimer = null;
+  let _steadyVisibilityHandler = null;
+  let _steadyNetworkUnsubscribe = null;
+  let _steadyRunInFlight = false;
+
   // B-3: localStorage keys this module owns. tempo_sync_partial_upload_uid
   // records "this UID's cloud is mid-upload, not Stage D territory" so a
   // network-failure retry doesn't incorrectly route to the Stage D handoff.
@@ -71,6 +83,19 @@ const SyncEngine = (() => {
   // hydrates (rest_log/meds/presets) finish quickly and progress events
   // fire crisply for UX.
   const HYDRATE_STORE_ORDER = ['rest_log', 'meds', 'presets', 'history'];
+
+  // E-1b: steady-state merge timer constants. Default interval 30s
+  // (matches PLAN.md §E-1 spec). Clamp range [10s, 10m] — a 10s minimum
+  // protects against runaway polling on a stale dev flag; the 10m
+  // maximum keeps cross-device propagation latency bounded even if
+  // someone hand-tunes the interval. The localStorage gate
+  // (`tempo_sync_steady_state_enabled === '1'`) keeps E-1b dormant in
+  // production; E-1e removes the gate after merge logic ships.
+  const STEADY_STATE_DEFAULT_MS = 30000;
+  const STEADY_STATE_MIN_MS = 10000;
+  const STEADY_STATE_MAX_MS = 600000;
+  const STEADY_STATE_ENABLED_KEY = 'tempo_sync_steady_state_enabled';
+  const STEADY_STATE_INTERVAL_KEY = 'tempo_sync_steady_interval_ms';
 
   // ── Store registry ────────────────────────────────────────────────────
   //
@@ -1423,6 +1448,213 @@ const SyncEngine = (() => {
     return promise;
   }
 
+  // ── E-1b: steady-state merge timer scaffold ──────────────────────────
+  //
+  // `startSteadyState()` arms a periodic merge timer that invokes
+  // `_runMergeCycle()` at the configured interval. The timer is gated
+  // behind the `tempo_sync_steady_state_enabled` localStorage flag
+  // (strict `=== '1'` check — Risk #4) so E-1b ships dormant: a fresh
+  // boot with no flag set is byte-identical to pre-E-1b behavior.
+  //
+  // E-1b's merge cycle is exercise-able but no-op-effective: all 4
+  // per-store merge modules (`SyncMergeMeds` / `SyncMergeHistory` /
+  // `SyncMergeRestLog` / `SyncMergePresets`) throw 'not implemented'
+  // from their stub `merge()`. The dispatcher tolerates this — each
+  // store call is wrapped in try/catch and emits `merge-error` so the
+  // observer surface is wired even before the real merge logic ships
+  // in E-1c/d/e.
+  //
+  // Pause mechanism (per Pick B on E-1b-PROMPT TODO #2): `visibility-
+  // change` always paused; `Platform.network` feature-detected — if
+  // present, the timer also pauses on network loss. The handlers are
+  // stashed on module-scope slots so `stopSteadyState()` can remove
+  // them with the same function reference (anonymous handlers would
+  // leak — Risk #6).
+  //
+  // No `SyncState` flip happens here in E-1b. The stub merges throw
+  // before any write attempts; E-1e wires the `'hydrating'` flip
+  // inside individual merge functions when real writes start.
+
+  function _getSteadyInterval() {
+    const ls = _getStorage();
+    if (!ls) return STEADY_STATE_DEFAULT_MS;
+    let raw;
+    try { raw = ls.getItem(STEADY_STATE_INTERVAL_KEY); }
+    catch (_) { return STEADY_STATE_DEFAULT_MS; }
+    if (raw == null || raw === '') return STEADY_STATE_DEFAULT_MS;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+      return STEADY_STATE_DEFAULT_MS;
+    }
+    // Inclusive clamp — boundary values pass through unchanged.
+    return Math.min(STEADY_STATE_MAX_MS, Math.max(STEADY_STATE_MIN_MS, parsed));
+  }
+
+  function _isSteadyStateEnabled() {
+    const ls = _getStorage();
+    if (!ls) return false;
+    // Strict equality — `'0'` / `'true'` / `'false'` / empty all fail.
+    // Audit Risk #4: `Boolean(ls.getItem(...))` would coerce non-empty
+    // strings to true and silently activate the timer.
+    try { return ls.getItem(STEADY_STATE_ENABLED_KEY) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function _runMergeCycle() {
+    // Re-entry guard — coalesce overlapping ticks. A slow merge cycle
+    // (e.g. an IDB read on tick N still running) means tick N+1 returns
+    // immediately rather than starting a second cycle in parallel.
+    if (_steadyRunInFlight) return;
+
+    // Preconditions: flag on, signed in, SyncState not busy or errored.
+    if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+    if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.getCurrentUser === 'function') {
+      const user = SyncAuth.getCurrentUser();
+      if (!user || !user.uid) return;
+    }
+    if (typeof SyncState !== 'undefined' && typeof SyncState.get === 'function') {
+      const state = SyncState.get();
+      if (state === 'hydrating' || state === 'error') return;
+    }
+
+    _steadyRunInFlight = true;
+    const storeResults = { meds: null, history: null, rest_log: null, presets: null };
+
+    // Resolve each store's merge module via defensive typeof checks —
+    // the stub files install a global, but a test harness or future
+    // refactor might omit them. Missing module is treated as an error
+    // for that store; the loop keeps going.
+    const moduleByKey = {
+      meds:     (typeof SyncMergeMeds     !== 'undefined') ? SyncMergeMeds     : null,
+      history:  (typeof SyncMergeHistory  !== 'undefined') ? SyncMergeHistory  : null,
+      rest_log: (typeof SyncMergeRestLog  !== 'undefined') ? SyncMergeRestLog  : null,
+      presets:  (typeof SyncMergePresets  !== 'undefined') ? SyncMergePresets  : null,
+    };
+
+    // Iterate in canonical order: meds → history → rest_log → presets
+    // (matches SYNCED_STORES registry above; future per-store snapshot
+    // F19a gating in E-1e will iterate the same order).
+    for (const { key } of SYNCED_STORES) {
+      const mod = moduleByKey[key];
+      if (!mod || typeof mod.merge !== 'function') {
+        const err = new Error('merge module unavailable for store: ' + key);
+        storeResults[key] = { ok: false, error: err };
+        try { console.warn('[SyncEngine] steady-state merge module missing:', key); }
+        catch (_) {}
+        emit('merge-error', { store: key, error: err });
+        continue;
+      }
+      try {
+        // Pass null for the snapshot — E-1b's stubs ignore it. E-1c/d/e
+        // will replace this with the cloud-side per-store snapshot
+        // (loaded inside each merge module via SyncFirestore.getCollection).
+        const result = mod.merge(null);
+        storeResults[key] = { ok: true, result };
+      } catch (err) {
+        storeResults[key] = { ok: false, error: err };
+        try { console.warn('[SyncEngine] steady-state merge error (' + key + '):', err); }
+        catch (_) {}
+        emit('merge-error', { store: key, error: err });
+        // Continue — one bad store must not abort the loop (Risk #3).
+      }
+    }
+
+    emit('merge-cycle-complete', { storeResults });
+    _steadyRunInFlight = false;
+  }
+
+  function startSteadyState() {
+    // Idempotent — second call while timer is armed is a no-op.
+    if (_steadyTimer != null) return;
+
+    // Dev-flag gate (default off — boot is byte-identical to pre-E-1b).
+    if (!_isSteadyStateEnabled()) return;
+
+    const interval = _getSteadyInterval();
+
+    // Visibility check before arming — if the tab is currently hidden,
+    // wait for the next 'visible' event before starting the timer. The
+    // visibilitychange handler stays registered either way so subsequent
+    // visibility flips toggle the timer correctly.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      // Don't arm yet — handler below will start the timer on 'visible'.
+    } else {
+      _steadyTimer = setInterval(() => _runMergeCycle(), interval);
+    }
+
+    // Wire visibilitychange — same handler reference stashed so
+    // stopSteadyState() can removeEventListener cleanly (Risk #6).
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      _steadyVisibilityHandler = function () {
+        if (document.visibilityState === 'hidden') {
+          if (_steadyTimer != null) {
+            clearInterval(_steadyTimer);
+            _steadyTimer = null;
+          }
+        } else if (document.visibilityState === 'visible') {
+          if (_steadyTimer == null) {
+            _steadyTimer = setInterval(() => _runMergeCycle(), interval);
+          }
+        }
+      };
+      try { document.addEventListener('visibilitychange', _steadyVisibilityHandler); }
+      catch (_) { _steadyVisibilityHandler = null; }
+    }
+
+    // Feature-detect Platform.network (E-2 will land it; E-1b is
+    // forward-compatible). If `onChange` returns an unsubscribe
+    // function, stash it so stopSteadyState() can call it.
+    try {
+      if (typeof Platform !== 'undefined' && Platform &&
+          Platform.network && typeof Platform.network.onChange === 'function') {
+        const unsub = Platform.network.onChange(function (status) {
+          // Match the visibility-handler shape: pause on offline,
+          // resume on online. `status` shape is E-2's contract — defensive
+          // duck-typing here.
+          const online = (status && (status.connected === true || status.online === true)) ||
+                         (status === 'online') || (status === true);
+          if (online === false) {
+            if (_steadyTimer != null) {
+              clearInterval(_steadyTimer);
+              _steadyTimer = null;
+            }
+          } else if (online === true) {
+            // Only resume if visibility says we should be active.
+            const visible = (typeof document === 'undefined') ||
+                            (document.visibilityState !== 'hidden');
+            if (_steadyTimer == null && visible) {
+              _steadyTimer = setInterval(() => _runMergeCycle(), interval);
+            }
+          }
+        });
+        if (typeof unsub === 'function') {
+          _steadyNetworkUnsubscribe = unsub;
+        }
+      }
+    } catch (_) {
+      // Defensive — Platform.network is optional and pre-release.
+    }
+  }
+
+  function stopSteadyState() {
+    if (_steadyTimer != null) {
+      try { clearInterval(_steadyTimer); } catch (_) {}
+      _steadyTimer = null;
+    }
+    if (_steadyVisibilityHandler != null) {
+      try {
+        if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+          document.removeEventListener('visibilitychange', _steadyVisibilityHandler);
+        }
+      } catch (_) {}
+      _steadyVisibilityHandler = null;
+    }
+    if (_steadyNetworkUnsubscribe != null) {
+      try { _steadyNetworkUnsubscribe(); } catch (_) {}
+      _steadyNetworkUnsubscribe = null;
+    }
+  }
+
   return {
     init, enable, disable, getState, getSnapshot,
     on, off, emit,
@@ -1439,5 +1671,11 @@ const SyncEngine = (() => {
     // D-1: imported-bucket reconcile + handoff-clear helper.
     reconcileImportedBucket,
     clearStageDHandoff,
+    // E-1b: steady-state merge timer scaffold + internal dispatcher
+    // (the cycle is exposed via `_runMergeCycle` for test-only direct
+    // invocation; production callers use start/stop).
+    startSteadyState,
+    stopSteadyState,
+    _runMergeCycle,
   };
 })();

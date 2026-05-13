@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v74-e1a-test-harness-fix';
+const CACHE_NAME = 'stopwatch-v75-e1b-steady-state-scaffold';
 const ASSETS = [
   './',
   './index.html',
@@ -18,6 +18,10 @@ const ASSETS = [
   './js/sync-firestore.js',
   './js/sync-engine.js',
   './js/sync-manual-dedupe.js',
+  './js/sync-merge-meds.js',
+  './js/sync-merge-history.js',
+  './js/sync-merge-rest-log.js',
+  './js/sync-merge-presets.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',

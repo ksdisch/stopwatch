@@ -705,6 +705,120 @@ e92401d docs(sync-impl): E-1a audit + Kyle's Q1-Q3 resolutions baked in
 
 ---
 
+## 2026-05-13 — E-1b: startSteadyState scaffold + CAS wrapper
+
+### What We Built
+
+**Stage E-1b: steady-state merge-loop scaffold + per-record CAS wrapper.**
+Second of five Stage E sub-PRs (Option B split per the E-1 kickoff).
+Engine-only scaffolding — no per-store merge logic, no F3 / F8 / F15
+wire-up, no UI surface. Ships ten files: (a)
+`SyncEngine.startSteadyState()` / `stopSteadyState()` / `_runMergeCycle()`
+in `js/sync-engine.js` — a `setInterval`-based dispatcher (default 30s,
+clamped 10s–600s) that iterates the existing `SYNCED_STORES` registry,
+invokes each store's `merge(snapshot)` inside a per-store try/catch so
+one bad store can't abort the loop, and emits `merge-error` /
+`merge-cycle-complete` events; (b) 4 new `js/sync-merge-{meds,history,rest-log,presets}.js`
+IIFE stubs whose `merge()` body throws `not implemented until E-1{c,d,e}`
+— they exist so the dispatcher is exercise-able in isolation; (c) the
+real `SyncFirestore.runTransaction(fn)` CAS wrapper at
+`js/sync-firestore.js` replacing B-3's stub at lines 284-285 — reads the
+remote doc inside the transaction via `tx.get`, parses `schemaVersion`,
+refuses writeback if `remote.schemaVersion > local SCHEMA_VERSION` (new
+normalized error `kind: 'refuse-writeback'`), else writes the new
+record; (d) extensions to `tests/sync-engine.test.js` (new
+`describe('SyncEngine — startSteadyState')` block, ~16 cases) and
+`tests/sync-uploader.test.js` (replaced the B-3 stub-throws block with
+~7 CAS wrapper cases). Default-off — the steady-state timer is gated
+behind a new `tempo_sync_steady_state_enabled` localStorage flag (strict
+`=== '1'` equality, no Boolean coercion), so boot is byte-identical to
+pre-E-1b when the flag is absent. CAS wrapper is web-only in E-1b;
+native parity is a documented follow-up (the native branch throws an
+explicit "native parity pending" normalized error). All 7 TODOs in
+`docs/sync-impl/prompts/E-1b-PROMPT.md` resolved by Kyle on 2026-05-13
+with the auditor's recommended pick for each — the RESOLUTIONS block at
+the top of the brief is authoritative.
+
+**Engine-implementer scope expansion precedent — third use.** E-1b's
+affected-files table lists three paths outside the engine-implementer
+agent's default allowed set: `index.html` (4 new `<script>` tags after
+`sync-manual-dedupe.js`), `tests/index.html` (matching script tags so
+test cases find the globals), and `sw.js` (CACHE_NAME bump v74 → v75 +
+ASSETS additions for the 4 merge files). Per the precedent set by S0-1
+(Firebase setup) and E-1a (`sw.js` + `tests/index.html` for the SW
+cache-poisoning bypass), the Phase 2 dispatch brief carried the
+verbatim override clause from `CLAUDE.md` "Known gaps / workflow TODOs":
+*"If the dispatch brief's `Files in scope` list AND the audit's
+affected-files table both explicitly enumerate a path outside the
+default allowed set, treat the brief as authoritative for this PR."*
+This is the third recorded use; the TODO in CLAUDE.md to bake the
+mechanism into `.claude/agents/engine-implementer.md` is now well-past
+the "two motivating cases" threshold.
+
+### Verification result
+
+- **Test count: 421 / 421 PASS** (baseline 396 + 25 new cases — 16 in
+  `describe('SyncEngine — startSteadyState')` plus the replacement
+  ~7-case `describe('E-1b SyncFirestore.runTransaction — CAS wrapper')`
+  block plus 2 incidental adds elsewhere).
+- **Verification method: Kyle's Cmd+Shift+R in Chrome incognito** at
+  `http://localhost:8765/tests/index.html?fresh=verify` with E-1a's
+  `?nosw=1` referrer-based SW bypass in effect — screenshots on record.
+  The E-1a deliberate-broken-test reload regression check ran clean
+  before the green baseline was accepted.
+- **`sw.js` cache bump:** `stopwatch-v74-e1a-test-harness-fix` →
+  `stopwatch-v75-e1b-steady-state-scaffold`. 4 new merge files added to
+  `ASSETS`.
+- **Audit:** `docs/sync-impl/audits/E-1b-AUDIT.md` (188 lines, 7 risks:
+  all low — CAS atomicity, native plugin gap, dispatcher abort,
+  boot-regression flag check, interval-clamp boundary, listener leak,
+  cache-bump miss). Highest impact (Risk #1 CAS atomicity) mitigated by
+  mandating `tx.get` inside the transaction body.
+
+### Suggested Next Steps
+
+- **E-1c** — D-1 reconcile retrofit wiring D-2's
+  `MedsManager.reconcileDoseLog` into `SyncEngine.reconcileImportedBucket()`
+  + replace the `sync-merge-meds.js` stub with the real meds metadata
+  LWW + doseLog append-merge + F15 ≥2-entry remote-arrival counter (B-4
+  owns the toast UI subscriber, plumbed from D-2's `onMergeComplete`
+  hook surface).
+- **E-1d** — Replace `sync-merge-history.js` stub with sessions
+  append-merge dedup by `id` + note/tags LWW per-field + phaseLog
+  dedup by `(deviceId, phaseStartedAt)`. Also lands F3 BFRB stream
+  consolidation (unified `bfrb_events` with `context` tag) and F8
+  distraction sessionId-keyed migration.
+- **E-1e** — Replace `sync-merge-rest-log.js` + `sync-merge-presets.js`
+  stubs with the real merge logic (sleep LWW per-day + naps
+  append-merge; record LWW + `deletedAt` tombstones). Adds the per-store
+  snapshot F19a gate (skip future-schema records before passing them to
+  the merge function). Removes the dev-flag gate by auto-invoking
+  `startSteadyState()` from `SyncEngine.init()` after hydrate completes.
+- **Native CAS parity follow-up.** `runTransaction` is web-only in
+  E-1b; native iOS Capacitor branch throws an explicit "native parity
+  pending" error. Queue a follow-up PR for the
+  `@capacitor-firebase/firestore` `runTransaction` shape before E-3
+  listeners ship (or E-3 may force it sooner if listener integration
+  needs CAS on native).
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+- Amend `.claude/agents/engine-implementer.md` to make the brief-driven
+  scope-expansion mechanism explicit — three motivating cases now on
+  record (S0-1, E-1a, E-1b). Threshold long since crossed.
+
+### Commits
+```
+0ecaff9 docs(sync-impl): E-1b brief skeleton — 7 TODO blocks for Kyle
+b0d0374 docs(sync-impl): E-1b brief — Kyle's 7 TODO resolutions baked in
+5537e2a docs(sync-impl): E-1b audit + Kyle's 7 TODO resolutions codified
+23979cd feat(sync): startSteadyState scaffold + CAS wrapper (E-1b, Phase 2)
+<SHA>   docs(sync-impl): E-1b SESSION-LOG + PLAN.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
