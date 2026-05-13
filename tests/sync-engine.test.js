@@ -756,3 +756,556 @@ describe('SyncEngine.on/off/emit — emitter happy path', () => {
     assertEqual(true, true, 'malformed on() inputs were silently dropped');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// E-1b — SyncEngine.startSteadyState() + _runMergeCycle() + stopSteadyState()
+//
+// Coverage:
+//   1.  startSteadyState() is a no-op when the flag is absent.
+//   2.  startSteadyState() is a no-op when the flag is '0'.
+//   3.  startSteadyState() is a no-op when the flag is 'true' (no Boolean coercion).
+//   4.  startSteadyState() activates when the flag is '1' (default interval).
+//   5.  Interval clamp — boundary inclusive at MIN (10000).
+//   6.  Interval clamp — boundary inclusive at MAX (600000).
+//   7.  Interval clamp — below MIN clamps up to MIN.
+//   8.  Interval clamp — above MAX clamps down to MAX.
+//   9.  Interval clamp — NaN falls back to default 30000.
+//   10. Dispatcher invokes all 4 stub merge functions in order
+//       (meds → history → rest_log → presets).
+//   11. Dispatcher tolerates per-store throws.
+//   12. Dispatcher emits 'merge-cycle-complete' once per cycle.
+//   13. stopSteadyState() clears the timer + removes listeners.
+//   14. start/stop is idempotent.
+//   15. visibilitychange pause/resume.
+//   16. Platform.network feature-detect (present + absent branches).
+// ────────────────────────────────────────────────────────────────────────
+
+// Shared helpers for the E-1b steady-state suite. The engine reads its
+// collaborators (`SyncFlag`, `SyncAuth`, `SyncState`, the 4 `SyncMerge*`
+// modules) as LEXICAL bindings, so we patch methods on the existing
+// modules and restore in finally. Same pattern as sync-uploader.test.js.
+
+function _e1b_saveSteadyEnv() {
+  return {
+    enabled_flag: localStorage.getItem('tempo_sync_steady_state_enabled'),
+    interval_flag: localStorage.getItem('tempo_sync_steady_interval_ms'),
+    sync_flag: localStorage.getItem('tempo_sync_enabled'),
+    merge_meds: SyncMergeMeds.merge,
+    merge_history: SyncMergeHistory.merge,
+    merge_rest_log: SyncMergeRestLog.merge,
+    merge_presets: SyncMergePresets.merge,
+    auth_getCurrentUser: SyncAuth.getCurrentUser,
+    prev_setInterval: window.setInterval,
+    prev_clearInterval: window.clearInterval,
+    prev_addEventListener: document.addEventListener,
+    prev_removeEventListener: document.removeEventListener,
+    prev_platform: window.Platform,
+    prev_syncState: window.SyncState,
+  };
+}
+
+function _e1b_restoreSteadyEnv(saved) {
+  // Always restore real timer fns FIRST so any leftover setInterval from
+  // a botched test gets cleared via the real clearInterval.
+  window.setInterval = saved.prev_setInterval;
+  window.clearInterval = saved.prev_clearInterval;
+  document.addEventListener = saved.prev_addEventListener;
+  document.removeEventListener = saved.prev_removeEventListener;
+  // Make sure the engine's internal timer slot is cleared — call stop.
+  try { SyncEngine.stopSteadyState(); } catch (_) {}
+  // Restore localStorage flags.
+  if (saved.enabled_flag === null) localStorage.removeItem('tempo_sync_steady_state_enabled');
+  else localStorage.setItem('tempo_sync_steady_state_enabled', saved.enabled_flag);
+  if (saved.interval_flag === null) localStorage.removeItem('tempo_sync_steady_interval_ms');
+  else localStorage.setItem('tempo_sync_steady_interval_ms', saved.interval_flag);
+  if (saved.sync_flag === null) localStorage.removeItem('tempo_sync_enabled');
+  else localStorage.setItem('tempo_sync_enabled', saved.sync_flag);
+  // Restore merge stubs.
+  SyncMergeMeds.merge = saved.merge_meds;
+  SyncMergeHistory.merge = saved.merge_history;
+  SyncMergeRestLog.merge = saved.merge_rest_log;
+  SyncMergePresets.merge = saved.merge_presets;
+  // Restore auth.
+  SyncAuth.getCurrentUser = saved.auth_getCurrentUser;
+  // Restore Platform / SyncState.
+  if (saved.prev_platform === undefined) delete window.Platform;
+  else window.Platform = saved.prev_platform;
+  if (saved.prev_syncState === undefined) delete window.SyncState;
+  else window.SyncState = saved.prev_syncState;
+}
+
+// Build a setInterval spy that doesn't actually arm a real timer —
+// E-1b's tests should not fire a real 30s timer in CI.
+function _e1b_makeSetIntervalSpy() {
+  const calls = [];
+  const spy = function (cb, interval) {
+    calls.push({ cb, interval });
+    // Return a fake timer id (an int) so clearInterval can be spied
+    // separately without conflicting with the real platform.
+    return { _e1b_fake_id: calls.length };
+  };
+  spy.calls = calls;
+  return spy;
+}
+
+function _e1b_makeClearIntervalSpy() {
+  const calls = [];
+  const spy = function (id) { calls.push(id); };
+  spy.calls = calls;
+  return spy;
+}
+
+describe('SyncEngine — startSteadyState (E-1b)', () => {
+  it('is a no-op when tempo_sync_steady_state_enabled is absent', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.removeItem('tempo_sync_steady_state_enabled');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 0,
+        'setInterval must NOT be called when the flag is absent (default-off)');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('is a no-op when flag is "0" (strict equality check)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '0');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 0,
+        '"0" must not Boolean-coerce to true');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('is a no-op when flag is "true" (no Boolean coercion)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', 'true');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 0,
+        '"true" string must not pass the strict === "1" check');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('activates with default interval when flag is "1"', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.removeItem('tempo_sync_steady_interval_ms');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1,
+        'setInterval called exactly once');
+      assertEqual(spyInterval.calls[0].interval, 30000,
+        'default interval is 30000ms');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('clamp — boundary inclusive at MIN (10000)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.setItem('tempo_sync_steady_interval_ms', '10000');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls[0].interval, 10000, '10000 passes through unchanged');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('clamp — boundary inclusive at MAX (600000)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.setItem('tempo_sync_steady_interval_ms', '600000');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls[0].interval, 600000, '600000 passes through unchanged');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('clamp — below MIN (9999) clamps up to 10000', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.setItem('tempo_sync_steady_interval_ms', '9999');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls[0].interval, 10000, '9999 clamped to MIN');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('clamp — above MAX (600001) clamps down to 600000', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.setItem('tempo_sync_steady_interval_ms', '600001');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls[0].interval, 600000, '600001 clamped to MAX');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('clamp — NaN (non-numeric string) falls back to default 30000', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.setItem('tempo_sync_steady_interval_ms', 'abc');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls[0].interval, 30000, 'NaN → default 30000');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+});
+
+describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
+  it('invokes all 4 stub merge functions in order: meds → history → rest_log → presets', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      // Ensure all preconditions pass so the dispatcher gets past the guards.
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-test', email: 't@example.com' });
+      delete window.SyncState;  // no SyncState gate in tests
+
+      const order = [];
+      SyncMergeMeds.merge = function () { order.push('meds'); };
+      SyncMergeHistory.merge = function () { order.push('history'); };
+      SyncMergeRestLog.merge = function () { order.push('rest_log'); };
+      SyncMergePresets.merge = function () { order.push('presets'); };
+
+      SyncEngine._runMergeCycle();
+
+      assertArrayEqual(order, ['meds', 'history', 'rest_log', 'presets'],
+        'dispatcher iterates SYNCED_STORES order');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('tolerates per-store throws — all 4 stubs invoked even when each throws', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
+      delete window.SyncState;
+
+      const calls = { meds: 0, history: 0, rest_log: 0, presets: 0 };
+      SyncMergeMeds.merge = function () { calls.meds++; throw new Error('not implemented until E-1c'); };
+      SyncMergeHistory.merge = function () { calls.history++; throw new Error('not implemented until E-1d'); };
+      SyncMergeRestLog.merge = function () { calls.rest_log++; throw new Error('not implemented until E-1e'); };
+      SyncMergePresets.merge = function () { calls.presets++; throw new Error('not implemented until E-1e'); };
+
+      const errors = [];
+      const errCb = (p) => { errors.push(p); };
+      SyncEngine.on('merge-error', errCb);
+
+      let threw = false;
+      try {
+        SyncEngine._runMergeCycle();
+      } catch (e) {
+        threw = true;
+      }
+
+      assertEqual(threw, false, '_runMergeCycle must NOT throw even when every store throws');
+      assertEqual(calls.meds, 1, 'meds merge invoked once');
+      assertEqual(calls.history, 1, 'history merge invoked once');
+      assertEqual(calls.rest_log, 1, 'rest_log merge invoked once');
+      assertEqual(calls.presets, 1, 'presets merge invoked once');
+      assertEqual(errors.length, 4, 'merge-error fired 4 times (one per store)');
+
+      // Check distinct store keys on each emit
+      const storesSeen = errors.map(e => e.store).sort();
+      assertArrayEqual(storesSeen, ['history', 'meds', 'presets', 'rest_log'],
+        'merge-error events cover all 4 stores');
+
+      SyncEngine.off('merge-error', errCb);
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('emits merge-cycle-complete exactly once per cycle', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
+      delete window.SyncState;
+
+      // Throwing stubs (the default) — still expect one complete event.
+      SyncMergeMeds.merge = function () { throw new Error('stub'); };
+      SyncMergeHistory.merge = function () { throw new Error('stub'); };
+      SyncMergeRestLog.merge = function () { throw new Error('stub'); };
+      SyncMergePresets.merge = function () { throw new Error('stub'); };
+
+      const events = [];
+      const cb = (p) => { events.push(p); };
+      SyncEngine.on('merge-cycle-complete', cb);
+
+      SyncEngine._runMergeCycle();
+
+      assertEqual(events.length, 1, 'merge-cycle-complete fires exactly once');
+      assert(events[0] && events[0].storeResults && typeof events[0].storeResults === 'object',
+        'payload includes storeResults');
+      // All 4 store entries present
+      const resultKeys = Object.keys(events[0].storeResults).sort();
+      assertArrayEqual(resultKeys, ['history', 'meds', 'presets', 'rest_log'],
+        'storeResults has all 4 store keys');
+
+      SyncEngine.off('merge-cycle-complete', cb);
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('short-circuits when SyncFlag is off (no merge module invoked)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '0');  // flag OFF
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
+      delete window.SyncState;
+
+      let mergeCalls = 0;
+      SyncMergeMeds.merge = function () { mergeCalls++; };
+      SyncMergeHistory.merge = function () { mergeCalls++; };
+      SyncMergeRestLog.merge = function () { mergeCalls++; };
+      SyncMergePresets.merge = function () { mergeCalls++; };
+
+      SyncEngine._runMergeCycle();
+
+      assertEqual(mergeCalls, 0, 'flag-off short-circuits before any merge call');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('short-circuits when SyncState is hydrating or error', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
+
+      let mergeCalls = 0;
+      SyncMergeMeds.merge = function () { mergeCalls++; };
+      SyncMergeHistory.merge = function () { mergeCalls++; };
+      SyncMergeRestLog.merge = function () { mergeCalls++; };
+      SyncMergePresets.merge = function () { mergeCalls++; };
+
+      window.SyncState = { get: () => 'hydrating' };
+      SyncEngine._runMergeCycle();
+      assertEqual(mergeCalls, 0, 'hydrating state short-circuits');
+
+      window.SyncState = { get: () => 'error' };
+      SyncEngine._runMergeCycle();
+      assertEqual(mergeCalls, 0, 'error state short-circuits');
+
+      window.SyncState = { get: () => 'ready' };
+      SyncEngine._runMergeCycle();
+      assertEqual(mergeCalls, 4, 'ready state allows all 4 merges');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+});
+
+describe('SyncEngine.stopSteadyState (E-1b)', () => {
+  it('clears the timer and removes the visibilitychange listener', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      localStorage.removeItem('tempo_sync_steady_interval_ms');
+
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      const spyClearInterval = _e1b_makeClearIntervalSpy();
+      window.setInterval = spyInterval;
+      window.clearInterval = spyClearInterval;
+
+      // Track add/remove listener call counts for the same handler ref.
+      const addedHandlers = [];
+      const removedHandlers = [];
+      document.addEventListener = function (event, handler) {
+        if (event === 'visibilitychange') addedHandlers.push(handler);
+        return saved.prev_addEventListener.call(document, event, handler);
+      };
+      document.removeEventListener = function (event, handler) {
+        if (event === 'visibilitychange') removedHandlers.push(handler);
+        return saved.prev_removeEventListener.call(document, event, handler);
+      };
+
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1, 'setInterval called on start');
+      assertEqual(addedHandlers.length, 1, 'addEventListener called on start');
+
+      SyncEngine.stopSteadyState();
+      assertEqual(spyClearInterval.calls.length >= 1, true, 'clearInterval called on stop');
+      assertEqual(removedHandlers.length, 1, 'removeEventListener called on stop');
+      // Risk #6: same function reference passed to both add and remove.
+      assertEqual(addedHandlers[0], removedHandlers[0],
+        'addEventListener + removeEventListener use the SAME handler reference (Risk #6 cleanup)');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('start → stop is idempotent across multiple invocations', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+
+      SyncEngine.startSteadyState();
+      SyncEngine.startSteadyState();
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1,
+        'multiple start calls only arm one timer (idempotent)');
+
+      // Multiple stops should not throw.
+      let threw = false;
+      try {
+        SyncEngine.stopSteadyState();
+        SyncEngine.stopSteadyState();
+        SyncEngine.stopSteadyState();
+      } catch (_) { threw = true; }
+      assertEqual(threw, false, 'multiple stop calls do not throw');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+});
+
+describe('SyncEngine — visibilitychange + Platform.network pause/resume (E-1b)', () => {
+  it('visibilitychange handler pauses and resumes the timer', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      const spyClearInterval = _e1b_makeClearIntervalSpy();
+      window.setInterval = spyInterval;
+      window.clearInterval = spyClearInterval;
+
+      // Capture the handler so we can invoke it directly (the engine
+      // stashes it on a module-scope slot, but it's also attached to
+      // document so we capture from addEventListener).
+      let visHandler = null;
+      document.addEventListener = function (event, handler) {
+        if (event === 'visibilitychange') visHandler = handler;
+        return saved.prev_addEventListener.call(document, event, handler);
+      };
+
+      // Start (visibilityState defaults to 'visible' in headless test).
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1, 'timer armed on start');
+      assert(typeof visHandler === 'function', 'visibility handler registered');
+
+      // Stub visibilityState (DevTools doesn't let us set it directly,
+      // but a defineProperty override works in the test page).
+      const visDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState') ||
+                      { configurable: true, get: () => 'visible' };
+      let fakeVis = 'hidden';
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => fakeVis,
+      });
+      try {
+        // Simulate hidden → handler should clearInterval.
+        visHandler();
+        assertEqual(spyClearInterval.calls.length >= 1, true,
+          'clearInterval called on visibilityState=hidden');
+
+        // Simulate visible → handler should re-arm.
+        fakeVis = 'visible';
+        visHandler();
+        assertEqual(spyInterval.calls.length, 2, 'timer re-armed on visibility=visible');
+      } finally {
+        // Restore visibilityState.
+        try { delete document.visibilityState; } catch (_) {}
+        if (visDesc && visDesc.get) {
+          try { Object.defineProperty(document, 'visibilityState', visDesc); } catch (_) {}
+        }
+      }
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('Platform.network absent — no crash, no subscription attempted', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+      delete window.Platform;  // absent
+
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+
+      let threw = false;
+      try {
+        SyncEngine.startSteadyState();
+      } catch (_) { threw = true; }
+
+      assertEqual(threw, false, 'startSteadyState() must not crash when Platform.network is absent');
+      assertEqual(spyInterval.calls.length, 1, 'timer still armed without Platform.network');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+
+  it('Platform.network present — onChange subscribed; stop calls the unsubscribe', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.setItem('tempo_sync_steady_state_enabled', '1');
+
+      let onChangeCalls = 0;
+      let unsubCalls = 0;
+      const unsub = function () { unsubCalls++; };
+      window.Platform = {
+        network: {
+          onChange: function (cb) {
+            onChangeCalls++;
+            return unsub;
+          },
+        },
+      };
+
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      window.setInterval = spyInterval;
+
+      SyncEngine.startSteadyState();
+      assertEqual(onChangeCalls, 1, 'Platform.network.onChange invoked once on start');
+
+      SyncEngine.stopSteadyState();
+      assertEqual(unsubCalls, 1, 'unsubscribe function called on stop');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+});
