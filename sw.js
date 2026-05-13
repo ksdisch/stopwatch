@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v73-d2-doseLog-reconcile';
+const CACHE_NAME = 'stopwatch-v74-e1a-test-harness-fix';
 const ASSETS = [
   './',
   './index.html',
@@ -80,6 +80,20 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // E-1a: ?nosw=1 referrer-based bypass — test harness pages
+  // (tests/index.html?nosw=1) get fresh code on every reload; main app at
+  // /index.html unaffected because its referrer never carries the param.
+  if (event.request.referrer) {
+    try {
+      const ref = new URL(event.request.referrer);
+      if (ref.searchParams.has('nosw')) {
+        event.respondWith(fetch(event.request));
+        return;
+      }
+    } catch (_) {
+      // malformed referrer — fall through to the existing cache logic
+    }
+  }
   event.respondWith(
     // ignoreSearch:true so `?v=N` cache-bust query strings on asset
     // references (see index.html's tempo-shell.css / tempo-nav.js links)

@@ -3,6 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <title>Stopwatch Tests</title>
+  <!-- E-1a: ensure ?nosw=1 is on the URL so all script-src requests below
+       inherit it via the Referer header and bypass the SW cache. Silent
+       guard — the address-bar URL change is the indicator. -->
+  <script>
+    (function () {
+      var url = new URL(window.location.href);
+      if (!url.searchParams.has('nosw')) {
+        url.searchParams.set('nosw', '1');
+        window.location.replace(url.toString());
+      }
+    })();
+  </script>
   <style>
     body {
       background: #1a1a1a;
