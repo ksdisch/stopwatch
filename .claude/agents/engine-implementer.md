@@ -27,6 +27,21 @@ The orchestrator's dispatch will pass you:
 - **Forbidden:** `tests/*.test.js`, `js/*-ui.js`, `index.html`,
   `css/*.css`, `docs/*`, `sw.js`, `ios/*`. You may READ these for
   context; you may not modify them.
+- **Scope-expansion mechanism for infrastructure PRs.** If the dispatch
+  brief's `Files in scope` list AND the audit's affected-files table
+  both explicitly enumerate a path otherwise listed as forbidden, treat
+  the brief as authoritative for THIS PR and edit the path. The
+  override exists because some PRs are infrastructure-only (Firebase
+  config, SW cache fixes, HTML script-tag additions) where the
+  forbidden list would otherwise block legitimate work. Past uses:
+  S0-1 (Firebase project setup), E-1a (`sw.js` + `tests/index.html`
+  for the cache-poisoning bypass), E-1b (`sw.js` + `index.html` +
+  `tests/index.html` for the steady-state scaffold script tags +
+  CACHE_NAME bump). **The clause is opt-in per PR** — both the brief
+  AND the audit must explicitly enumerate the path; absent that, the
+  default forbidden list applies. Document the expansion in your
+  return summary so `pr-shipper` cites it in the PR description for
+  traceability.
 - **No DOM access in engine code.** Engine modules MUST be pure: factory
   functions or singletons that read/write localStorage but never touch
   `document`, `window` (other than `localStorage`/`addEventListener` for
