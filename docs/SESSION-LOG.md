@@ -588,6 +588,123 @@ complete; F19c manifest registry stays deferred.
 
 ---
 
+## Session 10 — 2026-05-13
+
+### What We Built
+
+**Stage E test-harness SW cache-poisoning fix (E-1a — first of five Stage E sub-PRs)**
+
+D-2's engine-tester surfaced a service-worker cache-poisoning bug: when the
+test harness ran on `http://localhost:8765`, the SW registered by the main
+app intercepted `<script src="../js/*.js">` requests from `tests/index.html`
+and served pre-cached copies — masking new test cases until the tester
+manually switched to `127.0.0.1:8766`. E-1a ships the surgical fix so all
+downstream Stage E sub-PRs (E-1b → E-1e) and Stage E-2/E-3 test cycles run
+reliably on the canonical port. Engine-only — no engine code, no merge
+logic, no F-invariant work, no UI surface. Phase 4 ui-wirer skipped per the
+autonomous-transition rule (zero UI files in the affected-files table).
+
+**Implementation (engine-implementer Phase 2):**
+- `sw.js` — bumped `CACHE_NAME` from `'stopwatch-v73-d2-doseLog-reconcile'`
+  to `'stopwatch-v74-e1a-test-harness-fix'`. Added a 9-line referrer-based
+  bypass at the top of the `fetch` event handler (lines 82–96) BEFORE the
+  existing `caches.match(event.request, { ignoreSearch: true })` call. The
+  branch inspects `event.request.referrer` (NOT `event.request.url`) and
+  calls `searchParams.has('nosw')`; on match it short-circuits to
+  `event.respondWith(fetch(event.request))` and returns. Malformed referrer
+  falls through to the existing cache logic via try/catch. Main-app
+  cache-first contract preserved — `/index.html` and all `ASSETS`-listed
+  files keep offline support because their referrer never carries `?nosw=1`.
+- `tests/index.html` — added a silent 4-line URL guard at the very top of
+  `<head>` (lines 6–17). Checks `new URL(window.location.href).searchParams.has('nosw')`
+  and, if absent, calls `window.location.replace(...)` with `nosw=1`
+  appended (preserving existing query like `fresh=verify`). No console
+  warning — the URL change in the address bar is the indicator per Q3.
+
+**Six resolutions baked in by Kyle 2026-05-13 (before Phase 2 fired):**
+1. Q1 → Pick B (referrer-based bypass; rejected per-script-tag suffix approach).
+2. Q2 → `.has('nosw')` binary check (resilient to future tokens like `?nosw=true`).
+3. Q3 → Silent guard (no `console.warn` on first load).
+
+**Engine-implementer scope expansion precedent — second use.** E-1a's
+affected-files table lists `sw.js` and `tests/index.html` — both outside
+the engine-implementer agent's default allowed set (which forbids `tests/*`
+and `sw.js`). Per the precedent set by S0-1's Firebase setup, the Phase 2
+dispatch brief carried the verbatim override clause from
+`CLAUDE.md` "Known gaps / workflow TODOs":
+*"If the dispatch brief's `Files in scope` list AND the audit's
+affected-files table both explicitly enumerate a path outside the default
+allowed set, treat the brief as authoritative for this PR."* Documented
+in the PR description for traceability.
+
+**Tests (Phase 3 — manual verification only, zero automated additions):**
+Adding a `tests/sw-bypass.test.js` would be circular (the SW being broken
+is precisely the bug; stale code masks the assertion). Engine-tester ran
+the canonical 9-step manual verification procedure documented in the audit
+Test scope section, gated on the deliberate-broken-test reload check
+(steps 5–6). Kyle ran the procedure and confirmed:
+
+- Step 3: SW activated with `'stopwatch-v74-e1a-test-harness-fix'`.
+- Step 4: `tests/index.html` URL bar auto-injected `?nosw=1`; Network tab
+  showed `Referer: http://localhost:8765/tests/index.html?nosw=1` on
+  script-src requests; baseline pass count **396/396**.
+- Step 5–6: Deliberate-broken-test reload FAIL(1) confirms the bypass
+  actually fetches fresh code; revert + reload returns to PASS(396).
+- Step 8: Main-app offline reload of `/index.html` works — cache-first
+  contract preserved.
+
+Test count target unchanged: **still 396**.
+
+**Audit:** `docs/sync-impl/audits/E-1a-AUDIT.md` (212 lines, 7 risks: 6 low
++ 1 med + 0 high). Med-tier risk was the scope-expansion documentation
+gap; mitigated via the dispatch brief override (precedent: S0-1).
+
+**`sw.js` cache bump:** `stopwatch-v73-d2-doseLog-reconcile` →
+`stopwatch-v74-e1a-test-harness-fix`. No `ASSETS` additions.
+
+### Manual verification procedure (canonical regression check)
+
+The deliberate-broken-test reload (steps 5–6 of the audit's Test scope
+section) is the load-bearing assertion for every Stage E sub-PR's
+engine-tester phase post-E-1a. Without it, a buggy bypass would let
+downstream tests appear green against stale code. Future Stage E sub-PRs
+(E-1b → E-1e, E-2, E-3) must run this check on every PR's Phase 3.
+
+### Suggested Next Steps
+
+- **E-1b** (`feat/sync-stage-e-merge-loop-scaffold`) — `SyncEngine.startSteadyState()`
+  + per-store merge dispatcher + `sync-firestore.js` `runTransaction` CAS
+  wrapper. Engine-only; no F-invariant decisions yet.
+- **E-1c** — D-1 reconcile flow retrofit (wires D-2's
+  `MedsManager.reconcileDoseLog` into D-1's reconcile path) + F15
+  ≥2-entry remote-arrival counter (B-4 owns the toast UI subscriber).
+- **E-1d** — F3 BFRB stream consolidation + F8 distraction sessionId-keyed
+  migration.
+- **E-1e** — F19a refuse-writeback gate for non-meds stores + final
+  steady-state merge-loop wire-up.
+- **E-2** (`feat/sync-stage-e-offline-buffer`) — pending-op queue in
+  IndexedDB with `originalWallClock` preservation + op compaction + cap.
+- **E-3** (`feat/sync-stage-e-listeners`) — real-time `onSnapshot`
+  listeners + `Toast.downlevelWarning` for refuse-writeback events.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+- Amend `.claude/agents/engine-implementer.md` to make the brief-driven
+  scope-expansion mechanism explicit (still TODO since S0-1; E-1a is the
+  second motivating case, after recovery-ui.js in B-1).
+
+### Commits
+```
+f6f0800 docs(sync-impl): E-1 brief skeleton — 7 TODO blocks for Kyle
+2b2adcc docs(sync-impl): re-shard E-1 brief into E-1a (Kyle picked Option B)
+e92401d docs(sync-impl): E-1a audit + Kyle's Q1-Q3 resolutions baked in
+10c84ce feat(sync): tests/index.html SW cache-poisoning bypass (E-1a, Phase 2)
+<SHA>   docs(sync-impl): E-1a SESSION-LOG + PLAN.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

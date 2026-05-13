@@ -33,8 +33,12 @@ Backend selection (Phase 6): Firebase / Firestore. Two accepted tradeoffs: (1) n
 | — | Stage C: Device B fresh hydrate + boot overlay + Stage D handoff guard | #62 |
 | F17 | Stage D imported bucket + reconcile flow (`reconcileImportedBucket()` orchestrator + history chip + filter toggle + Reconcile-now drawer button + `ManualDedupe.scan()` placeholder) | #63 |
 | F1 + F16 + F4 | Stage D doseLog reconcile + clock-skew clamp (D-2: `Meds.reconcileDoseLog()` append-merge with 1s dedup tolerance + `entry.takenAt > now + 5min` clamp; wired into `SyncEngine.applyMedsMerge()`) | #64 |
+| — | Stage E-1a test-harness SW cache-poisoning fix (`sw.js` referrer-based `?nosw=1` bypass + `tests/index.html` URL guard; engine-only, zero automated tests added; manual verification: 396/396) — shipped 2026-05-13 | (pending PR #) |
 
 **What's pending (sync-strategy items + wire/infra):**
+
+Stage E sub-PRs after E-1a (Option B split per E-1 kickoff): **E-1b** (scaffold + `SyncEngine.startSteadyState()` + per-store merge dispatcher + `sync-firestore.js` `runTransaction` CAS wrapper) → **E-1c** (D-1 reconcile retrofit wiring D-2's `reconcileDoseLog` + F15 ≥2-entry remote-arrival counter) → **E-1d** (F3 BFRB stream consolidation + F8 distraction sessionId-keyed migration) → **E-1e** (F19a refuse-writeback gate for non-meds stores + final steady-state merge-loop wire-up).
+
 
 Sync-strategy: F3 (BFRB stream choice), F6 (`phaseLog` (deviceId, phaseStartedAt) stamping), F7 (verify `loadState` recoveries never persist back), F8 (distraction tombstones vs sessionId-keyed), F9 (Stage B0 read-cloud-first), F12 (mandatory local backup before Stage B mutation), F15 (toast on ≥2-entry remote `doseLog` arrival), F21 (`alarmFired` per-device — Device B must still chime).
 
