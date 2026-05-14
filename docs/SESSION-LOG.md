@@ -1149,6 +1149,98 @@ f3e6206 feat(sync): F3 BFRB stream consolidation (E-1d-f3, Phase 2)
 
 ---
 
+## 2026-05-14 — E-1d-f8: F8 distraction sessionId-keyed migration (migration + UI + sync wiring)
+
+### What We Built
+
+- **F8 distraction sessionId-keyed migration.** The Flow + Pomo
+  distraction logs moved from flat arrays under `flow_distractions`
+  / `pomodoro_distractions` to sessionId-keyed maps
+  (`{ [sessionId]: [entries] }`) so cloud merge can append-and-
+  tombstone unambiguously. Each entry now carries
+  `{ category, note?, timestamp, deviceId, updatedAt, schemaVersion }`.
+  Phased migration runs once on first load post-upgrade; idempotency
+  marker `tempo_distractions_migration_v1='1'` short-circuits all
+  subsequent boots. Pre-migration entries without a parent sessionId
+  land under a stable orphan-key fallback.
+- **New module — `js/distractions.js` (~482 LOC).** Owns the keyed
+  map abstraction: `add()` / `getForSession()` / `getAll()` /
+  `setAll()` plus the `_runMigration` boot hook. Prefers
+  `window.Flow` / `window.Pomodoro` over bare const-binding so test
+  stubs at `window.*` resolve correctly (fixed mid-Phase-3 via
+  commit `fa06683` — bare reads were invisible to the test stubs).
+- **New module — `js/sync-merge-distractions.js` (~255 LOC).** Per-
+  store merge function for the 6th `SYNCED_STORES` entry. Treats the
+  sessionId-keyed map as a union per session: per-key append-and-
+  tombstone, F1 ±15-min cross-device dedup within a single session,
+  F16 ±15-min clock-skew clamp on `timestamp`, F19a future-schema
+  skip.
+- **UI rewires (`js/flow-ui.js` + `js/pomodoro-ui.js`).** Eight call
+  sites total updated to read/write via `Distractions.*` API instead
+  of touching localStorage directly. Distraction pickers render from
+  the current session's bucket; Phase 4 ui-wirer verified both Flow
+  + Pomo pickers boot clean with zero console errors.
+- **Persistence semantic widened (`js/persistence.js`).** The app-
+  mode-change clear path now uses `clearAllForContext` so leaving
+  Flow/Pomo no longer nukes the entire keyed map — only entries for
+  the departing context's sessionId range. Required to keep
+  cross-mode distraction history intact.
+- **Sync registry — `js/sync-engine.js`.** Added `distractions` as
+  the 6th `SYNCED_STORES` entry. `tests/sync-engine.test.js`
+  assertions updated from 5→6 stores (6 cases touched).
+- **Export header comments (`js/export.js`).** Header comments only
+  — the map already round-trips through `JSON.stringify` so no
+  shape change needed.
+- **Test coverage.** New `tests/distractions.test.js` (12 cases) +
+  `tests/sync-merge-distractions.test.js` (13 cases). Plus six F13
+  dispatcher tests in `tests/sync-merge-meds.test.js` +
+  `tests/sync-merge-history.test.js` patched with stubbed
+  `SyncMergeDistractions.merge` (test-only collateral, no engine
+  impact). **PASS 501/501 via kapture after the mid-run fix.**
+- **`sw.js` cache bump:** `stopwatch-v78-e1d-f3-bfrb-consolidation`
+  → `stopwatch-v79-e1d-f8-distractions-migration`. ASSETS list
+  gained `js/distractions.js` + `js/sync-merge-distractions.js`.
+- **Audit:** `docs/sync-impl/audits/E-1d-f8-AUDIT.md` — Kyle's 7
+  TODO resolutions codified.
+
+### Suggested Next Steps
+
+- **E-1e** — Last Stage E sub-PR. Replace
+  `sync-merge-rest-log.js` + `sync-merge-presets.js` stubs with real
+  merge logic. Adds the per-store snapshot F19a refuse-writeback
+  gate. Removes the dev-flag gate by auto-invoking
+  `startSteadyState()` from `SyncEngine.init()` after hydrate
+  completes. After E-1e, Stage E is fully shipped (7/7 sub-PRs).
+- **Deferred legacy-key cleanup PRs (carry forward).** One soak
+  release after E-1d-f3 / E-1d-f8 each, drop legacy keys
+  (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` and any pre-
+  migration flat-array distraction shape) plus migration markers.
+  File as tech-debt; no fixed schedule.
+- **Native CAS parity follow-up** (still carry forward).
+  `runTransaction` is web-only; queue Capacitor branch before E-3
+  listeners ship.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step.
+- Update `js/history.js` per-field stamping (TODO #2 deferral from
+  E-1d) — currently sessions LWW the whole record.
+
+**Stage E progress: 6 of 7 sub-PRs shipped** (E-1a / E-1b / E-1c /
+E-1d / E-1d-f3 / E-1d-f8 done; only E-1e remaining).
+
+### Commits
+```
+e5f2608 docs(sync-impl): E-1d-f8 brief skeleton — 7 TODO blocks for Kyle
+0756d3d docs(sync-impl): E-1d-f8 brief — Kyle's 7 TODO resolutions baked in
+59f1e09 docs(sync-impl): E-1d-f8 audit + Kyle's 7 TODO resolutions codified
+24ad66e feat(sync): F8 distraction sessionId-keyed migration (E-1d-f8, Phase 2)
+fa06683 fix: distractions migration window.* reads + 6-store stub patches
+<SHA>   docs(sync-impl): E-1d-f8 SESSION-LOG + PLAN + CLAUDE.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
