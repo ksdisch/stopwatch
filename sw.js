@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v79-e1d-f8-distractions-migration';
+const CACHE_NAME = 'stopwatch-v80-e1e-stage-e-complete';
 const ASSETS = [
   './',
   './index.html',

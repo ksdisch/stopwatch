@@ -872,6 +872,10 @@ describe('B-3 F13 gap — Presets.remove honors the SyncState write gate', () =>
       Presets.remove('p-remove-test');
       const after = JSON.parse(localStorage.getItem('quick_presets'));
       assertEqual(after.length, 1, 'preset still on disk (gate blocked remove)');
+      // E-1e: remove() now tombstone-sets instead of hard-deleting. Gate
+      // closed means deletedAt is NOT set either.
+      assert(after[0].deletedAt == null,
+        'gate closed — deletedAt NOT set (no mutation at all)');
 
       // Gate open — remove is honored.
       window.SyncState = {
@@ -883,7 +887,13 @@ describe('B-3 F13 gap — Presets.remove honors the SyncState write gate', () =>
       };
       Presets.remove('p-remove-test');
       const after2 = JSON.parse(localStorage.getItem('quick_presets'));
-      assertEqual(after2.length, 0, 'preset removed once gate opened');
+      // E-1e: remove() is now a tombstone-set (NOT a hard delete). The
+      // record stays on disk with deletedAt populated so the cross-device
+      // sync merge can propagate the delete to cloud.
+      assertEqual(after2.length, 1,
+        'preset still on disk (tombstone-set, not hard delete)');
+      assert(typeof after2[0].deletedAt === 'number' && after2[0].deletedAt > 0,
+        'preset has numeric deletedAt set (tombstoned)');
     } finally {
       if (prevPresets === null) localStorage.removeItem('quick_presets');
       else localStorage.setItem('quick_presets', prevPresets);

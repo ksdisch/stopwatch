@@ -3,6 +3,23 @@ const Presets = (() => {
   const SEEDED_KEY = 'presets_seeded';
 
   function getAll() {
+    // E-1e: filter tombstones at the engine boundary so every UI caller
+    // (drawer, applyPreset, formatDurationHint) automatically excludes
+    // soft-deleted presets. Use `== null` to catch both `undefined` and
+    // `null` but NOT `0` / `''` (Risk #8). The `p && ` guard is defensive
+    // against malformed entries from a corrupt parse.
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      return raw.filter(p => p && p.deletedAt == null);
+    } catch (e) { return []; }
+  }
+
+  // E-1e: tombstone-inclusive read for the sync snapshot adapter +
+  // `remove()` (so a previously-tombstoned record can be re-tombstoned
+  // as a no-op and we never accidentally "resurrect" by missing the
+  // record entirely). UI callers MUST NOT use this — they want the
+  // tombstone-filtered `getAll()`.
+  function _getAllIncludingTombstones() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
     } catch (e) { return []; }
@@ -54,13 +71,21 @@ const Presets = (() => {
   function remove(id) {
     // F13: cross-store write gate.
     if (typeof SyncState !== 'undefined' && !SyncState.canWrite()) return;
-    const presets = getAll();
+    // E-1e: tombstone-set instead of hard-filter. Use the tombstone-
+    // inclusive view so we can re-tombstone a previously-tombstoned
+    // record (no-op writeback) and so we never accidentally
+    // "resurrect" by missing the record entirely.
+    const presets = _getAllIncludingTombstones();
     const target = presets.find(p => p.id === id);
-    // F19a: future-schema records are read-only — refuse to delete. The
-    // downlevel client may not understand semantics the newer client
-    // attached to the preset; deleting could lose data we can't represent.
-    if (target && Schema.isFutureRecord(target)) return;
-    saveAll(presets.filter(p => p.id !== id));
+    if (!target) return;
+    // F19a: future-schema records are read-only — refuse to tombstone.
+    // The downlevel client may not understand semantics the newer
+    // client attached to the preset; even a soft delete could lose
+    // data we can't represent.
+    if (Schema.isFutureRecord(target)) return;
+    target.deletedAt = Date.now();
+    Schema.stamp(target);
+    saveAll(presets);
   }
 
   function applyPreset(id) {
@@ -306,7 +331,11 @@ const Presets = (() => {
       deviceId: History.getDeviceId(),
       schemaVersion: Schema.SCHEMA_VERSION,
       payload: {
-        presets: getAll(),
+        // E-1e: sync must propagate tombstones to cloud so deletes
+        // replicate cross-device. UI never sees tombstones via
+        // `getAll()`'s filter; only the sync snapshot adapter peeks
+        // into the tombstone-inclusive view.
+        presets: _getAllIncludingTombstones(),
       },
     };
   }
@@ -361,9 +390,38 @@ const Presets = (() => {
     return Promise.resolve({ ok: true, count: written, skipped });
   }
 
+  // E-1e: privileged reconcile write path used by `js/sync-merge-presets.js`
+  // after per-record CAS writeback. Bypasses the `SyncState.canWrite()` gate
+  // that save/update/remove consult — the merge function is the explicit
+  // exception, same contract as `_hydrateWriteRaw`. Drops malformed records
+  // (missing id) but preserves tombstones (records with `deletedAt` set)
+  // so deletes replicate cross-device.
+  function _reconcileWriteRaw(records) {
+    if (!Array.isArray(records)) records = [];
+    let written = 0;
+    let skipped = 0;
+    const valid = [];
+    for (const rec of records) {
+      if (!rec || typeof rec !== 'object' || typeof rec.id !== 'string' || !rec.id) {
+        skipped++;
+        continue;
+      }
+      valid.push(rec);
+      written++;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
+    } catch (e) {
+      skipped += written;
+      written = 0;
+    }
+    return { written, skipped };
+  }
+
   return {
     getAll, get, save, update, remove, applyPreset, captureCurrentConfig,
     formatDurationHint, init, snapshotForSync,
     hydrateFromCloud, _hydrateWriteRaw,
+    _reconcileWriteRaw, _getAllIncludingTombstones,
   };
 })();
