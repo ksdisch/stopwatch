@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v77-e1d-history-merge';
+const CACHE_NAME = 'stopwatch-v78-e1d-f3-bfrb-consolidation';
 const ASSETS = [
   './',
   './index.html',
@@ -22,6 +22,7 @@ const ASSETS = [
   './js/sync-merge-history.js',
   './js/sync-merge-rest-log.js',
   './js/sync-merge-presets.js',
+  './js/sync-merge-bfrb.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
@@ -58,6 +59,7 @@ const ASSETS = [
   './js/mindful-ui.js',
   './js/wellness-cooking-ui.js',
   './js/recovery-ui.js',
+  './js/bfrb-events.js',
   './js/global-bfrb.js',
   './js/app.js',
   './manifest.json',

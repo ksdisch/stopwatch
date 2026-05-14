@@ -935,9 +935,36 @@ function savePomoBFRBs(items) {
 }
 
 // Per-mode BFRB button and init removed in favor of the global floating button
-// (js/global-bfrb.js). The loadPomoBFRBs/savePomoBFRBs helpers above are still
-// used by gatherTaskData (history session record), and by the global button
-// which writes into pomodoro_bfrbs when Pomodoro work phase is running.
+// (js/global-bfrb.js). E-1d-f3 consolidated BFRB writes into BfrbEvents
+// (`bfrb_events` localStorage store with `context: 'pomodoro'` tag). The
+// legacy `loadPomoBFRBs` / `savePomoBFRBs` helpers above are RETAINED so the
+// `savePomoBFRBs([])` session-end clears keep working — the legacy
+// `pomodoro_bfrbs` key stays on disk per Pick B on E-1d-f3 TODO #1 (cleanup
+// deferred per Pick C on TODO #5). `loadPomoBFRBs` is no longer used for
+// rendering — gatherTaskData below reads session-scoped BFRB entries from
+// BfrbEvents.getByContext('pomodoro') filtered by Pomodoro.getSessionStartedAt().
+
+// Read this Pomodoro session's BFRB entries from the consolidated store,
+// converted back to the legacy-flat shape `{ timestamp, phase, cycleIndex }`
+// so the saved history `session.bfrbs[]` field stays byte-equivalent (the
+// analytics history-record read path in js/analytics.js:325-332 reads
+// s.bfrbs as flat `{ timestamp }` objects). Audit Risk #4.
+function getPomoSessionBFRBs() {
+  if (typeof BfrbEvents === 'undefined') return [];
+  if (typeof Pomodoro === 'undefined' || typeof Pomodoro.getSessionStartedAt !== 'function') return [];
+  const sessionId = Pomodoro.getSessionStartedAt();
+  if (sessionId == null) return [];
+  const all = BfrbEvents.getByContext('pomodoro');
+  const out = [];
+  for (const e of all) {
+    if (!e || e.sessionId !== sessionId) continue;
+    const legacy = { timestamp: e.takenAt };
+    if (typeof e.phase === 'string') legacy.phase = e.phase;
+    if (typeof e.cycleIndex === 'number') legacy.cycleIndex = e.cycleIndex;
+    out.push(legacy);
+  }
+  return out;
+}
 
 // ── Session Planning Timeline ──
 function renderPomodoroTimeline() {
@@ -1041,7 +1068,7 @@ function gatherTaskData() {
   };
   const distractions = loadDistractions();
   if (distractions.length > 0) data.distractions = distractions;
-  const bfrbs = loadPomoBFRBs();
+  const bfrbs = getPomoSessionBFRBs();
   if (bfrbs.length > 0) data.bfrbs = bfrbs;
   return data;
 }

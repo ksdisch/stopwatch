@@ -652,6 +652,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       history: SyncMergeHistory.merge,
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
+      bfrb_events: SyncMergeBfrb.merge,
     };
 
     try {
@@ -672,6 +673,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeHistory.merge = () => ({ ok: false });
       SyncMergeRestLog.merge = () => ({ ok: false });
       SyncMergePresets.merge = () => ({ ok: false });
+      SyncMergeBfrb.merge = () => ({ ok: true });
 
       // Wait for cycle to complete.
       const completeP = new Promise((resolve) => {
@@ -691,6 +693,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeHistory.merge = savedMerges.history;
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
+      SyncMergeBfrb.merge = savedMerges.bfrb_events;
       _e1c_restore(saved);
     }
   });
@@ -703,6 +706,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       history: SyncMergeHistory.merge,
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
+      bfrb_events: SyncMergeBfrb.merge,
     };
 
     try {
@@ -711,11 +715,12 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncAuth.getCurrentUser = () => ({ uid: 'u-f13' });
       window.SyncState = stateSpy.obj;
 
-      // All four merges sync no-op so the cycle finalizes immediately.
+      // All five merges sync no-op so the cycle finalizes immediately.
       SyncMergeMeds.merge = () => ({ ok: true });
       SyncMergeHistory.merge = () => ({ ok: true });
       SyncMergeRestLog.merge = () => ({ ok: true });
       SyncMergePresets.merge = () => ({ ok: true });
+      SyncMergeBfrb.merge = () => ({ ok: true });
 
       SyncEngine._runMergeCycle();
 
@@ -731,6 +736,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeHistory.merge = savedMerges.history;
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
+      SyncMergeBfrb.merge = savedMerges.bfrb_events;
       _e1c_restore(saved);
     }
   });
@@ -743,6 +749,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       history: SyncMergeHistory.merge,
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
+      bfrb_events: SyncMergeBfrb.merge,
     };
 
     try {
@@ -757,6 +764,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeHistory.merge = function () { throw { weird: true }; };
       SyncMergeRestLog.merge = function () { throw null; };
       SyncMergePresets.merge = function () { throw new Error('stub'); };
+      SyncMergeBfrb.merge = function () { throw 'string-throw-bfrb'; };
 
       SyncEngine._runMergeCycle();
 
@@ -767,6 +775,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeHistory.merge = savedMerges.history;
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
+      SyncMergeBfrb.merge = savedMerges.bfrb_events;
       _e1c_restore(saved);
     }
   });
