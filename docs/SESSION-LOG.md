@@ -936,6 +936,108 @@ dd250fa docs(sync-impl): E-1c brief — Kyle's 7 TODO resolutions baked in
 
 ---
 
+## 2026-05-14 — E-1d: history steady-state merge (sessions only)
+
+### What We Built
+
+**Stage E-1d: history steady-state merge — sessions only.** Fourth of
+the (now) seven Stage E sub-PRs. Replaces E-1b's stub body in
+`js/sync-merge-history.js` (~310 LOC of real merge): resolve `uid` via
+`SyncAuth.getCurrentUser()`, fetch cloud sessions via
+`SyncFirestore.getCollection('users/{uid}/history')`, F19a per-record
+pre-filter via `Schema.isFutureRecord(data)` (`skipped++` + warning +
+continue), union cloud + local sessions with whole-record LWW on the
+metadata envelope (note + tags LWW the whole record per TODO #2
+deferral — per-field stamping in `js/history.js` is a separate
+follow-up), tombstone-aware delete propagation, and per-record CAS
+writeback via E-1b's `SyncFirestore.runTransaction`. Default-off
+behavior preserved — `tempo_sync_steady_state_enabled` still gates the
+cycle; E-1e removes the dev-flag gate.
+
+**Stage E sub-PR count: 5 → 7 (scope split on TODO #1).** Pick B on
+E-1d TODO #1 split off F3 BFRB stream consolidation (unified
+`bfrb_events` with `context` tag) into **E-1d-f3** and F8 distraction
+sessionId-keyed migration into **E-1d-f8** — both deferred as separate
+sub-PRs after E-1d, before E-1e. The original E-1d brief tried to ship
+all three in one PR; the scope-discipline pick keeps each merge surface
+isolated and audit-shaped (one engine + one test file + one audit per
+PR). Pick B on TODO #4 keeps `meds-arrival` as the only F15 emit for
+this PR — `sessions-arrival` is not added; the existing meds-arrival
+toast subscriber is sufficient signal until BFRB and distractions land.
+No changes to `js/sync-engine.js` (E-1c's F13 gate already in place);
+no changes to `js/history.js` (TODO #2 deferral).
+
+**Engine-implementer scope expansion — fifth use, first time clean.**
+E-1d's affected-files table lists `tests/index.html` (one new
+`<script>` tag) + `sw.js` (CACHE_NAME bump v76 → v77) — both outside
+the default allowed set. After PR #67 baked the brief-driven
+scope-expansion clause into `.claude/agents/engine-implementer.md`, the
+Phase 2 dispatch brief did NOT need a per-PR override citation this
+time (E-1c was the first natively-scoped run; E-1d is the first where
+the citation footprint disappeared entirely from the brief copy). All
+7 TODOs in `docs/sync-impl/prompts/E-1d-PROMPT.md` were resolved by
+Kyle on 2026-05-13 — RESOLUTIONS block at the top of the brief is
+authoritative.
+
+### Verification result
+
+- **Test count: 454 / 454 PASS** (baseline 437 + 17 new cases in
+  `describe('SyncMergeHistory — sessions merge')`; the audit said
+  12-15, the test file ran longer to cover the tombstone + LWW
+  whole-record cases).
+- **Verification method: kapture-driven browser load** at
+  `http://localhost:8765/tests/index.html?fresh=verify` — **first try
+  PASS, no hard-reload needed** (E-1a's referrer-based SW bypass
+  continues to do its job).
+- **`sw.js` cache bump:** `stopwatch-v76-e1c-meds-merge` →
+  `stopwatch-v77-e1d-history-merge`. No `ASSETS` list changes —
+  `sync-merge-history.js` was added to the manifest in E-1b's bump.
+- **Audit:** `docs/sync-impl/audits/E-1d-AUDIT.md` (TODO #1 Pick B scope
+  split is the largest deviation from the original E-1 brief; all
+  remaining risks carry forward from E-1c's risk register — same
+  merge-loop shape, different store).
+
+### Suggested Next Steps
+
+- **E-1d-f3** — Land F3 BFRB stream consolidation. Unify
+  `bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` into a single
+  `bfrb_events` synced collection with a `context: 'global' | 'flow' |
+  'pomodoro'` tag. Append-merge dedup by `(deviceId, capturedAt)`. Same
+  per-store-test-file pattern.
+- **E-1d-f8** — Land F8 distraction sessionId-keyed migration.
+  Re-key existing distraction entries by parent sessionId so cloud
+  merge can append-and-tombstone without ambiguity. Migration runs
+  once via the existing per-store hydrate markers.
+- **E-1e** — Replace `sync-merge-rest-log.js` + `sync-merge-presets.js`
+  stubs with real merge logic (sleep LWW per-day + naps append-merge;
+  record LWW + `deletedAt` tombstones). Adds the per-store snapshot
+  F19a refuse-writeback gate. Removes the dev-flag gate by
+  auto-invoking `startSteadyState()` from `SyncEngine.init()` after
+  hydrate completes.
+- **Native CAS parity follow-up.** `runTransaction` is still web-only
+  after E-1d (native branch still throws). E-1d adds the second store
+  exercising CAS in production — queue the Capacitor follow-up before
+  E-3 listeners ship.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+- Update `js/history.js` per-field stamping (TODO #2 deferral from
+  E-1d) — currently sessions LWW the whole record. Per-field stamping
+  for `note` vs `tags` is a future enhancement once the cross-device
+  edit-collision pattern is observed in practice.
+
+### Commits
+```
+c887ad8 docs(sync-impl): E-1d brief skeleton — 7 TODO blocks for Kyle
+79d2a01 docs(sync-impl): E-1d brief — Kyle's 7 TODO resolutions baked in
+2888ee6 docs(sync-impl): E-1d audit + Kyle's 7 TODO resolutions codified
+ad8dc67 feat(sync): history steady-state merge — sessions only (E-1d, Phase 2)
+<SHA>   docs(sync-impl): E-1d SESSION-LOG + PLAN.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
