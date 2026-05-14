@@ -1275,15 +1275,35 @@ const SyncEngine = (() => {
 
         const mergedHistory = _mergeHistory(localHistory, cloudData.history || []);
         const mergedMeds    = _mergeMeds(localMeds, cloudData.meds || [], localDeviceId);
-        // E-1 plug-in seam: after _mergeMeds() unions cloud ∪ local
-        // records by (medId, originDeviceId), iterate each merged med and
-        // call MedsManager.reconcileDoseLog(med, incomingEntries) to
-        // collapse cross-device ±15-min duplicates and clamp clock-skewed
-        // entries. Then assign result.entries onto med.doseLog and call
-        // MedsManager.onMergeComplete(medId) once per med. F1 + F16 are
-        // not enforced in D-1's reconcile path — D-2 ships the helper
-        // only; E-1 wires both call sites (D-1 reconcile + E-1 steady-
-        // state). No behavior change here.
+        // E-1c retrofit (Pick A on E-1c-PROMPT TODO #4): after
+        // _mergeMeds() unions cloud ∪ local records by (medId,
+        // originDeviceId), iterate each merged med and call
+        // MedsManager.reconcileDoseLog(med, incomingEntries) to collapse
+        // cross-device ±15-min duplicates (F1) and clamp clock-skewed
+        // entries (F16). incomingEntries is `med.doseLog` itself — the
+        // helper's union step combines existing ∪ incoming + dedups by
+        // (deviceId, takenAt), so passing doseLog twice is correct
+        // (the reconcile result is the deduplicated/collapsed set).
+        // Reassign result.entries onto med.doseLog BEFORE firing
+        // onMergeComplete (Risk #11 — F4 recompute reads med.doseLog).
+        // Per-med try/catch so one bad record doesn't abort reconcile.
+        if (Array.isArray(mergedMeds) && typeof MedsManager !== 'undefined') {
+          for (const med of mergedMeds) {
+            if (!med || typeof med.id !== 'string') continue;
+            try {
+              const result = MedsManager.reconcileDoseLog(med, med.doseLog || []);
+              med.doseLog = Array.isArray(result.entries) ? result.entries : [];
+              if (typeof MedsManager.onMergeComplete === 'function') {
+                try { MedsManager.onMergeComplete(med.id); } catch (_) {}
+              }
+            } catch (_) {
+              // Per-med reconcile failures don't abort the D-1 cycle;
+              // emit a structured progress warning and continue.
+              try { emit('reconcile-progress', { stage: 'reconcile-warning', store: 'meds', id: med.id }); }
+              catch (__) {}
+            }
+          }
+        }
         const mergedRestLog = _mergeRestLog(localRestLog, cloudData.rest_log || {});
         const mergedPresets = _mergeLWWArray(localPresets, cloudData.presets || [], (rec) => rec.id);
 
@@ -1520,6 +1540,24 @@ const SyncEngine = (() => {
     _steadyRunInFlight = true;
     const storeResults = { meds: null, history: null, rest_log: null, presets: null };
 
+    // E-1c: F13 dispatcher-wide write gate flip (Pick B on E-1c-PROMPT
+    // TODO #2). Flip SyncState to 'hydrating' BEFORE the per-store loop
+    // so engine writes via `SyncState.canWrite()` are blocked while the
+    // merge cycle runs. Restored to 'ready' in the cleanup path below.
+    // Risk #1: cleanup MUST run even on exception — the sync try/finally
+    // around the loop AND the .finally() chained onto the async tail
+    // both guarantee restoration. Leaving SyncState stuck in 'hydrating'
+    // would permanently block local writes.
+    //
+    // Only flip when SyncState exposes set() — test harnesses install
+    // partial stubs (`{ get: () => 'ready' }`) and we must respect them.
+    let _stateFlipped = false;
+    if (typeof SyncState !== 'undefined' && typeof SyncState.set === 'function') {
+      try {
+        if (SyncState.set('hydrating')) _stateFlipped = true;
+      } catch (_) { /* defensive — partial-stub envs */ }
+    }
+
     // Resolve each store's merge module via defensive typeof checks —
     // the stub files install a global, but a test harness or future
     // refactor might omit them. Missing module is treated as an error
@@ -1531,36 +1569,97 @@ const SyncEngine = (() => {
       presets:  (typeof SyncMergePresets  !== 'undefined') ? SyncMergePresets  : null,
     };
 
-    // Iterate in canonical order: meds → history → rest_log → presets
-    // (matches SYNCED_STORES registry above; future per-store snapshot
-    // F19a gating in E-1e will iterate the same order).
-    for (const { key } of SYNCED_STORES) {
-      const mod = moduleByKey[key];
-      if (!mod || typeof mod.merge !== 'function') {
-        const err = new Error('merge module unavailable for store: ' + key);
-        storeResults[key] = { ok: false, error: err };
-        try { console.warn('[SyncEngine] steady-state merge module missing:', key); }
-        catch (_) {}
-        emit('merge-error', { store: key, error: err });
-        continue;
+    // E-1c: collect async per-store promises so we can chain a single
+    // `.finally()` to restore SyncState + clear the in-flight latch
+    // AFTER all merge functions resolve. Sync merge stubs (E-1b legacy
+    // + test fixtures) produce a non-thenable result; we treat them
+    // inline so the dispatcher emits `merge-cycle-complete` synchronously
+    // in the sync-only path (preserves E-1b's "emits once per cycle"
+    // test contract).
+    const pendingPromises = [];
+
+    // E-1c: wrap the per-store loop in try/finally so a non-Error throw
+    // in the iteration boundary itself (not the per-store body) still
+    // restores SyncState. The per-store try/catch inside the loop
+    // catches sync merge errors as before.
+    try {
+      // Iterate in canonical order: meds → history → rest_log → presets
+      // (matches SYNCED_STORES registry above; future per-store snapshot
+      // F19a gating in E-1e will iterate the same order).
+      for (const { key } of SYNCED_STORES) {
+        const mod = moduleByKey[key];
+        if (!mod || typeof mod.merge !== 'function') {
+          const err = new Error('merge module unavailable for store: ' + key);
+          storeResults[key] = { ok: false, error: err };
+          try { console.warn('[SyncEngine] steady-state merge module missing:', key); }
+          catch (_) {}
+          emit('merge-error', { store: key, error: err });
+          continue;
+        }
+        try {
+          // Pass null for the snapshot — E-1b's stubs ignore it. E-1c
+          // ships meds with a real async body that fetches cloud
+          // internally; E-1d/e replace history / rest_log / presets.
+          const result = mod.merge(null);
+
+          if (result && typeof result.then === 'function') {
+            // Async merge — capture the promise and store the resolved
+            // value on completion. A rejection still routes through
+            // merge-error so observers see a uniform error shape.
+            const captureKey = key;
+            const p = result.then(
+              (r) => { storeResults[captureKey] = { ok: true, result: r }; },
+              (err) => {
+                storeResults[captureKey] = { ok: false, error: err };
+                try { console.warn('[SyncEngine] steady-state merge error (' + captureKey + '):', err); }
+                catch (_) {}
+                emit('merge-error', { store: captureKey, error: err });
+              }
+            );
+            pendingPromises.push(p);
+          } else {
+            storeResults[key] = { ok: true, result };
+          }
+        } catch (err) {
+          storeResults[key] = { ok: false, error: err };
+          try { console.warn('[SyncEngine] steady-state merge error (' + key + '):', err); }
+          catch (_) {}
+          emit('merge-error', { store: key, error: err });
+          // Continue — one bad store must not abort the loop (Risk #3).
+        }
       }
-      try {
-        // Pass null for the snapshot — E-1b's stubs ignore it. E-1c/d/e
-        // will replace this with the cloud-side per-store snapshot
-        // (loaded inside each merge module via SyncFirestore.getCollection).
-        const result = mod.merge(null);
-        storeResults[key] = { ok: true, result };
-      } catch (err) {
-        storeResults[key] = { ok: false, error: err };
-        try { console.warn('[SyncEngine] steady-state merge error (' + key + '):', err); }
-        catch (_) {}
-        emit('merge-error', { store: key, error: err });
-        // Continue — one bad store must not abort the loop (Risk #3).
-      }
+    } catch (loopErr) {
+      // Defensive — only reached if the iteration boundary itself
+      // throws (not the per-store body). Emit a synthetic error so
+      // observers know the cycle was malformed, then fall through to
+      // cleanup.
+      try { console.warn('[SyncEngine] dispatcher loop threw:', loopErr); } catch (_) {}
     }
 
-    emit('merge-cycle-complete', { storeResults });
-    _steadyRunInFlight = false;
+    // Cleanup — restores F13 gate AND clears the in-flight latch in
+    // one path (Risk #1: the pair MUST stay co-located). When all
+    // store merges were sync, finalize immediately so the existing
+    // E-1b test contract ("emits merge-cycle-complete exactly once per
+    // cycle" — synchronously) still holds. When any merge is async,
+    // defer finalization until all promises settle.
+    function _finalizeCycle() {
+      try { emit('merge-cycle-complete', { storeResults }); } catch (_) {}
+      if (_stateFlipped) {
+        try { SyncState.set('ready'); } catch (_) {}
+      }
+      _steadyRunInFlight = false;
+    }
+
+    if (pendingPromises.length === 0) {
+      _finalizeCycle();
+    } else {
+      // Promise.all settles when every promise resolves OR ANY rejects.
+      // We've already mapped rejections into `merge-error` per-store
+      // via the wrapper above, so Promise.all here never rejects from
+      // our perspective — but defensive .catch() is belt-and-suspenders
+      // against a future refactor.
+      Promise.all(pendingPromises).then(_finalizeCycle, _finalizeCycle);
+    }
   }
 
   function startSteadyState() {

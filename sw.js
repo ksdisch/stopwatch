@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v75-e1b-steady-state-scaffold';
+const CACHE_NAME = 'stopwatch-v76-e1c-meds-merge';
 const ASSETS = [
   './',
   './index.html',

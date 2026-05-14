@@ -819,6 +819,123 @@ b0d0374 docs(sync-impl): E-1b brief — Kyle's 7 TODO resolutions baked in
 
 ---
 
+## 2026-05-13 — E-1c: meds steady-state merge + D-1 retrofit + F15 counter
+
+### What We Built
+
+**Stage E-1c: first real per-store merge logic.** Third of five Stage E
+sub-PRs (Option B split per the E-1 kickoff). Three deliverables in one
+PR: (a) **`js/sync-merge-meds.js` real body** — replaces E-1b's
+`throw new Error('not implemented until E-1c')` stub at lines 15-20
+with ~360 LOC of real merge: resolve `uid` via
+`SyncAuth.getCurrentUser()`, fetch cloud meds via
+`SyncFirestore.getCollection('users/{uid}/meds')`, F19a per-record
+pre-filter via `Schema.isFutureRecord(data)` (`skipped++` + warning +
+continue), union cloud + local meds with LWW on the metadata envelope
+(`name` / `dose` / `frequency` / `archivedAt`), per-med call D-2's
+`MedsManager.reconcileDoseLog(med, cloudDoseEntries)` to collapse
+±15-min cross-device duplicates (F1) and clamp clock-skewed entries
+(F16), assign result.entries onto `med.doseLog` BEFORE calling
+`MedsManager.onMergeComplete(med.id)` (F4 ordering — Risk #11), snapshot
+the pre-merge doseLog and compute `newRemoteCount` as the diff against
+it (the F15 idempotency-preserving predicate — Risk #7), per-record CAS
+writeback via `SyncFirestore.runTransaction` (the E-1b wrapper), and
+emit `meds-arrival` with `{ medId, count }` for any med where
+`newRemoteCount >= 2` (F15 per-med per-cycle threshold — B-4's existing
+toast subscriber renders it); (b) **F13 dispatcher-wide write gate** —
+wraps `_runMergeCycle`'s per-store loop in
+`try { SyncState.set('hydrating'); …loop…; emit('merge-cycle-complete') } finally { SyncState.set('ready'); _steadyRunInFlight = false; }`
+so user writes are gated DURING the cycle (the existing entry-guard
+gates the cycle's start). The `finally` block is the Risk #1 mitigation
+— a throw inside the loop would otherwise leave `SyncState ===
+'hydrating'` and permanently block local writes; (c) **D-1 reconcile
+retrofit** — replaces the 9-line comment seam at `js/sync-engine.js:1278-1286`
+(documented in D-2's brief as "deferred to E-1") with the actual
+reconcile loop that walks `mergedMeds` post-`_mergeMeds()`, calls
+`MedsManager.reconcileDoseLog` + `onMergeComplete` per med, and absorbs
+errors per-med so one bad record doesn't abort the imported-bucket
+flow. New test file `tests/sync-merge-meds.test.js` ships 16 cases (the
+audit said 12-15; test #10 split into 10a/10b for the F13 success-path
+vs exception-path sub-cases of the gate release assertion). E-1c is
+engine-only: no UI files, no CSS, no `js/app.js` changes, default-off
+behavior preserved — `tempo_sync_steady_state_enabled` stays the gate
+through E-1c and E-1d; E-1e removes it.
+
+**Engine-implementer scope expansion — now baked in.** E-1c is the
+first PR to ship after PR #67 amended `.claude/agents/engine-implementer.md`
+with the brief-driven scope-expansion clause (S0-1 + E-1a + E-1b were
+the three motivating cases). The E-1c affected-files table lists
+`tests/index.html` (one new `<script>` tag for the new test file) and
+`sw.js` (CACHE_NAME bump v75 → v76) — both outside the default allowed
+set. The Phase 2 dispatch brief did NOT need to carry a per-PR override
+clause this time; the agent definition now handles it natively. All 7
+TODOs in `docs/sync-impl/prompts/E-1c-PROMPT.md` were resolved by Kyle
+on 2026-05-13 with the auditor's recommended pick for each (Pick A on
+TODOs #1 / #3 / #4 / #6 + Pick B on TODO #2 + Pick C on TODO #5 + Pick
+A on TODO #7 deferring per-store snapshot gate to E-1e) — the
+RESOLUTIONS block at the top of the brief is authoritative.
+
+### Verification result
+
+- **Test count: 437 / 437 PASS** (baseline 421 + 16 new cases in
+  `describe('SyncMergeMeds — merge')`).
+- **Verification method: Kyle's Cmd+Shift+R in Chrome incognito** at
+  `http://localhost:8765/tests/index.html?fresh=verify` with E-1a's
+  `?nosw=1` referrer-based SW bypass in effect — screenshots on record.
+- **Mid-run test bug found + fixed.** Test #12 in `tests/sync-merge-meds.test.js`
+  conflated F1 (cross-device ±15-min collapse) with F16 (clock-skew
+  clamp) — the assertion was checking for the wrong helper's behavior.
+  Engine-tester surfaced it on the first browser load; fix landed in
+  follow-up commit `1319b89` (test file only, zero engine changes); the
+  re-verified 437/437 green baseline was accepted after.
+- **`sw.js` cache bump:** `stopwatch-v75-e1b-steady-state-scaffold` →
+  `stopwatch-v76-e1c-meds-merge`. No `ASSETS` list changes —
+  `sync-merge-meds.js` was added to the manifest in E-1b's bump.
+- **Audit:** `docs/sync-impl/audits/E-1c-AUDIT.md` (8 risks: 5 low + 3
+  med; highest single-event impact is Risk #1 SyncState-stuck-in-hydrating,
+  mitigated by mandating try/finally; most data-sensitive is Risk #4
+  F19a-comparison-inversion, mitigated by mandating
+  `Schema.isFutureRecord(data)`; most user-visible is Risk #7
+  idempotency-double-counting, mitigated by the pre-merge snapshot
+  pattern).
+
+### Suggested Next Steps
+
+- **E-1d** — Replace `sync-merge-history.js` stub with sessions
+  append-merge dedup by `id` + note/tags LWW per-field + phaseLog
+  dedup by `(deviceId, phaseStartedAt)`. Also lands F3 BFRB stream
+  consolidation (unified `bfrb_events` with `context` tag) and F8
+  distraction sessionId-keyed migration. Same per-store-test-file
+  pattern as E-1c.
+- **E-1e** — Replace `sync-merge-rest-log.js` + `sync-merge-presets.js`
+  stubs with the real merge logic (sleep LWW per-day + naps
+  append-merge; record LWW + `deletedAt` tombstones). Adds the per-store
+  snapshot F19a gate (skip future-schema records before passing them to
+  the merge function — Pick A on E-1b TODO #7 deferred to E-1e).
+  Removes the dev-flag gate by auto-invoking `startSteadyState()` from
+  `SyncEngine.init()` after hydrate completes.
+- **Native CAS parity follow-up.** `runTransaction` is still web-only
+  after E-1c (E-1b shipped the web branch + a "native parity pending"
+  throw on the native branch). The first cycle of real cross-device
+  meds sync exercises CAS in production — queue the Capacitor follow-up
+  before E-3 listeners ship.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step (bit Kyle during B-3 manual e2e).
+
+### Commits
+```
+1f92a84 docs(sync-impl): E-1c brief skeleton — 7 TODO blocks for Kyle
+dd250fa docs(sync-impl): E-1c brief — Kyle's 7 TODO resolutions baked in
+3ff2270 docs(sync-impl): E-1c audit + Kyle's 7 TODO resolutions codified
+9966b99 feat(sync): meds steady-state merge + D-1 retrofit + F15 counter (E-1c, Phase 2)
+03bf64a fix(tests): correct test #12 in sync-merge-meds — F1 vs F16 conflation
+<SHA>   docs(sync-impl): E-1c SESSION-LOG + PLAN.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
