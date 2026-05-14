@@ -79,9 +79,16 @@ const Export = (() => {
     'pomodoro_state', 'pomodoro_config',
     'pomodoro_checklist', 'pomodoro_break_checklist', 'pomodoro_actual_work',
     'pomodoro_saved_tasks', 'pomodoro_task_templates',
+    // Note: E-1d-f8 reshaped `pomodoro_distractions` from a flat array
+    // into a sessionId-keyed map (see flow_distractions note below).
     'pomodoro_distractions', 'pomodoro_bfrbs',
 
     // Flow Block
+    // Note: E-1d-f8 reshaped `flow_distractions` from a flat array into a
+    // sessionId-keyed map `{ [sessionId]: [entries] }`. JSON.stringify
+    // handles maps transparently, so the export/import round-trip is
+    // unchanged. Pre-migration backups containing the legacy flat array
+    // are re-migrated on import by the load-time migration in Distractions.
     'flow_state', 'flow_config',
     'flow_distractions', 'flow_bfrbs',
     'flow_checklist_state', 'flow_checklist_skipped', 'flow_last_saved_session',

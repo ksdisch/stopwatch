@@ -16,6 +16,13 @@ const FLOW_CHECKLIST_ITEMS = [
   'Clear goal for this block',
 ];
 
+// E-1d-f8: legacy helpers retained for emergency rollback only. All
+// active call sites switched to Distractions.log / .getForSession /
+// .clearSession (sessionId-keyed map shape). The legacy `flow_distractions`
+// key is preserved on disk (Pick B on TODO #2 — cleanup deferred per
+// Pick C on TODO #6). These helpers read/write the legacy flat-array
+// shape and are no longer wired anywhere — they exist so a hot rollback
+// to pre-E-1d-f8 behavior can re-route by editing the call sites only.
 function loadFlowDistractions() {
   try { return JSON.parse(localStorage.getItem(FLOW_DISTRACTION_KEY)) || []; }
   catch (e) { return []; }
@@ -157,6 +164,8 @@ function initFlowUI() {
         && st !== 'recovery'
         && st !== 'recoveryPaused'
         && st !== 'recoveryOverflowing') return;
+    // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Flow.getSessionStartedAt();
     // If we're skipping straight from focus overflow, capture the overshoot
     // into history before the engine resets.
     if (st === 'overflowing') saveFlowSessionToHistory();
@@ -165,7 +174,9 @@ function initFlowUI() {
     Flow.skipRecovery();
     Flow.reset();
     resetFlowChecklistState();
-    saveFlowDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('flow', sessionIdToClear);
+    }
     saveFlowBFRBs([]);
     saveFlowState();
     updateFlowUI();
@@ -207,11 +218,15 @@ function onFlowLeft() {
   if (status === 'paused' || status === 'recoveryPaused' || status === 'recoveryOverflowing') {
     // Reset — abandon session (focus block has already been saved to history
     // at focusComplete time, so we're not losing data).
+    // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Flow.getSessionStartedAt();
     stopFlowRenderLoop();
     BgNotify.cancel('flow');
     Flow.reset();
     resetFlowChecklistState();
-    saveFlowDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('flow', sessionIdToClear);
+    }
     saveFlowBFRBs([]);
     saveFlowState();
     SFX.playReset();
@@ -228,7 +243,10 @@ function onFlowRight() {
     // Start focus block
     const goalInput = document.getElementById('flow-goal-input');
     if (goalInput) Flow.setGoal(goalInput.value);
-    saveFlowDistractions([]);  // clear any stale entries
+    // E-1d-f8: distractions are now sessionId-keyed. A new Flow.start()
+    // mints a fresh sessionId, so the new session's bucket is naturally
+    // empty — no clear needed. Past-session keys are retained (cleanup
+    // PR deferred per Pick C on TODO #6).
     saveFlowBFRBs([]);
     Flow.start();
     BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', 'Focus block complete! Time for recovery.');
@@ -268,19 +286,27 @@ function onFlowRight() {
     // End recovery — capture overshoot was already in the focus history
     // record. Recovery overshoot itself isn't currently surfaced in the
     // record, but the user has acted, so we transition to done + reset.
+    // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Flow.getSessionStartedAt();
     BgNotify.cancel('flow');
     stopFlowRenderLoop();
     Flow.skipRecovery();
     Flow.reset();
     resetFlowChecklistState();
-    saveFlowDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('flow', sessionIdToClear);
+    }
     saveFlowBFRBs([]);
     saveFlowState();
     updateFlowUI();
   } else if (status === 'done') {
+    // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Flow.getSessionStartedAt();
     Flow.reset();
     resetFlowChecklistState();
-    saveFlowDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('flow', sessionIdToClear);
+    }
     saveFlowBFRBs([]);
     saveFlowState();
     updateFlowUI();
@@ -531,14 +557,19 @@ function initFlowDistractionLog() {
     catBtn.addEventListener('click', () => {
       const category = catBtn.dataset.cat;
       const note = noteInput ? noteInput.value.trim() : '';
-      const items = loadFlowDistractions();
-      items.push({
-        category,
-        note,
-        timestamp: Date.now(),
-        phase: Flow.getPhase(),
-      });
-      saveFlowDistractions(items);
+      // E-1d-f8: routes through Distractions module (sessionId-keyed map).
+      // The picker button is only visible while Flow.getStatus() === 'running'
+      // (see updateFlowDistractionBtnVisibility), so sessionId is guaranteed
+      // non-null at log time.
+      if (typeof Distractions !== 'undefined') {
+        Distractions.log({
+          context: 'flow',
+          sessionId: Flow.getSessionStartedAt(),
+          category,
+          note,
+          phase: Flow.getPhase(),
+        });
+      }
       picker.classList.add('hidden');
       Platform.haptic(30);
     });
@@ -603,7 +634,11 @@ function renderFlowSummary() {
     ? Utils.formatShort(overshootMs)
     : '';
   const goal = Flow.getGoal();
-  const distractions = loadFlowDistractions();
+  // E-1d-f8: distractions now filter by current sessionId from the
+  // consolidated map.
+  const distractions = (typeof Distractions !== 'undefined')
+    ? Distractions.getForSession('flow', Flow.getSessionStartedAt())
+    : [];
   const bfrbs = getFlowSessionBFRBs();
 
   // Group distractions by category for a breakdown
@@ -661,7 +696,11 @@ function saveFlowSessionToHistory() {
   // completion). For blocks ended early, this is the real time the user spent.
   const elapsedMs = Flow.getFocusElapsedMs ? Flow.getFocusElapsedMs() : plannedMs;
   const endedEarly = elapsedMs < plannedMs;
-  const distractions = loadFlowDistractions();
+  // E-1d-f8: distractions now filter by current sessionId from the
+  // consolidated map.
+  const distractions = (typeof Distractions !== 'undefined')
+    ? Distractions.getForSession('flow', sessionStartedAt)
+    : [];
   const bfrbs = getFlowSessionBFRBs();
   const sessionEndedAt = Flow.getFocusEndedAt() || Date.now();
   // Capture overshoot only when we're in the focus-overflow state. Once

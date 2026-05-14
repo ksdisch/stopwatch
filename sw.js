@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v78-e1d-f3-bfrb-consolidation';
+const CACHE_NAME = 'stopwatch-v79-e1d-f8-distractions-migration';
 const ASSETS = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ const ASSETS = [
   './js/sync-merge-rest-log.js',
   './js/sync-merge-presets.js',
   './js/sync-merge-bfrb.js',
+  './js/sync-merge-distractions.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
@@ -60,6 +61,7 @@ const ASSETS = [
   './js/wellness-cooking-ui.js',
   './js/recovery-ui.js',
   './js/bfrb-events.js',
+  './js/distractions.js',
   './js/global-bfrb.js',
   './js/app.js',
   './manifest.json',
