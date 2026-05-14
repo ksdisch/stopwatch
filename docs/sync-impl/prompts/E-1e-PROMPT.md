@@ -67,23 +67,49 @@ Plus:
 
 ---
 
-## RESOLUTIONS (Kyle, [pending] — fills in here after answering the AskUserQuestion batches below)
+## RESOLUTIONS (Kyle, 2026-05-14 — all 8 TODOs resolved as auditor-recommended)
 
-All 8 TODOs need Kyle's call before Phase 1 dispatches. The auditor
-leans on each are listed; "all defaults" or per-TODO overrides are
-both accepted shorthand.
+All 8 TODOs resolved as auditor-recommended (Pick A across the
+board, with Pick A on TODO #4 meaning "dispatcher + preserve
+per-merge-fn cloud gates"). **Engine-implementer reads
+`docs/sync-impl/audits/E-1e-AUDIT.md` for the authoritative spec;
+the deferral language in the TODO sections below is preserved for
+historical context but overridden by the audit.**
 
-- **TODO #1 (scope split):** `_____`
-- **TODO #2 (presets `deletedAt` + SCHEMA_VERSION):** `_____`
-- **TODO #3 (tombstone UI filter location):** `_____`
-- **TODO #4 (per-store F19a gate location):** `_____`
-- **TODO #5 (flag removal mechanics):** `_____`
-- **TODO #6 (auto-invoke trigger):** `_____`
-- **TODO #7 (test file structure):** `_____`
-- **TODO #8 (Phase 4 ui-wirer scope):** `_____`
+- **TODO #1 (scope split):** **Pick A** — One PR. All 5 deliverables
+  ship in `feat/sync-stage-e-complete` together.
+- **TODO #2 (presets `deletedAt` + SCHEMA_VERSION):** **Pick A** —
+  Keep `Schema.SCHEMA_VERSION = 1`. `deletedAt` is an additive
+  optional field; F19b `__forward` covers downlevel safety; absence
+  of the field IS the "alive" state.
+- **TODO #3 (tombstone UI filter location):** **Pick A** — Filter
+  inside `Presets.getAll()` engine-level. Add a sibling
+  `Presets._getAllIncludingTombstones()` internal helper for the
+  sync snapshot adapter so tombstones still propagate to cloud.
+- **TODO #4 (per-store F19a gate location):** **Pick C** —
+  Dispatcher-level snapshot gate + preserve the existing per-merge-fn
+  cloud-side gates. Two layers cover different vectors.
+- **TODO #5 (flag removal mechanics):** **Pick A** — Delete the
+  `STEADY_STATE_ENABLED_KEY` constant + `_isSteadyStateEnabled()`
+  function + the gate check at line 1689 entirely. No dead code.
+- **TODO #6 (auto-invoke trigger):** **Pick C** — Both. Helper
+  `_maybeAutoStartSteady(user)` gates on all 4 conditions (signed in
+  + flag on + all-hydrated + not Stage D handoff). Called from both
+  `init()` (cold-boot with marker already set) and
+  `_maybeAutoHydrate()`'s post-hydrate `.then()` (first sign-in
+  completed hydrate). Idempotent — `startSteadyState`'s existing
+  `if (_steadyTimer != null) return;` guard makes double-invocation
+  safe.
+- **TODO #7 (test file structure):** **Pick A** — Two new test files
+  + `tests/sync-engine.test.js` extension. Mirrors E-1c/d/d-f3/d-f8
+  precedent.
+- **TODO #8 (Phase 4 ui-wirer scope):** **Pick A** — Smoke check
+  only (boot path, console clean, SyncState transitions, drawer UI,
+  master flag toggle). Real E2E Firestore validation is Kyle's
+  manual two-device test post-merge.
 
 The audit's affected-files table will codify the exact line targets,
-test-case names, and CACHE_NAME bump value once resolutions land.
+test-case names, and CACHE_NAME bump value.
 
 ---
 
