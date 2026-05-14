@@ -360,15 +360,22 @@ describe('SyncEngine.getState — shape', () => {
 // ── SyncEngine.getSnapshot() shape ─────────────────────────────────────
 
 describe('SyncEngine.getSnapshot — shape', () => {
-  it('returns the four registry keys with the envelope shape', async () => {
+  it('returns the five registry keys with the envelope shape', async () => {
     const prevFlag = snapshotSyncFlagKey();
     const medsSnapshot = snapshotMedsKeys();
     const presetsSnap = snapshotPresetsKeys();
+    // E-1d-f3: also save/restore bfrb_events store so the test runs cleanly.
+    const prevBfrbStore = localStorage.getItem('bfrb_events');
+    const prevBfrbMarker = localStorage.getItem('tempo_bfrb_events_migration_v1');
     try {
       clearMedsKeys();
       clearPresetsKeys();
       MedsManager.clear();
       MedsManager.add({ name: 'TestMed', dose: '10 mg', frequency: 'once-daily' });
+
+      // Reset BfrbEvents store + set marker so module is in a clean state.
+      localStorage.removeItem('bfrb_events');
+      localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
 
       stubHistoryForSync({
         deviceId: 'mock-device-abc',
@@ -384,13 +391,14 @@ describe('SyncEngine.getSnapshot — shape', () => {
       try {
         const snap = await SyncEngine.getSnapshot();
 
-        // Four registry keys, in registry order
+        // Five registry keys, in registry order (E-1d-f3 added bfrb_events).
         const keys = Object.keys(snap);
-        assertEqual(keys.length, 4);
+        assertEqual(keys.length, 5);
         assertEqual(keys[0], 'meds');
         assertEqual(keys[1], 'history');
         assertEqual(keys[2], 'rest_log');
         assertEqual(keys[3], 'presets');
+        assertEqual(keys[4], 'bfrb_events');
 
         // Each value has the envelope shape
         for (const key of keys) {
@@ -402,16 +410,22 @@ describe('SyncEngine.getSnapshot — shape', () => {
         }
 
         // Envelopes use the same deviceId as History.getDeviceId()
+        // (BfrbEvents uses tempo_device_id directly, so it may differ in
+        // tests where History.getDeviceId is stubbed; defer to a presence
+        // check rather than equality here.)
         assertEqual(snap.meds.deviceId, 'mock-device-abc');
         assertEqual(snap.history.deviceId, 'mock-device-abc');
         assertEqual(snap.rest_log.deviceId, 'mock-device-abc');
         assertEqual(snap.presets.deviceId, 'mock-device-abc');
+        assert(typeof snap.bfrb_events.deviceId === 'string' && snap.bfrb_events.deviceId.length > 0,
+          'bfrb_events deviceId is a non-empty string');
 
         // schemaVersion at every envelope === Schema.SCHEMA_VERSION
         assertEqual(snap.meds.schemaVersion, Schema.SCHEMA_VERSION);
         assertEqual(snap.history.schemaVersion, Schema.SCHEMA_VERSION);
         assertEqual(snap.rest_log.schemaVersion, Schema.SCHEMA_VERSION);
         assertEqual(snap.presets.schemaVersion, Schema.SCHEMA_VERSION);
+        assertEqual(snap.bfrb_events.schemaVersion, Schema.SCHEMA_VERSION);
       } finally {
         restoreSyncStubs();
       }
@@ -421,6 +435,10 @@ describe('SyncEngine.getSnapshot — shape', () => {
       restorePresetsKeys(presetsSnap);
       MedsManager.loadAll();
       restoreSyncFlagKey(prevFlag);
+      if (prevBfrbStore === null) localStorage.removeItem('bfrb_events');
+      else localStorage.setItem('bfrb_events', prevBfrbStore);
+      if (prevBfrbMarker === null) localStorage.removeItem('tempo_bfrb_events_migration_v1');
+      else localStorage.setItem('tempo_bfrb_events_migration_v1', prevBfrbMarker);
     }
   });
 });
@@ -794,6 +812,7 @@ function _e1b_saveSteadyEnv() {
     merge_history: SyncMergeHistory.merge,
     merge_rest_log: SyncMergeRestLog.merge,
     merge_presets: SyncMergePresets.merge,
+    merge_bfrb: SyncMergeBfrb.merge,
     auth_getCurrentUser: SyncAuth.getCurrentUser,
     prev_setInterval: window.setInterval,
     prev_clearInterval: window.clearInterval,
@@ -825,6 +844,7 @@ function _e1b_restoreSteadyEnv(saved) {
   SyncMergeHistory.merge = saved.merge_history;
   SyncMergeRestLog.merge = saved.merge_rest_log;
   SyncMergePresets.merge = saved.merge_presets;
+  SyncMergeBfrb.merge = saved.merge_bfrb;
   // Restore auth.
   SyncAuth.getCurrentUser = saved.auth_getCurrentUser;
   // Restore Platform / SyncState.
@@ -987,7 +1007,7 @@ describe('SyncEngine — startSteadyState (E-1b)', () => {
 });
 
 describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
-  it('invokes all 4 stub merge functions in order: meds → history → rest_log → presets', () => {
+  it('invokes all 5 stub merge functions in order: meds → history → rest_log → presets → bfrb_events', () => {
     const saved = _e1b_saveSteadyEnv();
     try {
       // Ensure all preconditions pass so the dispatcher gets past the guards.
@@ -1000,28 +1020,30 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeHistory.merge = function () { order.push('history'); };
       SyncMergeRestLog.merge = function () { order.push('rest_log'); };
       SyncMergePresets.merge = function () { order.push('presets'); };
+      SyncMergeBfrb.merge = function () { order.push('bfrb_events'); };
 
       SyncEngine._runMergeCycle();
 
-      assertArrayEqual(order, ['meds', 'history', 'rest_log', 'presets'],
+      assertArrayEqual(order, ['meds', 'history', 'rest_log', 'presets', 'bfrb_events'],
         'dispatcher iterates SYNCED_STORES order');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }
   });
 
-  it('tolerates per-store throws — all 4 stubs invoked even when each throws', () => {
+  it('tolerates per-store throws — all 5 stubs invoked even when each throws', () => {
     const saved = _e1b_saveSteadyEnv();
     try {
       localStorage.setItem('tempo_sync_enabled', '1');
       SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
       delete window.SyncState;
 
-      const calls = { meds: 0, history: 0, rest_log: 0, presets: 0 };
+      const calls = { meds: 0, history: 0, rest_log: 0, presets: 0, bfrb_events: 0 };
       SyncMergeMeds.merge = function () { calls.meds++; throw new Error('not implemented until E-1c'); };
       SyncMergeHistory.merge = function () { calls.history++; throw new Error('not implemented until E-1d'); };
       SyncMergeRestLog.merge = function () { calls.rest_log++; throw new Error('not implemented until E-1e'); };
       SyncMergePresets.merge = function () { calls.presets++; throw new Error('not implemented until E-1e'); };
+      SyncMergeBfrb.merge = function () { calls.bfrb_events++; throw new Error('stub'); };
 
       const errors = [];
       const errCb = (p) => { errors.push(p); };
@@ -1039,12 +1061,13 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       assertEqual(calls.history, 1, 'history merge invoked once');
       assertEqual(calls.rest_log, 1, 'rest_log merge invoked once');
       assertEqual(calls.presets, 1, 'presets merge invoked once');
-      assertEqual(errors.length, 4, 'merge-error fired 4 times (one per store)');
+      assertEqual(calls.bfrb_events, 1, 'bfrb_events merge invoked once');
+      assertEqual(errors.length, 5, 'merge-error fired 5 times (one per store)');
 
       // Check distinct store keys on each emit
       const storesSeen = errors.map(e => e.store).sort();
-      assertArrayEqual(storesSeen, ['history', 'meds', 'presets', 'rest_log'],
-        'merge-error events cover all 4 stores');
+      assertArrayEqual(storesSeen, ['bfrb_events', 'history', 'meds', 'presets', 'rest_log'],
+        'merge-error events cover all 5 stores');
 
       SyncEngine.off('merge-error', errCb);
     } finally {
@@ -1064,6 +1087,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeHistory.merge = function () { throw new Error('stub'); };
       SyncMergeRestLog.merge = function () { throw new Error('stub'); };
       SyncMergePresets.merge = function () { throw new Error('stub'); };
+      SyncMergeBfrb.merge = function () { throw new Error('stub'); };
 
       const events = [];
       const cb = (p) => { events.push(p); };
@@ -1074,10 +1098,10 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       assertEqual(events.length, 1, 'merge-cycle-complete fires exactly once');
       assert(events[0] && events[0].storeResults && typeof events[0].storeResults === 'object',
         'payload includes storeResults');
-      // All 4 store entries present
+      // All 5 store entries present
       const resultKeys = Object.keys(events[0].storeResults).sort();
-      assertArrayEqual(resultKeys, ['history', 'meds', 'presets', 'rest_log'],
-        'storeResults has all 4 store keys');
+      assertArrayEqual(resultKeys, ['bfrb_events', 'history', 'meds', 'presets', 'rest_log'],
+        'storeResults has all 5 store keys');
 
       SyncEngine.off('merge-cycle-complete', cb);
     } finally {
@@ -1097,6 +1121,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeHistory.merge = function () { mergeCalls++; };
       SyncMergeRestLog.merge = function () { mergeCalls++; };
       SyncMergePresets.merge = function () { mergeCalls++; };
+      SyncMergeBfrb.merge = function () { mergeCalls++; };
 
       SyncEngine._runMergeCycle();
 
@@ -1117,6 +1142,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeHistory.merge = function () { mergeCalls++; };
       SyncMergeRestLog.merge = function () { mergeCalls++; };
       SyncMergePresets.merge = function () { mergeCalls++; };
+      SyncMergeBfrb.merge = function () { mergeCalls++; };
 
       window.SyncState = { get: () => 'hydrating' };
       SyncEngine._runMergeCycle();
@@ -1128,7 +1154,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
 
       window.SyncState = { get: () => 'ready' };
       SyncEngine._runMergeCycle();
-      assertEqual(mergeCalls, 4, 'ready state allows all 4 merges');
+      assertEqual(mergeCalls, 5, 'ready state allows all 5 merges');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }

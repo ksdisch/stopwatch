@@ -41,6 +41,10 @@
   <script src="../js/interval.js"></script>
   <script src="../js/flow.js"></script>
   <script src="../js/meds.js"></script>
+  <!-- E-1d-f3: BfrbEvents owns the consolidated bfrb_events store +
+       migration. Load before analytics.js so analytics' BFRB-trend read
+       path sees the consolidated stream during tests. -->
+  <script src="../js/bfrb-events.js"></script>
   <!-- Presets is loaded for F19b storage-layer tests (the only tests that
        exercise it; UI-coupled methods like applyPreset/captureCurrentConfig
        aren't tested here and won't run without their UI deps in scope). -->
@@ -62,6 +66,7 @@
   <script src="../js/sync-merge-history.js"></script>
   <script src="../js/sync-merge-rest-log.js"></script>
   <script src="../js/sync-merge-presets.js"></script>
+  <script src="../js/sync-merge-bfrb.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
 
@@ -84,6 +89,8 @@
   <script src="sync-imported-bucket.test.js"></script>
   <script src="sync-merge-meds.test.js"></script>
   <script src="sync-merge-history.test.js"></script>
+  <script src="bfrb-events.test.js"></script>
+  <script src="sync-merge-bfrb.test.js"></script>
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="export.test.js"></script>

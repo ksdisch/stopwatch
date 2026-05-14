@@ -958,6 +958,7 @@
   <script src="js/sync-merge-history.js"></script>
   <script src="js/sync-merge-rest-log.js"></script>
   <script src="js/sync-merge-presets.js"></script>
+  <script src="js/sync-merge-bfrb.js"></script>
   <script src="js/sync-auth.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>
@@ -998,6 +999,9 @@
   <button id="global-bfrb-fab" class="bfrb-btn global-bfrb-fab"
           aria-label="Log BFRB (shortcut: B)" title="Log BFRB (B)">BFRB</button>
 
+  <!-- E-1d-f3: BfrbEvents owns the consolidated bfrb_events store + migration.
+       MUST load BEFORE global-bfrb.js (which calls BfrbEvents.log synchronously). -->
+  <script src="js/bfrb-events.js"></script>
   <script src="js/global-bfrb.js"></script>
   <script src="js/tempo-nav.js?v=1"></script>
   <script src="js/app.js"></script>

@@ -3,29 +3,27 @@
 // which pillar or mode the user is on. Tap logs a catch + kicks off the 60s
 // competing-response countdown. Keyboard shortcut: B.
 //
-// Smart storage routing: catches are appended to the "most specific" active
-// store so per-session history stays accurate.
-//   - Flow focus running  → flow_bfrbs (existing session-scoped store)
-//   - Pomodoro work phase → pomodoro_bfrbs (existing session-scoped store)
-//   - Everything else     → bfrbs_global (unbounded global log)
+// E-1d-f3 (F3 BFRB stream consolidation): catches now route through
+// BfrbEvents.log({ context, sessionId?, phase?, cycleIndex? }) — a single
+// consolidated `bfrb_events` localStorage store. The legacy 3-key routing
+// (bfrbs_global / flow_bfrbs / pomodoro_bfrbs) was replaced by a context
+// tag on each entry. Routing rules:
+//   - Flow focus running  → context: 'flow', sessionId: Flow.getSessionStartedAt(), phase
+//   - Pomodoro work phase → context: 'pomodoro', sessionId, phase, cycleIndex
+//   - Everything else     → context: 'global'
 //
-// The FAB label reads the currently-active store so the tally the user sees
-// reflects their in-context session count.
+// `getActiveStoreKey()` is retained as a deprecated shim returning the
+// context string so the public return shape stays back-compatible for any
+// callers that still reference it (cleanup PR deferred per Pick C on TODO #5).
 //
-// Daily rollover (bfrbs_global only): the global log accumulates timestamps
-// forever — that's how Analytics computes the 14/30/90-day BFRB trend. But
-// the FAB label was previously showing the all-time count, which is both
-// discouraging (number only ever grows) and not what most users want from a
-// daily-tracking habit. So when the active store is bfrbs_global, the label
-// now shows only today's catches (filtered by local-date key). The stored
-// timestamps are untouched — Analytics still sees every day. A midnight
-// timeout re-renders the label so a left-open PWA flips to "0" at 00:00.
-// Session stores (Flow/Pomodoro) keep showing the full session count, since
-// those reset at session boundaries already.
+// Daily rollover (global context only): the FAB label shows today's catches
+// only when the active context is 'global', so a left-open PWA flips to "0"
+// at local midnight. Session contexts (flow/pomodoro) keep showing the full
+// session count, filtered by current sessionId — those reset at session
+// boundaries already (saveFlowBFRBs([]) / savePomoBFRBs([]) on session end).
 
 const GlobalBFRB = (() => {
   const BTN_ID = 'global-bfrb-fab';
-  const GLOBAL_KEY = 'bfrbs_global';
 
   function isFlowRunning() {
     return typeof Flow !== 'undefined' && Flow.getStatus && Flow.getStatus() === 'running';
@@ -36,61 +34,74 @@ const GlobalBFRB = (() => {
     return Pomodoro.getStatus() === 'running' && Pomodoro.getPhase() === 'work';
   }
 
+  // E-1d-f3: return the context tag instead of the legacy storage key.
+  function getActiveContext() {
+    if (isFlowRunning()) return 'flow';
+    if (isPomoWorkRunning()) return 'pomodoro';
+    return 'global';
+  }
+
+  // Deprecated shim — retained so existing references to GlobalBFRB.getActiveStoreKey
+  // don't break. Returns the context tag verbatim (callers that previously
+  // compared against 'bfrbs_global' / 'flow_bfrbs' / 'pomodoro_bfrbs' will
+  // need to be updated; the only known caller is this module itself, fully
+  // migrated below). Cleanup deferred per Pick C on E-1d-f3 TODO #5.
   function getActiveStoreKey() {
-    if (isFlowRunning()) return 'flow_bfrbs';
-    if (isPomoWorkRunning()) return 'pomodoro_bfrbs';
-    return GLOBAL_KEY;
+    return getActiveContext();
   }
 
-  function loadStore(key) {
-    try { return JSON.parse(localStorage.getItem(key)) || []; }
-    catch (e) { return []; }
-  }
-
-  function saveStore(key, items) {
-    localStorage.setItem(key, JSON.stringify(items));
-  }
-
-  function buildEntry() {
-    const e = { timestamp: Date.now() };
-    if (isFlowRunning()) {
-      e.phase = Flow.getPhase();
-    } else if (isPomoWorkRunning()) {
-      e.phase = Pomodoro.getPhase();
-      e.cycleIndex = Pomodoro.getCycleIndex();
+  // Per E-1d-f3 audit Open question Q1: Flow + Pomodoro engines don't
+  // expose a discrete getSessionId — `getSessionStartedAt()` IS the
+  // session identifier (engine guarantees one active session at a time;
+  // value changes on each start/reset, exactly the boundary we want).
+  function getActiveSessionId() {
+    if (isFlowRunning() && typeof Flow.getSessionStartedAt === 'function') {
+      return Flow.getSessionStartedAt();
     }
-    return e;
+    if (isPomoWorkRunning() && typeof Pomodoro.getSessionStartedAt === 'function') {
+      return Pomodoro.getSessionStartedAt();
+    }
+    return null;
   }
 
-  // Local-date key (YYYY-MM-DD in the user's local timezone). Matches the
-  // helper of the same name in js/analytics.js — replicated here rather than
-  // exported across the IIFE boundary because it's 5 lines and the spec is
-  // stable. If a third caller ever needs it, hoist into Utils.
-  function localDateKey(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}`;
+  function getActivePhase() {
+    if (isFlowRunning() && typeof Flow.getPhase === 'function') return Flow.getPhase();
+    if (isPomoWorkRunning() && typeof Pomodoro.getPhase === 'function') return Pomodoro.getPhase();
+    return null;
+  }
+
+  function getActiveCycleIndex() {
+    if (isPomoWorkRunning() && typeof Pomodoro.getCycleIndex === 'function') {
+      return Pomodoro.getCycleIndex();
+    }
+    return null;
   }
 
   // Count for the FAB label.
-  //   - Session stores (flow_bfrbs / pomodoro_bfrbs): full count, since those
-  //     stores are already session-scoped (cleared on session end/abandon).
-  //   - Global store (bfrbs_global): today's catches only. Stored entries
-  //     stay intact for Analytics; we just filter at render time. Entries
-  //     without a numeric timestamp are skipped — they predate the schema.
-  function countForLabel(key) {
-    const items = loadStore(key);
-    if (key !== GLOBAL_KEY) return items.length;
-    const today = localDateKey(new Date());
-    return items.reduce((n, e) => {
-      if (!e || typeof e.timestamp !== 'number') return n;
-      return localDateKey(new Date(e.timestamp)) === today ? n + 1 : n;
-    }, 0);
+  //   - Session contexts ('flow' / 'pomodoro'): count entries belonging to
+  //     the CURRENT session (filtered by sessionId === active sessionStartedAt).
+  //     Behavior parity with the legacy session-scoped store, where catches
+  //     for an old session were cleared via saveFlowBFRBs([]) / savePomoBFRBs([]).
+  //   - Global context: today's catches only (preserves the legacy daily-
+  //     rollover behavior). BfrbEvents.countToday('global') applies the
+  //     local-date filter — byte-equivalent to the legacy countForLabel.
+  function countForLabel(context) {
+    if (typeof BfrbEvents === 'undefined') return 0;
+    if (context === 'global') {
+      return BfrbEvents.countToday('global');
+    }
+    const sessionId = getActiveSessionId();
+    if (sessionId == null) return 0;
+    const entries = BfrbEvents.getByContext(context);
+    let n = 0;
+    for (const e of entries) {
+      if (e && e.sessionId === sessionId) n++;
+    }
+    return n;
   }
 
   function label() {
-    const count = countForLabel(getActiveStoreKey());
+    const count = countForLabel(getActiveContext());
     return count > 0 ? `BFRB ×${count}` : 'BFRB';
   }
 
@@ -102,10 +113,24 @@ const GlobalBFRB = (() => {
   }
 
   function logCatch() {
-    const key = getActiveStoreKey();
-    const items = loadStore(key);
-    items.push(buildEntry());
-    saveStore(key, items);
+    const context = getActiveContext();
+    // Build per-context payload. BfrbEvents.log stamps deviceId +
+    // updatedAt + schemaVersion (F10) and consults SyncState.canWrite (F13).
+    const payload = { context: context };
+    if (context === 'flow') {
+      payload.sessionId = getActiveSessionId();
+      const ph = getActivePhase();
+      if (typeof ph === 'string') payload.phase = ph;
+    } else if (context === 'pomodoro') {
+      payload.sessionId = getActiveSessionId();
+      const ph = getActivePhase();
+      if (typeof ph === 'string') payload.phase = ph;
+      const ci = getActiveCycleIndex();
+      if (typeof ci === 'number') payload.cycleIndex = ci;
+    }
+    if (typeof BfrbEvents !== 'undefined' && typeof BfrbEvents.log === 'function') {
+      BfrbEvents.log(payload);
+    }
     Platform.haptic(20);
     if (typeof BFRBRecovery !== 'undefined') {
       BFRBRecovery.start(BTN_ID, label);

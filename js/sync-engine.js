@@ -99,9 +99,17 @@ const SyncEngine = (() => {
 
   // ── Store registry ────────────────────────────────────────────────────
   //
-  // Hardcoded list of synced-eligible stores. Order here matches the audit:
-  // meds → history → rest_log → presets. For snapshot the order is purely
+  // Hardcoded list of synced-eligible stores. Order: meds → history →
+  // rest_log → presets → bfrb_events. For snapshot the order is purely
   // cosmetic; B-3's hydrate ordering can diverge.
+  //
+  // E-1d-f3 added `bfrb_events` as the 5th entry — the consolidated BFRB
+  // stream (F3) replacing the legacy 3-key routing (`bfrbs_global` /
+  // `flow_bfrbs` / `pomodoro_bfrbs`). Hydrate is NOT added to
+  // HYDRATE_STORE_ORDER for E-1d-f3; the load-time migration in
+  // js/bfrb-events.js covers cold-start and the steady-state merge cycle
+  // covers cross-device propagation post-sign-in (E-1e revisits hydrate
+  // expansion alongside rest_log + presets cleanup).
   //
   // Each adapter's `read` returns the per-store envelope
   // `{ deviceId, schemaVersion, payload }`. Sync adapters can be either
@@ -117,10 +125,11 @@ const SyncEngine = (() => {
   }
 
   const SYNCED_STORES = [
-    { key: 'meds',     adapter: { read: () => MedsManager.snapshotForSync(), write: writeStub } },
-    { key: 'history',  adapter: { read: () => History.snapshotForSync(),     write: writeStub } },
-    { key: 'rest_log', adapter: { read: () => RecoveryUI.snapshotForSync(),  write: writeStub } },
-    { key: 'presets',  adapter: { read: () => Presets.snapshotForSync(),     write: writeStub } },
+    { key: 'meds',        adapter: { read: () => MedsManager.snapshotForSync(), write: writeStub } },
+    { key: 'history',     adapter: { read: () => History.snapshotForSync(),     write: writeStub } },
+    { key: 'rest_log',    adapter: { read: () => RecoveryUI.snapshotForSync(),  write: writeStub } },
+    { key: 'presets',     adapter: { read: () => Presets.snapshotForSync(),     write: writeStub } },
+    { key: 'bfrb_events', adapter: { read: () => BfrbEvents.snapshotForSync(),  write: writeStub } },
   ];
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -1538,7 +1547,7 @@ const SyncEngine = (() => {
     }
 
     _steadyRunInFlight = true;
-    const storeResults = { meds: null, history: null, rest_log: null, presets: null };
+    const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null };
 
     // E-1c: F13 dispatcher-wide write gate flip (Pick B on E-1c-PROMPT
     // TODO #2). Flip SyncState to 'hydrating' BEFORE the per-store loop
@@ -1563,10 +1572,11 @@ const SyncEngine = (() => {
     // refactor might omit them. Missing module is treated as an error
     // for that store; the loop keeps going.
     const moduleByKey = {
-      meds:     (typeof SyncMergeMeds     !== 'undefined') ? SyncMergeMeds     : null,
-      history:  (typeof SyncMergeHistory  !== 'undefined') ? SyncMergeHistory  : null,
-      rest_log: (typeof SyncMergeRestLog  !== 'undefined') ? SyncMergeRestLog  : null,
-      presets:  (typeof SyncMergePresets  !== 'undefined') ? SyncMergePresets  : null,
+      meds:        (typeof SyncMergeMeds     !== 'undefined') ? SyncMergeMeds     : null,
+      history:     (typeof SyncMergeHistory  !== 'undefined') ? SyncMergeHistory  : null,
+      rest_log:    (typeof SyncMergeRestLog  !== 'undefined') ? SyncMergeRestLog  : null,
+      presets:     (typeof SyncMergePresets  !== 'undefined') ? SyncMergePresets  : null,
+      bfrb_events: (typeof SyncMergeBfrb     !== 'undefined') ? SyncMergeBfrb     : null,
     };
 
     // E-1c: collect async per-store promises so we can chain a single

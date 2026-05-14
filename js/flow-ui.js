@@ -556,9 +556,38 @@ function updateFlowDistractionBtnVisibility() {
 }
 
 // Per-mode BFRB button and init removed in favor of the global floating button
-// (js/global-bfrb.js). The loadFlowBFRBs/saveFlowBFRBs helpers above are still
-// used by saveFlowSessionToHistory and renderFlowSummary, and by the global
-// button which writes into flow_bfrbs when Flow is the active session.
+// (js/global-bfrb.js). E-1d-f3 consolidated BFRB writes into BfrbEvents
+// (`bfrb_events` localStorage store with `context: 'flow'` tag). The legacy
+// `loadFlowBFRBs` / `saveFlowBFRBs` helpers above are RETAINED so the
+// `saveFlowBFRBs([])` session-end clears keep working — the legacy
+// `flow_bfrbs` key stays on disk per Pick B on E-1d-f3 TODO #1 (cleanup
+// deferred per Pick C on TODO #5). `loadFlowBFRBs` is no longer used for
+// rendering — renderFlowSummary and saveFlowSessionToHistory below read
+// session-scoped BFRB entries from BfrbEvents.getByContext('flow') filtered
+// by Flow.getSessionStartedAt().
+
+// Read this Flow session's BFRB entries from the consolidated store,
+// converted back to the legacy-flat shape `{ timestamp, phase }` so:
+//   (a) renderFlowSummary's count + future expansion stays byte-equivalent
+//   (b) saveFlowSessionToHistory persists `session.bfrbs[]` in the same
+//       shape Analytics.getBFRBTrend expects (s.bfrbs.forEach(b => b.timestamp)).
+// Audit Risk #4: the analytics history-record read path is NOT changed by
+// E-1d-f3; the legacy-flat shape is the contract.
+function getFlowSessionBFRBs() {
+  if (typeof BfrbEvents === 'undefined') return [];
+  if (typeof Flow === 'undefined' || typeof Flow.getSessionStartedAt !== 'function') return [];
+  const sessionId = Flow.getSessionStartedAt();
+  if (sessionId == null) return [];
+  const all = BfrbEvents.getByContext('flow');
+  const out = [];
+  for (const e of all) {
+    if (!e || e.sessionId !== sessionId) continue;
+    const legacy = { timestamp: e.takenAt };
+    if (typeof e.phase === 'string') legacy.phase = e.phase;
+    out.push(legacy);
+  }
+  return out;
+}
 
 function renderFlowSummary() {
   const body = document.getElementById('flow-summary-body');
@@ -575,7 +604,7 @@ function renderFlowSummary() {
     : '';
   const goal = Flow.getGoal();
   const distractions = loadFlowDistractions();
-  const bfrbs = loadFlowBFRBs();
+  const bfrbs = getFlowSessionBFRBs();
 
   // Group distractions by category for a breakdown
   const counts = {};
@@ -633,7 +662,7 @@ function saveFlowSessionToHistory() {
   const elapsedMs = Flow.getFocusElapsedMs ? Flow.getFocusElapsedMs() : plannedMs;
   const endedEarly = elapsedMs < plannedMs;
   const distractions = loadFlowDistractions();
-  const bfrbs = loadFlowBFRBs();
+  const bfrbs = getFlowSessionBFRBs();
   const sessionEndedAt = Flow.getFocusEndedAt() || Date.now();
   // Capture overshoot only when we're in the focus-overflow state. Once
   // recovery starts, overshoot resets — but the value at the moment of

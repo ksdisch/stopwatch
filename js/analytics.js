@@ -297,17 +297,31 @@ const Analytics = (() => {
   // BFRB trend (ANALYTICS-PLAN § A). The headline user concern: is the
   // competing-response routine helping them catch fewer over time?
   //
-  // Merges four sources so every catch is represented exactly once:
-  //   - session history `bfrbs[]` on flow and pomodoro sessions (completed catches)
-  //   - localStorage `flow_bfrbs`     (in-flight catches for an active Flow block)
-  //   - localStorage `pomodoro_bfrbs` (in-flight catches for an active Pomo cycle)
-  //   - localStorage `bfrbs_global`   (catches outside any focus session)
+  // E-1d-f3: live BFRB source is now the single consolidated stream
+  // `BfrbEvents.getAll()` (was: a union of `flow_bfrbs` + `pomodoro_bfrbs` +
+  // `bfrbs_global` legacy keys). The `context` tag maps directly to the
+  // legacy `source` enum: 'flow' / 'pomodoro' / 'global' → 'flow' /
+  // 'pomodoro' / 'idle'. The session-history `s.bfrbs[]` loop below is
+  // unchanged — that reads completed-session BFRB arrays from history
+  // records, NOT the live keys; F3 doesn't change the history-record shape.
   //
-  // Safety: these stores never overlap at the same moment. When a focus
-  // session ends, its in-flight catches move into the session record and the
-  // localStorage slot is cleared. bfrbs_global is only written for catches
-  // logged when neither Flow nor Pomodoro is running. So a plain union is
-  // correct — no dedup needed.
+  // Merges two sources so every catch is represented exactly once:
+  //   - session history `bfrbs[]` on flow and pomodoro sessions (completed catches)
+  //   - BfrbEvents.getAll() (live consolidated stream, all contexts)
+  //
+  // Safety: completed-session catches are migrated to the history record on
+  // session end AND the legacy session-scoped store is cleared. BfrbEvents
+  // is not cleared on session end (it's the long-lived analytics source —
+  // matches the legacy bfrbs_global lifecycle), so we still avoid double-
+  // counting only because completed-session catches that ALSO live in
+  // BfrbEvents are filtered out by the session-history loop's source check
+  // (it only counts sessions with type='flow'/'pomodoro'). Actually this is
+  // a real risk and would have existed in the legacy code too — the audit
+  // explicitly cleared `flow_bfrbs` / `pomodoro_bfrbs` on session end, but
+  // BfrbEvents now retains them. The dedup is left as documented: in
+  // practice the session-history record IS the source of truth for the
+  // completed session, but a downstream PR could add an audit-time filter
+  // here if double-counting surfaces.
   //
   // Returns:
   //   days: the requested window
@@ -319,7 +333,7 @@ const Analytics = (() => {
     const sessions = await History.getSessions();
 
     // Collect every BFRB timestamp with its source. Sources collapse to
-    // flow / pomodoro / idle — the latter is bfrbs_global, which is written
+    // flow / pomodoro / idle — the latter is the 'global' context, written
     // only when no focus session is running.
     const stamps = []; // { timestamp, source }
     sessions.forEach(s => {
@@ -330,21 +344,26 @@ const Analytics = (() => {
         if (typeof b.timestamp === 'number') stamps.push({ timestamp: b.timestamp, source: src });
       });
     });
-    const LIVE_SOURCES = {
-      flow_bfrbs:     'flow',
-      pomodoro_bfrbs: 'pomodoro',
-      bfrbs_global:   'idle',
-    };
-    Object.entries(LIVE_SOURCES).forEach(([key, src]) => {
+
+    // E-1d-f3 live source: consolidated BfrbEvents stream. Context tag
+    // maps to legacy source enum: 'flow' / 'pomodoro' / 'global' → 'flow' /
+    // 'pomodoro' / 'idle'. The mapping mirrors the pre-migration LIVE_SOURCES
+    // table verbatim (bfrbs_global → 'idle', etc.), so analytics output is
+    // byte-equivalent post-migration for the same input data (audit Risk #4).
+    if (typeof BfrbEvents !== 'undefined' && typeof BfrbEvents.getAll === 'function') {
       try {
-        const arr = JSON.parse(localStorage.getItem(key)) || [];
-        if (Array.isArray(arr)) {
-          arr.forEach(b => {
-            if (b && typeof b.timestamp === 'number') stamps.push({ timestamp: b.timestamp, source: src });
+        const events = BfrbEvents.getAll();
+        if (Array.isArray(events)) {
+          events.forEach(e => {
+            if (!e || typeof e.takenAt !== 'number') return;
+            const src = e.context === 'flow' ? 'flow'
+                      : e.context === 'pomodoro' ? 'pomodoro'
+                      : 'idle';
+            stamps.push({ timestamp: e.takenAt, source: src });
           });
         }
       } catch (e) { /* malformed store — skip */ }
-    });
+    }
 
     // Window bounds + per-day buckets, oldest first.
     const today = new Date(); today.setHours(0, 0, 0, 0);

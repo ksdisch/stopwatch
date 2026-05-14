@@ -43,6 +43,23 @@ function clearBFRBStores() {
   localStorage.removeItem('flow_bfrbs');
   localStorage.removeItem('pomodoro_bfrbs');
   localStorage.removeItem('bfrbs_global');
+  // E-1d-f3: also clear the consolidated store + migration marker so
+  // tests that seed legacy keys can re-trigger migration via the helper
+  // below. Tests written pre-F3 seed legacy keys; the migration
+  // populates `bfrb_events` which the new Analytics read path consumes.
+  localStorage.removeItem('bfrb_events');
+  localStorage.removeItem('tempo_bfrb_events_migration_v1');
+}
+
+// E-1d-f3: tests that seed legacy keys after clearBFRBStores need to
+// re-run the migration so analytics.js's BfrbEvents.getAll() read path
+// sees the seeded data. The marker is cleared by clearBFRBStores above,
+// so _runMigration unions the freshly-seeded legacy entries into
+// `bfrb_events` and stamps the marker. Idempotent.
+function migrateBFRBStores() {
+  if (typeof BfrbEvents !== 'undefined' && typeof BfrbEvents._runMigration === 'function') {
+    BfrbEvents._runMigration();
+  }
 }
 
 function clearMedsStore() {
@@ -353,6 +370,7 @@ describe('Analytics.getBFRBTrend — merge across stores', () => {
     localStorage.setItem('bfrbs_global', JSON.stringify([
       { timestamp: atHoursAgo(1, 8) },
     ]));
+    migrateBFRBStores();
     const r = await Analytics.getBFRBTrend(30);
     assertEqual(r.total, 3);
     assertEqual(r.focusHours, 0);
@@ -368,6 +386,7 @@ describe('Analytics.getBFRBTrend — merge across stores', () => {
     localStorage.setItem('flow_bfrbs', JSON.stringify([{ timestamp: atHoursAgo(0, 9) }]));
     localStorage.setItem('pomodoro_bfrbs', JSON.stringify([{ timestamp: atHoursAgo(0, 11) }]));
     localStorage.setItem('bfrbs_global', JSON.stringify([{ timestamp: atHoursAgo(1, 12) }]));
+    migrateBFRBStores();
     const r = await Analytics.getBFRBTrend(30);
     assertEqual(r.total, 5);
   });
@@ -408,6 +427,7 @@ describe('Analytics.getBFRBTrend — hourly (§ B) + bySource (§ C)', () => {
       { timestamp: atHoursAgo(3, 14) }, { timestamp: atHoursAgo(3, 14) },
       { timestamp: atHoursAgo(4, 22) },
     ]));
+    migrateBFRBStores();
     const r = await Analytics.getBFRBTrend(30);
     assertEqual(r.total, 7);
     assertEqual(r.hourly[9], 2);
@@ -431,6 +451,7 @@ describe('Analytics.getBFRBTrend — hourly (§ B) + bySource (§ C)', () => {
       { timestamp: atHoursAgo(1, 18) }, { timestamp: atHoursAgo(1, 19) },
       { timestamp: atHoursAgo(3, 20) }, { timestamp: atHoursAgo(4, 21) },
     ]));
+    migrateBFRBStores();
     const r = await Analytics.getBFRBTrend(30);
     assertEqual(r.total, 11);
     assertEqual(r.bySource.flow, 4);     // 3 history + 1 flow_bfrbs
