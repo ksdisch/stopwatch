@@ -7,8 +7,49 @@ cloud-sync implementation plan is at `docs/sync-impl/PLAN.md` on
 are all shipped (PRs #46–#68, plus chore PR #67).
 
 E-1d is the **fourth of five Stage E sub-PRs** by the original
-Option B split. The original PLAN.md spec for E-1d packages three
-things:
+Option B split.
+
+---
+
+## RESOLUTIONS (Kyle, 2026-05-14 — all 7 TODOs resolved)
+
+The 7 TODO blocks below describe the original decision surface. Kyle
+resolved each. **Engine-implementer reads
+`docs/sync-impl/audits/E-1d-AUDIT.md` for the authoritative spec;
+the deferral language in the TODO sections below is preserved for
+historical context but overridden by the audit.**
+
+- **TODO #1 (scope split — load-bearing):** **Pick B** — Sessions
+  only. E-1d ships `js/sync-merge-history.js` (sessions append-merge
+  by `id` + note/tags LWW + phaseLog dedup) and nothing else. NO F3,
+  NO F8. Phase 4 ui-wirer SKIPPED. Stage E grows from 5 to 7
+  sub-PRs: E-1a, E-1b, E-1c, **E-1d, E-1d-f3, E-1d-f8**, E-1e.
+- **TODO #2 (note/tags per-field LWW):** **Defer to follow-up if A-1
+  didn't stamp.** Auditor reads `js/history.js` during Phase 1; if
+  per-field stamping is absent, E-1d uses record-level `updatedAt`
+  LWW for note/tags (last-edited session wins on the whole record).
+  Per-field stamping ships in a separate follow-up.
+- **TODO #3 (F19a per-record pre-filter):** **Pick A** — Same pattern
+  as E-1c. Pre-filter future-schema history records before union
+  (`skipped++`); CAS wrapper enforces refuse-writeback at write time.
+- **TODO #4 (F15 sessions counter):** **Pick B** — Skip F15 for
+  sessions. History merge is silent on arrivals. Meds-arrival toasts
+  remain the high-value F15 signal.
+- **TODO #5 (per-store snapshot F19a gate):** **Pick A** — Confirmed.
+  Snapshot-level gate stays E-1e scope. E-1d uses per-record
+  pre-filter only.
+- **TODO #6 (test file naming):** **Pick A** — `tests/sync-merge-history.test.js`,
+  matching E-1c's per-store pattern.
+- **TODO #7 (dev flag carryover):** **Pick A** — Confirmed.
+  `tempo_sync_steady_state_enabled` stays default-off through E-1d.
+  Flag removal moves to E-1e (or later if Stage E grows).
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value (v76 → v77).
+
+---
+
+The original PLAN.md spec for E-1d packages three things:
 
 1. **`js/sync-merge-history.js`** — sessions append-merge dedup by
    `id`; note/tags LWW per-field; phaseLog dedup by
