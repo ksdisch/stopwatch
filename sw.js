@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v76-e1c-meds-merge';
+const CACHE_NAME = 'stopwatch-v77-e1d-history-merge';
 const ASSETS = [
   './',
   './index.html',
