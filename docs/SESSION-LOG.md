@@ -1038,6 +1038,117 @@ ad8dc67 feat(sync): history steady-state merge — sessions only (E-1d, Phase 2)
 
 ---
 
+## 2026-05-14 — E-1d-f3: F3 BFRB stream consolidation (migration + UI + sync wiring)
+
+### What We Built
+
+**Stage E-1d-f3: F3 BFRB stream consolidation.** Fifth of the seven
+Stage E sub-PRs and the first Stage E PR with UI surface changes —
+hence the first Phase 4 ui-wirer fire in Stage E. Adds a new
+`js/bfrb-events.js` module (~395 LOC) that owns a single `bfrb_events`
+localStorage stream, replacing the three legacy buckets
+(`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs`) as the single source
+of truth for BFRB sync. Each entry stamps `{ takenAt, context,
+sessionId?, phase?, cycleIndex?, deviceId, updatedAt, schemaVersion }`
+via `Schema.stampWrite`; `context ∈ 'global' | 'flow' | 'pomodoro'`
+preserves the bucket distinction inside the unified stream. A phased
+migration (Pick B on TODO #1) runs once on module init, gated by a
+`tempo_bfrb_events_migration_v1` localStorage marker — union the three
+legacy arrays, stamp, write to `bfrb_events`, set marker `'1'`. Legacy
+keys retained for one release pending a deferred cleanup PR (Pick C on
+TODO #5, no schedule yet). Adds `bfrb_events` as the 5th
+`SYNCED_STORES` entry in `js/sync-engine.js` + a new
+`js/sync-merge-bfrb.js` per-store merge fn (~244 LOC) doing
+append-merge dedup keyed by `(deviceId, takenAt)`. Updates 4 UI
+surfaces — `js/global-bfrb.js` (FAB routes through `BfrbEvents.log()`
++ reads `countToday`/`getByContext`), `js/flow-ui.js` +
+`js/pomodoro-ui.js` (session counters filter by current session's
+`sessionStartedAt` instead of reading the legacy array directly), and
+`js/analytics.js` (BFRB-trend chart reads `BfrbEvents.getAll()` with a
+context→legacy-source mapping).
+
+**Phase 4 ui-wirer fired — first Stage E PR with verified UI
+surfaces.** Four surfaces verified via kapture + Kyle's manual session
+counter check: FAB live count, Flow session counter (BFRB ×2), Pomo
+session counter (BFRB ×3→×5 across cycles), Analytics BFRB-trend chart
+post-migration. Zero console errors. The auto-applying scope-expansion
+clause from PR #67 fired cleanly for **three paths simultaneously** —
+`index.html` (new `<script>` tag) + `tests/index.html` (new `<script>`
+tag) + `sw.js` (CACHE_NAME bump v77 → v78 + 2 new ASSETS entries).
+Sixth use of the clause overall and first time it covered three
+brief-listed paths in a single PR with zero override copy.
+
+### Verification result
+
+- **Test count: 476 / 476 PASS** (baseline 454 + 22 new cases — 10 in
+  `tests/bfrb-events.test.js`, 12 in `tests/sync-merge-bfrb.test.js`).
+- **Verification method: Kyle Cmd+Shift+R on `tests/index.html`.**
+  Engine-tester reported PASS first; Kyle's hard reload re-ran to
+  confirm post-cache-bump.
+- **Phase 4 verification:** kapture-driven boot of `index.html`, FAB
+  click → `BFRB ×1`; manual session-flow verification (start Flow
+  block → `BFRB ×2` after two taps; start Pomo → `BFRB ×3` first
+  cycle, `BFRB ×5` after second cycle). Analytics surface renders the
+  trend chart with the migrated entries.
+- **Mid-run test-stub fix.** During Phase 3, adding the 5th
+  `SYNCED_STORES` entry broke six F13 dispatcher tests in
+  `tests/sync-merge-meds.test.js` + `tests/sync-merge-history.test.js`
+  (they instantiated `SyncEngine` and the dispatcher expected
+  `SyncMergeBfrb.merge` to exist). Patched via commit `422a09e` with
+  a stubbed `SyncMergeBfrb.merge` in those test files — test-only
+  collateral, no engine impact.
+- **`sw.js` cache bump:** `stopwatch-v77-e1d-history-merge` →
+  `stopwatch-v78-e1d-f3-bfrb-consolidation`. ASSETS list gained
+  `js/bfrb-events.js` + `js/sync-merge-bfrb.js`.
+- **Audit:** `docs/sync-impl/audits/E-1d-f3-AUDIT.md` (10 risks —
+  7 low / 3 med / 0 high). Med-risk items: (1) phased-migration
+  idempotency under tab-close race, (2) legacy-key retention window
+  with no scheduled cleanup, (3) analytics context-mapping correctness
+  for pre-migration entries.
+
+### Suggested Next Steps
+
+- **E-1d-f8** — Land F8 distraction sessionId-keyed migration. Re-key
+  existing distraction entries by parent sessionId so cloud merge can
+  append-and-tombstone without ambiguity. Migration runs once via the
+  existing per-store hydrate markers. Same per-store-test-file pattern
+  as E-1d-f3 — minus the new UI counters (distraction surfaces already
+  filter by sessionId).
+- **E-1e** — Replace `sync-merge-rest-log.js` + `sync-merge-presets.js`
+  stubs with real merge logic. Adds the per-store snapshot F19a
+  refuse-writeback gate. Removes the dev-flag gate by auto-invoking
+  `startSteadyState()` from `SyncEngine.init()` after hydrate
+  completes. After E-1e, Stage E is fully shipped (7/7 sub-PRs).
+- **Deferred legacy-key cleanup PR.** Once one release of E-1d-f3 has
+  bedded in, drop the three legacy buckets (`bfrbs_global` /
+  `flow_bfrbs` / `pomodoro_bfrbs`) and the migration marker. No
+  schedule per Pick C on TODO #5 — file as tech-debt entry, schedule
+  after a real-world soak.
+- **Native CAS parity follow-up** (carry forward). `runTransaction` is
+  still web-only after E-1d-f3 (native branch still throws). Queue the
+  Capacitor follow-up before E-3 listeners ship.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step.
+- Update `js/history.js` per-field stamping (TODO #2 deferral from
+  E-1d) — currently sessions LWW the whole record.
+
+**Stage E progress: 5 of 7 sub-PRs shipped** (E-1a / E-1b / E-1c /
+E-1d / E-1d-f3 done; E-1d-f8 + E-1e remaining).
+
+### Commits
+```
+f1ed7e1 docs(sync-impl): E-1d-f3 brief skeleton — 7 TODO blocks for Kyle
+6e62eb2 docs(sync-impl): E-1d-f3 brief — Kyle's 5 TODO resolutions baked in
+bc67c44 docs(sync-impl): E-1d-f3 audit + Kyle's 5 TODO resolutions codified
+f3e6206 feat(sync): F3 BFRB stream consolidation (E-1d-f3, Phase 2)
+7da3f28 fix(tests): stub SyncMergeBfrb.merge in F13 dispatcher tests
+<SHA>   docs(sync-impl): E-1d-f3 SESSION-LOG + PLAN + CLAUDE.md status update
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
