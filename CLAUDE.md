@@ -117,6 +117,7 @@ Additional localStorage keys used for UI/config preferences:
 - `flow_distractions` (E-1d-f8; F8 sessionId-keyed map `{ [sessionId]: [entries] }` where each entry is `{ category, note?, timestamp, deviceId, updatedAt, schemaVersion }`. Was a flat array pre-E-1d-f8 — migrated in place under a stable orphan-key fallback for entries without a sessionId. Synced as the 6th store via `js/sync-merge-distractions.js`.)
 - `pomodoro_distractions` (E-1d-f8; same shape as `flow_distractions` — sessionId-keyed map. Migrated in place by `js/distractions.js`. Synced as part of the 6th sync store.)
 - `tempo_distractions_migration_v1` (E-1d-f8; F8 phased-migration idempotency marker. Set to `'1'` once the legacy-flat-array → sessionId-keyed-map migration completes for both Flow + Pomo on first load post-upgrade. Module skips migration on subsequent loads.)
+- `tempo_sync_steady_state_enabled` (**REMOVED in E-1e** — was the dev-only gate that kept steady-state polling dormant during E-1b/c/d. After E-1e, steady-state runs by default for any user with the master flag `tempo_sync_enabled='1'` set, gated on the 4-condition auto-invoke helper (signed-in + flag-on + all-hydrated + no Stage D handoff). Any orphan entry on existing dev installs is harmless — no read sites remain.)
 
 ## What Has Been Built
 

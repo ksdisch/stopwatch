@@ -1241,6 +1241,153 @@ fa06683 fix: distractions migration window.* reads + 6-store stub patches
 
 ---
 
+## 2026-05-14 — E-1e: rest_log + presets merge + per-store F19a + sync goes live (Stage E 7/7 SHIPPED)
+
+### What We Built
+
+Five deliverables in one PR that flips steady-state cloud sync from
+"dormant behind dev flag" to "default-on for any user with the master
+flag set." **E-1e is the seventh and FINAL Stage E sub-PR.** After this
+merges + Kyle flips `tempo_sync_enabled='1'` on both devices, the
+"fully cloud-synced bug-free between laptop and phone" outcome that
+opened this initiative is real for the steady-state polling path.
+
+- **Real `js/sync-merge-rest-log.js` (~283 LOC).** Replaces the throwing
+  stub from E-1b. Per-day sleep LWW by `updatedAt` (absent treated as
+  `-Infinity` so the stamped side always wins — Risk #1) + naps
+  append-merge dedup by `(deviceId, startedAt)` (fallback sig
+  `'no-device@<startedAt>'` for pre-E-1e naps without `deviceId` —
+  Risk #2). One Firestore doc per `YYYY-MM-DD` key. Per-record F19a
+  cloud-side pre-filter + per-record CAS writeback (`runTransaction`)
+  with per-record try/catch — refuse-writeback → `skipped++` + warning
+  + continue. Mirrors `js/sync-merge-bfrb.js`'s self-contained pattern.
+- **Real `js/sync-merge-presets.js` (~253 LOC).** Replaces the throwing
+  stub. Full-record LWW by `(id, updatedAt)` + tombstone propagation
+  (`deletedAt` field — cloud-deleted wins on pull, local-deleted wins
+  on CAS push, both-deleted-newer-wins). Comparison uses `== null`
+  (catches both `undefined` and `null` but NOT `0`/`''`) per Risk #8.
+  Per-record F19a + per-record CAS writeback. Mirrors
+  `js/sync-merge-history.js`'s pattern.
+- **`js/presets.js` rewritten on four fronts (additive schema —
+  no SCHEMA_VERSION bump per Pick A on TODO #2).** `remove(id)` now
+  sets `target.deletedAt = Date.now()` + `Schema.stamp(target)` +
+  `saveAll(presets)` instead of hard-filtering — tombstone soft-delete.
+  `getAll()` filters tombstones via `.filter(p => p.deletedAt == null)`
+  so the UI never sees deleted records. New `_getAllIncludingTombstones()`
+  sibling helper for the sync snapshot adapter (UI must never call it).
+  `snapshotForSync()` swapped to use the new helper so cloud propagates
+  tombstones.
+- **`js/recovery-ui.js` gains envelope stamping at two write sites.**
+  `setSleep` now stamps `sleep` via `Schema.stamp` before persisting.
+  `addNap` stamps the nap AND backfills `deviceId` via
+  `History.getDeviceId()` (typeof-guarded fallback to `'unknown-device'`
+  for tests that don't load `history.js`). Today's writes had no
+  envelope stamps; the new merge function's sleep LWW + naps dedup
+  need them. New `_reconcileWriteRaw` helper added for the merge
+  writeback path (parallel to existing `_hydrateWriteRaw`).
+- **`js/sync-engine.js` — three surgical edits.** **(1) F19a
+  dispatcher snapshot gate (Pick C on TODO #4):** new
+  `_filterFutureRecordsInSnapshot(key, snapshot)` helper called from
+  `_runMergeCycle()` BEFORE each per-store merge fn. Walks payload per
+  store key, filters future-schema records, logs skip counts via
+  `console.warn` for observability. Existing per-merge-fn cloud-side
+  gates STAY — two layers, different vectors. **(2) Dev flag removal
+  (Pick A on TODO #5):** delete `STEADY_STATE_ENABLED_KEY` constant +
+  `_isSteadyStateEnabled()` function + the gate check inside
+  `startSteadyState()`. **(3) Auto-invoke (Pick C on TODO #6):** new
+  `_maybeAutoStartSteady(user)` helper gates on all 4 conditions
+  (signed-in + `SyncFlag.isEnabled()` + `isAllHydrated()` + no Stage D
+  handoff). Called from BOTH `init()` end (cold-boot: marker already
+  set, user already signed in via SDK rehydrate) AND
+  `_maybeAutoHydrate.then()` post-hydrate block (first-sign-in:
+  hydrate just completed, marker just got set). Idempotent via
+  `startSteadyState`'s existing `if (_steadyTimer != null) return;`
+  guard. NO call from inside the `.catch()` block — a failed hydrate
+  must NOT auto-arm steady-state.
+- **Phase 3 testing — 543/543 pass via kapture (fresh-origin port
+  8766).** Three mid-Phase-3 failure-and-fix cycles before greenwave:
+  **(a) Cache poisoning:** initial run via port 8765 returned stale
+  pre-E-1e bytes — fixed by hopping to a fresh-origin port 8766 +
+  hard-reload. **(b) Test #12 audit inconsistency:** the audit
+  documented "only null/undefined alive" but test #12 initially asserted
+  `0`/`''` were alive — rewritten to match engine semantics (`p.deletedAt
+  == null` predicate hides `0`/`''` as tombstones per Risk #8). **(c)
+  Visibility helper override:** kapture's iframe loader hides the test
+  output container; added a visibility helper override so the in-browser
+  asserts surface their results. Final: **543/543 pass**.
+- **Phase 4 ui-wirer SMOKE-ONLY (Pick A on TODO #8).** Third
+  invocation in Stage E. NO edits — verification only. Confirmed:
+  fresh boot path clean + 0 console errors + master flag toggle works
+  + Cloud Sync drawer renders + neighbor route renders. `CACHE_NAME`
+  verified at `stopwatch-v80-e1e-stage-e-complete`. Dev flag fully
+  removed.
+- **Orchestrator sandbox branch pattern.** This PR ran on
+  `claude/orchestrator-e1e` as the orchestrator's scratch space —
+  the brief + audit landed there first (commits `530b212`, `33adf7e`,
+  `92201f8`), then the feat branch `feat/sync-stage-e-complete` was
+  created from that sandbox so it inherits the audit + brief commits
+  + carries the engine/test changes forward. Sandbox branch is NOT
+  merged.
+- **`sw.js` cache bump:** `stopwatch-v79-e1d-f8-distractions-migration`
+  → `stopwatch-v80-e1e-stage-e-complete`. No `ASSETS` list changes —
+  both merge files already exist on disk and were precached in E-1b.
+- **Audit:** `docs/sync-impl/audits/E-1e-AUDIT.md` — all 8 Kyle
+  resolutions codified (Picks A/A/A/C/A/C/A/A).
+- **8th use of the brief-driven scope-expansion clause**
+  (`.claude/agents/engine-implementer.md` lines 30-44). Paths
+  covered: `tests/index.html` (2 new `<script>` tags) + `sw.js`
+  (CACHE_NAME bump). Both explicitly enumerated in the audit AND
+  the brief.
+
+### Suggested Next Steps
+
+- **Kyle's two-device manual validation post-merge.** Sign in on
+  phone + laptop with `tempo_sync_enabled='1'`. Edit a preset on
+  phone; verify propagation to laptop within 30s. Log a nap on
+  laptop; verify it appears on phone. Delete a preset on phone;
+  verify tombstone propagates and the preset disappears from laptop.
+  This is the real E2E check that closes out the initiative.
+- **Quota verification.** Spark plan free tier is 50k reads/day.
+  Two dev devices polling 30s × 6 stores ≈ ~34k reads/day. Margin
+  is tight — if quota becomes a real problem post-launch, the 30s
+  interval at `STEADY_STATE_DEFAULT_MS` is a one-line bump.
+- **E-2 (offline buffer).** Steady-state polling currently silently
+  drops writes during offline windows. E-2 adds a buffer.
+- **E-3 (real-time `onSnapshot` listeners).** Drops polling latency
+  from <30s to <1s and eliminates polling read costs entirely.
+- **Deferred legacy-key cleanup PRs (carry forward).** One soak
+  release after E-1d-f3 / E-1d-f8 each, drop legacy buckets
+  (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs`, pre-migration
+  flat-array distractions) plus migration markers. File as
+  tech-debt; no fixed schedule.
+- **Native CAS parity follow-up** (still carry forward).
+  `runTransaction` is web-only; queue Capacitor branch before E-3
+  listeners ship.
+- **Backlog GC for preset tombstones.** When accumulated
+  `deletedAt < (now - 90 days)` records become observable (e.g., a
+  user with 200+ deleted presets), add a periodic purge. Not in
+  scope for E-1e.
+
+**Doc TODOs (carry forward from earlier sessions):**
+- Patch `docs/sync-impl/FIREBASE-SETUP.md` to include the "Deploy
+  firestore.rules via Console" step.
+- Update `js/history.js` per-field stamping (TODO #2 deferral from
+  E-1d) — currently sessions LWW the whole record.
+
+**Stage E progress: 7 of 7 sub-PRs SHIPPED.** Initiative milestone
+reached.
+
+### Commits
+```
+530b212 docs(sync-impl): E-1e brief skeleton with 8 TODO blocks
+33adf7e docs(sync-impl): E-1e RESOLUTIONS codified (Kyle, all 8 TODOs)
+92201f8 docs(sync-impl): E-1e audit (sync-auditor Phase 1)
+<SHA>   feat(sync): rest_log + presets merge + per-store F19a + sync goes live (E-1e)
+<SHA>   docs(sync-impl): move E-1e to shipped, mark Stage E 7/7 complete
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

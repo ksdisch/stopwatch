@@ -60,7 +60,25 @@ const RecoveryUI = (() => {
   function setSleep(dateStr, sleep) {
     const log = loadLog();
     const day = getDayEntry(dateStr, log);
-    day.sleep = sleep;
+    // E-1e F10: stamp the sleep entry with deviceId + updatedAt +
+    // schemaVersion so the new per-store rest_log merge can perform LWW
+    // by updatedAt and dedup by deviceId. Schema.stamp() only sets
+    // schemaVersion; the merge function reads updatedAt from this
+    // explicit stamp here.
+    const stamped = (sleep && typeof sleep === 'object') ? Object.assign({}, sleep) : sleep;
+    if (stamped && typeof stamped === 'object') {
+      stamped.updatedAt = Date.now();
+      if (typeof History !== 'undefined' && typeof History.getDeviceId === 'function') {
+        try { stamped.deviceId = History.getDeviceId(); }
+        catch (_) { stamped.deviceId = stamped.deviceId || 'unknown-device'; }
+      } else if (!stamped.deviceId) {
+        stamped.deviceId = 'unknown-device';
+      }
+      if (typeof Schema !== 'undefined' && typeof Schema.stamp === 'function') {
+        Schema.stamp(stamped);
+      }
+    }
+    day.sleep = stamped;
     log[dateStr] = day;
     saveLog(log);
   }
@@ -79,7 +97,29 @@ const RecoveryUI = (() => {
     const log = loadLog();
     const day = getDayEntry(dateStr, log);
     day.naps = day.naps || [];
-    day.naps.push(nap);
+    // E-1e F10: stamp the nap entry with deviceId + updatedAt +
+    // schemaVersion. The merge function's append-dedup keys on
+    // (deviceId, startedAt) — without the deviceId backfill, naps
+    // from two devices logged at the same millisecond would collapse
+    // to one (Risk #2). Pre-E-1e naps still lack deviceId until
+    // their next save; the merge's fallback `'no-device@' + startedAt`
+    // signature collapses them by startedAt alone.
+    const stamped = (nap && typeof nap === 'object') ? Object.assign({}, nap) : nap;
+    if (stamped && typeof stamped === 'object') {
+      if (!stamped.deviceId) {
+        if (typeof History !== 'undefined' && typeof History.getDeviceId === 'function') {
+          try { stamped.deviceId = History.getDeviceId(); }
+          catch (_) { stamped.deviceId = 'unknown-device'; }
+        } else {
+          stamped.deviceId = 'unknown-device';
+        }
+      }
+      stamped.updatedAt = Date.now();
+      if (typeof Schema !== 'undefined' && typeof Schema.stamp === 'function') {
+        Schema.stamp(stamped);
+      }
+    }
+    day.naps.push(stamped);
     log[dateStr] = day;
     saveLog(log);
   }
@@ -526,6 +566,42 @@ const RecoveryUI = (() => {
     return Promise.resolve({ ok: true, count: written, skipped });
   }
 
+  // E-1e: privileged reconcile write path. Mirrors `_hydrateWriteRaw`'s
+  // contract (bypasses the `SyncState.canWrite()` gate that saveLog
+  // consults). Used by `js/sync-merge-rest-log.js` after the per-day
+  // CAS writeback completes — the merge function commits the merged
+  // {YYYY-MM-DD → {sleep, naps}} map back to localStorage via this
+  // helper. Same defensive shape-coercion as the hydrate path: drops
+  // entries whose value isn't an object, strips the redundant `date`/`id`
+  // metadata fields that B-3's upload shim added.
+  function _reconcileWriteRaw(restLogMap) {
+    if (!restLogMap || typeof restLogMap !== 'object' || Array.isArray(restLogMap)) {
+      restLogMap = {};
+    }
+    const out = {};
+    let written = 0;
+    let skipped = 0;
+    for (const key of Object.keys(restLogMap)) {
+      const entry = restLogMap[key];
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        skipped++;
+        continue;
+      }
+      const clean = Object.assign({}, entry);
+      delete clean.date;
+      delete clean.id;
+      out[key] = clean;
+      written++;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+    } catch (e) {
+      skipped += written;
+      written = 0;
+    }
+    return { written, skipped };
+  }
+
   // C-1: expose loadLog so SyncEngine.isLocalEmpty() can probe rest_log
   // for the Stage D guard without reaching into DOM-bound surfaces. Pure
   // localStorage read, no DOM touch — safe to expose alongside the
@@ -533,6 +609,7 @@ const RecoveryUI = (() => {
   return {
     init, snapshotForSync,
     hydrateFromCloud, _hydrateWriteRaw,
+    _reconcileWriteRaw,
     loadLog,
   };
 })();

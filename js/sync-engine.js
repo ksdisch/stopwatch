@@ -86,15 +86,15 @@ const SyncEngine = (() => {
 
   // E-1b: steady-state merge timer constants. Default interval 30s
   // (matches PLAN.md §E-1 spec). Clamp range [10s, 10m] — a 10s minimum
-  // protects against runaway polling on a stale dev flag; the 10m
-  // maximum keeps cross-device propagation latency bounded even if
-  // someone hand-tunes the interval. The localStorage gate
-  // (`tempo_sync_steady_state_enabled === '1'`) keeps E-1b dormant in
-  // production; E-1e removes the gate after merge logic ships.
+  // protects against runaway polling; the 10m maximum keeps cross-
+  // device propagation latency bounded even if someone hand-tunes the
+  // interval. E-1e removed the `tempo_sync_steady_state_enabled` dev
+  // flag — steady-state runs by default when the four-condition gate
+  // (signed in + master sync flag on + all-hydrated + no Stage D
+  // handoff) is satisfied, gated only by `_maybeAutoStartSteady`.
   const STEADY_STATE_DEFAULT_MS = 30000;
   const STEADY_STATE_MIN_MS = 10000;
   const STEADY_STATE_MAX_MS = 600000;
-  const STEADY_STATE_ENABLED_KEY = 'tempo_sync_steady_state_enabled';
   const STEADY_STATE_INTERVAL_KEY = 'tempo_sync_steady_interval_ms';
 
   // ── Store registry ────────────────────────────────────────────────────
@@ -168,12 +168,33 @@ const SyncEngine = (() => {
         catch (_e) {}
       }
     }
+
+    // E-1e: cold-boot auto-arm path. If a previous session already
+    // completed hydrate (`tempo_sync_hydrated_all === '1'`) AND the SDK
+    // has rehydrated the auth session, fire steady-state immediately.
+    // The four-condition gate inside `_maybeAutoStartSteady` covers all
+    // bail conditions; if any fails, the post-hydrate `.then()` block
+    // in `_maybeAutoHydrate` will fire later as the second entry point.
+    try {
+      const currentUser = (typeof SyncAuth !== 'undefined' && typeof SyncAuth.getCurrentUser === 'function')
+        ? SyncAuth.getCurrentUser()
+        : null;
+      if (currentUser) _maybeAutoStartSteady(currentUser);
+    } catch (_) {
+      // Defensive — keep boot alive regardless of cold-boot probe failure.
+    }
   }
 
   // C-1: four-condition gate per audit Headline #4. Called from the
   // onAuthChange subscription registered in init(). Defensive try/catch so
   // a thrown error inside hydrateFromCloud never bubbles up through the
   // auth event chain — boot stays alive regardless.
+  //
+  // E-1e: extended to fire `_maybeAutoStartSteady(user)` from the
+  // post-hydrate `.then()` block — the first-sign-in path. The cold-
+  // boot path (marker already set) is covered by `init()`'s end-of-
+  // function call below. NOT called from `.catch()` — a failed hydrate
+  // must NOT auto-arm steady-state (Risk #6).
   function _maybeAutoHydrate(user) {
     try {
       if (!user) return;                                                  // signed out — nothing to do
@@ -181,13 +202,40 @@ const SyncEngine = (() => {
       if (isAllHydrated()) return;                                        // already done — short-circuit
       if (getStageDHandoff()) return;                                     // D-1 owns reconciliation
       // Fire-and-forget; hydrateFromCloud handles its own state + UI events.
-      hydrateFromCloud().catch((err) => {
-        try { console.warn('[SyncEngine] auto-hydrate failed:', err); }
-        catch (e) {}
-      });
+      hydrateFromCloud()
+        .then(() => _maybeAutoStartSteady(user))
+        .catch((err) => {
+          try { console.warn('[SyncEngine] auto-hydrate failed:', err); }
+          catch (e) {}
+        });
     } catch (err) {
       try { console.warn('[SyncEngine] _maybeAutoHydrate threw:', err); }
       catch (e) {}
+    }
+  }
+
+  // E-1e: four-condition gate for auto-arming the steady-state merge
+  // timer (Pick C on TODO #6). Called from two entry points:
+  //   (a) `init()` end — cold-boot path: marker already set from a
+  //       previous session, user already signed in via SDK rehydrate.
+  //   (b) `_maybeAutoHydrate(user).then()` — first-sign-in path:
+  //       hydrate just completed; the all-hydrated marker just got set.
+  // Idempotent via `startSteadyState`'s existing `_steadyTimer != null`
+  // guard, so double-invocation is safe.
+  function _maybeAutoStartSteady(user) {
+    try {
+      if (!user) return;                                                  // signed out — nothing to do
+      if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+      if (!isAllHydrated()) return;                                       // hydrate must complete first
+      if (getStageDHandoff()) return;                                     // D-1 owns reconciliation
+      try { startSteadyState(); }
+      catch (err) {
+        try { console.warn('[SyncEngine] _maybeAutoStartSteady — startSteadyState threw:', err); }
+        catch (_e) {}
+      }
+    } catch (err) {
+      try { console.warn('[SyncEngine] _maybeAutoStartSteady threw:', err); }
+      catch (_e) {}
     }
   }
 
@@ -220,6 +268,109 @@ const SyncEngine = (() => {
       result[key] = await Promise.resolve(adapter.read());
     }
     return result;
+  }
+
+  // E-1e: dispatcher-level F19a snapshot gate (Pick C on TODO #4).
+  // Filters future-schema local records from the per-store snapshot
+  // BEFORE passing to each merge fn. The existing per-merge-fn cloud-
+  // side gates stay — two layers, different vectors:
+  //   - Cloud-side gate (in each merge fn): catches future-schema
+  //     records arriving over the wire from a newer client.
+  //   - Local-side gate (this helper): catches future-schema records
+  //     that leaked into local storage via JSON import, schema-version
+  //     downgrade race, or other out-of-band paths.
+  //
+  // Per-store payload shapes:
+  //   - meds:         payload.meds[]
+  //   - history:      payload.sessions[] (+ other top-level fields)
+  //   - rest_log:     payload.rest_log{} — object keyed by YYYY-MM-DD
+  //   - presets:      payload.presets[]
+  //   - bfrb_events:  payload.events[]
+  //   - distractions: payload.flow{sessionId: [entries]} + payload.pomodoro{...}
+  //
+  // Returns a NEW snapshot with the filtered payload + a `__skipped`
+  // counter for observability. The dispatcher logs the skip count via
+  // `console.warn` when non-zero. Today's merge fns pass `null` to
+  // `merge()` and re-read internally, so the filtered snapshot's value
+  // is observability only — the future-proof contract (merge fns
+  // could consume the snapshot) is in place for E-2+ refactors.
+  function _filterFutureRecordsInSnapshot(key, snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !snapshot.payload) {
+      return snapshot;
+    }
+    const out = {
+      deviceId: snapshot.deviceId,
+      schemaVersion: snapshot.schemaVersion,
+      payload: {},
+    };
+    let skipped = 0;
+    const isFuture = (typeof Schema !== 'undefined' && typeof Schema.isFutureRecord === 'function')
+      ? Schema.isFutureRecord
+      : () => false;
+
+    if (key === 'meds') {
+      const arr = Array.isArray(snapshot.payload.meds) ? snapshot.payload.meds : [];
+      out.payload.meds = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+    } else if (key === 'history') {
+      // history payload may carry other top-level fields beyond sessions;
+      // preserve them via shallow clone, then overwrite sessions.
+      out.payload = Object.assign({}, snapshot.payload);
+      const arr = Array.isArray(snapshot.payload.sessions) ? snapshot.payload.sessions : [];
+      out.payload.sessions = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+    } else if (key === 'rest_log') {
+      // payload.rest_log is an OBJECT keyed by date. Filter the whole
+      // day entry if its envelope (or its sleep sub-record) is future-
+      // schema. For naps, drop only the individual future-schema entries
+      // and keep the day with the remaining naps.
+      const obj = (snapshot.payload.rest_log && typeof snapshot.payload.rest_log === 'object'
+                   && !Array.isArray(snapshot.payload.rest_log))
+        ? snapshot.payload.rest_log : {};
+      const filtered = {};
+      for (const k of Object.keys(obj)) {
+        const day = obj[k];
+        if (isFuture(day) || (day && isFuture(day.sleep))) {
+          skipped++;
+          continue;
+        }
+        let dayOut = day;
+        if (day && Array.isArray(day.naps)) {
+          const okNaps = day.naps.filter(n => { if (isFuture(n)) { skipped++; return false; } return true; });
+          if (okNaps.length !== day.naps.length) dayOut = Object.assign({}, day, { naps: okNaps });
+        }
+        filtered[k] = dayOut;
+      }
+      out.payload.rest_log = filtered;
+    } else if (key === 'presets') {
+      const arr = Array.isArray(snapshot.payload.presets) ? snapshot.payload.presets : [];
+      out.payload.presets = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+    } else if (key === 'bfrb_events') {
+      out.payload = Object.assign({}, snapshot.payload);
+      const arr = Array.isArray(snapshot.payload.events) ? snapshot.payload.events : null;
+      if (arr) {
+        out.payload.events = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+      }
+    } else if (key === 'distractions') {
+      // payload shape: { flow: {sessionId: [entries]}, pomodoro: same }.
+      // Filter at entry level within each session.
+      out.payload = Object.assign({}, snapshot.payload);
+      for (const ctx of ['flow', 'pomodoro']) {
+        const map = snapshot.payload[ctx];
+        if (!map || typeof map !== 'object' || Array.isArray(map)) continue;
+        const filteredMap = {};
+        for (const sid of Object.keys(map)) {
+          const entries = Array.isArray(map[sid]) ? map[sid] : [];
+          filteredMap[sid] = entries.filter(e => { if (isFuture(e)) { skipped++; return false; } return true; });
+        }
+        out.payload[ctx] = filteredMap;
+      }
+    } else {
+      // Unknown store key — pass through verbatim (defensive forward-compat
+      // for future stores added by E-2+ work).
+      out.payload = snapshot.payload;
+    }
+
+    out.__skipped = skipped;
+    return out;
   }
 
   // ── Event emitter ─────────────────────────────────────────────────────
@@ -1488,18 +1639,20 @@ const SyncEngine = (() => {
   // ── E-1b: steady-state merge timer scaffold ──────────────────────────
   //
   // `startSteadyState()` arms a periodic merge timer that invokes
-  // `_runMergeCycle()` at the configured interval. The timer is gated
-  // behind the `tempo_sync_steady_state_enabled` localStorage flag
-  // (strict `=== '1'` check — Risk #4) so E-1b ships dormant: a fresh
-  // boot with no flag set is byte-identical to pre-E-1b behavior.
+  // `_runMergeCycle()` at the configured interval. E-1e removed the
+  // `tempo_sync_steady_state_enabled` dev flag — steady-state runs by
+  // default for any user signed in with the master sync flag on. The
+  // four-condition gate (signed in + master sync flag on + all-
+  // hydrated + no Stage D handoff) is enforced by
+  // `_maybeAutoStartSteady(user)`, which auto-fires from both
+  // `init()` end (cold-boot path) and `_maybeAutoHydrate.then()`
+  // (first-sign-in path).
   //
-  // E-1b's merge cycle is exercise-able but no-op-effective: all 4
-  // per-store merge modules (`SyncMergeMeds` / `SyncMergeHistory` /
-  // `SyncMergeRestLog` / `SyncMergePresets`) throw 'not implemented'
-  // from their stub `merge()`. The dispatcher tolerates this — each
-  // store call is wrapped in try/catch and emits `merge-error` so the
-  // observer surface is wired even before the real merge logic ships
-  // in E-1c/d/e.
+  // E-1c-onward: each merge function ships a real per-store body:
+  // meds (E-1c), history (E-1d), bfrb_events (E-1d-f3), distractions
+  // (E-1d-f8), rest_log + presets (E-1e). The dispatcher's per-store
+  // try/catch wraps each call so one bad merge doesn't short-circuit
+  // the rest of the cycle.
   //
   // Pause mechanism (per Pick B on E-1b-PROMPT TODO #2): `visibility-
   // change` always paused; `Platform.network` feature-detected — if
@@ -1508,9 +1661,11 @@ const SyncEngine = (() => {
   // them with the same function reference (anonymous handlers would
   // leak — Risk #6).
   //
-  // No `SyncState` flip happens here in E-1b. The stub merges throw
-  // before any write attempts; E-1e wires the `'hydrating'` flip
-  // inside individual merge functions when real writes start.
+  // SyncState flip: the dispatcher's `_runMergeCycle` flips
+  // SyncState to 'hydrating' BEFORE the per-store loop (E-1c F13
+  // dispatcher-wide write gate) and restores 'ready' in the
+  // chained `.finally()`. Local writes via `SyncState.canWrite()`
+  // are blocked while the merge cycle runs.
 
   function _getSteadyInterval() {
     const ls = _getStorage();
@@ -1525,16 +1680,6 @@ const SyncEngine = (() => {
     }
     // Inclusive clamp — boundary values pass through unchanged.
     return Math.min(STEADY_STATE_MAX_MS, Math.max(STEADY_STATE_MIN_MS, parsed));
-  }
-
-  function _isSteadyStateEnabled() {
-    const ls = _getStorage();
-    if (!ls) return false;
-    // Strict equality — `'0'` / `'true'` / `'false'` / empty all fail.
-    // Audit Risk #4: `Boolean(ls.getItem(...))` would coerce non-empty
-    // strings to true and silently activate the timer.
-    try { return ls.getItem(STEADY_STATE_ENABLED_KEY) === '1'; }
-    catch (_) { return false; }
   }
 
   function _runMergeCycle() {
@@ -1603,9 +1748,8 @@ const SyncEngine = (() => {
     // catches sync merge errors as before.
     try {
       // Iterate in canonical order: meds → history → rest_log → presets
-      // (matches SYNCED_STORES registry above; future per-store snapshot
-      // F19a gating in E-1e will iterate the same order).
-      for (const { key } of SYNCED_STORES) {
+      // → bfrb_events → distractions (matches SYNCED_STORES registry).
+      for (const { key, adapter } of SYNCED_STORES) {
         const mod = moduleByKey[key];
         if (!mod || typeof mod.merge !== 'function') {
           const err = new Error('merge module unavailable for store: ' + key);
@@ -1615,11 +1759,53 @@ const SyncEngine = (() => {
           emit('merge-error', { store: key, error: err });
           continue;
         }
+
+        // E-1e: dispatcher-level F19a snapshot gate (Pick C on TODO #4).
+        // Read the per-store snapshot synchronously when possible (5 of
+        // 6 stores return sync values; History is the async exception).
+        // For the async case we treat the unfiltered snapshot as a
+        // pass-through — the merge fn's cloud-side gate still catches
+        // future-schema records over the wire. The local-side gate's
+        // value is observability via the logged skip count, not
+        // blocking (today's merge fns pass null to merge() and re-read
+        // internally; the filtered snapshot is parked for E-2+ refactors
+        // that may consume it directly).
+        let filteredSnapshot = null;
+        if (adapter && typeof adapter.read === 'function') {
+          try {
+            const rawSnapshot = adapter.read();
+            if (rawSnapshot && typeof rawSnapshot.then === 'function') {
+              // Async snapshot (History) — skip the local-side gate this
+              // cycle. The cloud-side gate inside History's merge fn
+              // still protects against future-schema records over the
+              // wire. Observability gap is acceptable; History sessions
+              // don't have meaningful future-record risk today.
+              filteredSnapshot = null;
+            } else {
+              filteredSnapshot = _filterFutureRecordsInSnapshot(key, rawSnapshot);
+              if (filteredSnapshot && filteredSnapshot.__skipped > 0) {
+                try {
+                  console.warn('[SyncEngine] dispatcher filtered '
+                               + filteredSnapshot.__skipped
+                               + ' future-schema local records from store: ' + key);
+                } catch (_) {}
+              }
+            }
+          } catch (snapshotErr) {
+            // Snapshot read failed — log + pass null. The merge fn's
+            // defensive path handles missing snapshot via internal
+            // re-read (self-contained contract from E-1c onward).
+            try {
+              console.warn('[SyncEngine] snapshot read failed for ' + key + ':', snapshotErr);
+            } catch (_) {}
+          }
+        }
+
         try {
-          // Pass null for the snapshot — E-1b's stubs ignore it. E-1c
-          // ships meds with a real async body that fetches cloud
-          // internally; E-1d/e replace history / rest_log / presets.
-          const result = mod.merge(null);
+          // Pass the filtered snapshot — merge fns still ignore the
+          // argument today (E-1c-onward self-contained contract), but
+          // the dispatcher contract now matches the future-proof shape.
+          const result = mod.merge(filteredSnapshot);
 
           if (result && typeof result.then === 'function') {
             // Async merge — capture the promise and store the resolved
@@ -1685,8 +1871,11 @@ const SyncEngine = (() => {
     // Idempotent — second call while timer is armed is a no-op.
     if (_steadyTimer != null) return;
 
-    // Dev-flag gate (default off — boot is byte-identical to pre-E-1b).
-    if (!_isSteadyStateEnabled()) return;
+    // E-1e: dev-flag gate removed. Steady-state arms whenever
+    // `_maybeAutoStartSteady`'s four-condition gate passes — signed
+    // in + master sync flag on + all-hydrated + no Stage D handoff.
+    // Direct callers (e.g. dev console) also get an unconditional
+    // arm here.
 
     const interval = _getSteadyInterval();
 
