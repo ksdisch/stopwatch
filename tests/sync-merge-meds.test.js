@@ -779,31 +779,32 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
 
 describe('SyncMergeMeds — D-1 reconcile retrofit (E-1c TODO #4 Pick A)', () => {
 
-  it('12. reconcileDoseLog is invoked per merged med inside the imported-bucket loop', async () => {
-    // Direct unit-style assertion: call reconcileDoseLog with cross-
-    // device duplicates within ±15min and confirm collapse semantics
-    // (the same recipe the D-1 retrofit loop runs in-place).
+  it('12. reconcileDoseLog is invoked per merged med — cross-device pair within 15min collapses via F1', async () => {
+    // Mirrors D-1's retrofit invocation shape: pass the local doseLog as
+    // `med.doseLog` and the cloud-side entries (from _mergeMeds union) as
+    // `incomingEntries`. The helper unions them, F16-clamps cross-device
+    // far-out entries, dedups exact (deviceId, takenAt) matches, then F1
+    // collapses cross-device pairs within RECONCILE_WINDOW_MS.
     const now = Date.now();
     const med = {
       id: 'med-d1-retrofit',
       schemaVersion: 1,
       doseLog: [
-        { deviceId: 'device-A', takenAt: now - 60000 },         // -1 min
-        { deviceId: 'device-B', takenAt: now - 55000 },         // -55s, within 15min of A
-        { deviceId: 'device-A', takenAt: now - 30 * 60 * 1000 }, // 30 min earlier (separate cluster)
+        { deviceId: 'device-A', takenAt: now - 60000 },  // local: -1 min
       ],
     };
+    const incomingEntries = [
+      { deviceId: 'device-B', takenAt: now - 55000 },    // cloud: -55s (5s after A, cross-device)
+    ];
+    const result = MedsManager.reconcileDoseLog(med, incomingEntries);
 
-    // Calling reconcileDoseLog with the doseLog as incoming mirrors the
-    // E-1c retrofit's invocation shape in sync-engine.js:1278 area.
-    const result = MedsManager.reconcileDoseLog(med, med.doseLog);
-
-    // Exact-match dedup collapses the doubled entries first; then F1
-    // collapses the cross-device pair → expect 2 distinct survivors:
-    //   - one of (A or B) near `now - 60000`
-    //   - the older A entry at `now - 30min`
-    assertEqual(result.entries.length, 2,
-      'cross-device duplicates within 15min collapsed (3 → 2)');
+    // Union = 2 entries. Both within F16 window (≤15min from now).
+    // No exact-match dedup (different deviceIds). Sort: A then B.
+    // F1 walk: delta 5000ms < 15min, cross-device → drop B, collapsed=1.
+    // Final: [A@-60s]. The D-1 retrofit's call site does exactly this
+    // per-merged-med inside reconcileImportedBucket's mergedMeds loop.
+    assertEqual(result.entries.length, 1,
+      'cross-device pair within 15min collapsed (2 → 1)');
     assert(result.collapsed >= 1, 'collapsed counter incremented');
   });
 });
