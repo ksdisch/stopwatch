@@ -10,6 +10,44 @@ E-1d-f3 is the **fifth of seven Stage E sub-PRs** after the E-1d
 scope split. It ships the **F3 BFRB stream consolidation** that was
 deferred from E-1d.
 
+---
+
+## RESOLUTIONS (Kyle, 2026-05-14 — all 5 decision-TODOs resolved)
+
+All 5 TODOs resolved as auditor-recommended. **Engine-implementer
+reads `docs/sync-impl/audits/E-1d-f3-AUDIT.md` for the authoritative
+spec; the deferral language in the TODO sections below is preserved
+for historical context but overridden by the audit.**
+
+- **TODO #1 (migration strategy — load-bearing):** **Pick B** —
+  Phased. Union 3 legacy keys → write `bfrb_events` → set marker
+  `tempo_bfrb_events_migration_v1='1'`. Do NOT delete legacy keys.
+  Subsequent boots check marker; skip union if set. Legacy keys
+  remain as a safety net. Follow-up cleanup PR (deferred per TODO #5).
+- **TODO #2 (code location):** **Pick A** — New module
+  `js/bfrb-events.js`. Owns store + migration + public API
+  (`log`, `getAll`, `getByContext`, `countToday`, `snapshotForSync`,
+  `_reconcileWriteRaw`).
+- **TODO #3 (entry schema):** **Pick A** — Flat schema with
+  `takenAt` field name. `{ takenAt, context, sessionId?, phase?,
+  cycleIndex?, deviceId, updatedAt, schemaVersion }`. Legacy
+  `timestamp` field renamed to `takenAt` during migration.
+- **TODO #4 (sync wiring scope):** **Pick A** — Bundle into
+  E-1d-f3. Add `bfrb_events` to `SYNCED_STORES` registry; ship new
+  `js/sync-merge-bfrb.js` (per-store merge fn with append-merge
+  dedup by `(deviceId, takenAt)`) + tests.
+- **TODO #5 (cleanup PR timing):** **Pick C** — Defer cleanup, no
+  predetermined timing. Backlog item.
+- **TODO #6 (test scope):** auditor sizes. ~12-18 cases total across
+  `tests/bfrb-events.test.js` + `tests/sync-merge-bfrb.test.js`.
+- **TODO #7 (dev flag):** **Pick A** — Confirmed. E-1d-f3 does NOT
+  touch `tempo_sync_steady_state_enabled`. E-1e removes the flag.
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value (v77 → v78).
+
+---
+
 ## What F3 is
 
 Today, BFRB catches go into one of three localStorage keys based on
