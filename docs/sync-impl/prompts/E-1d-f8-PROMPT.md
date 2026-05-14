@@ -12,6 +12,52 @@ that was deferred from E-1d. Pattern mirrors E-1d-f3 (F3 BFRB
 consolidation, PR #70) but on a smaller surface (no FAB, no
 analytics integration).
 
+---
+
+## RESOLUTIONS (Kyle, 2026-05-14 — all 7 TODOs resolved)
+
+All 7 TODOs resolved as auditor-recommended. **Engine-implementer
+reads `docs/sync-impl/audits/E-1d-f8-AUDIT.md` for the authoritative
+spec; the deferral language in the TODO sections below is preserved
+for historical context but overridden by the audit.**
+
+- **TODO #1 (storage shape — load-bearing):** **Pick A** — Map under
+  one key. Single localStorage key `flow_distractions` whose VALUE is
+  `{ [sessionId]: [entries] }`. UI reads
+  `JSON.parse(localStorage.getItem('flow_distractions'))[currentSessionId]`.
+  Same shape for `pomodoro_distractions`. PLAN.md's `/` notation is
+  conceptual, not literal.
+- **TODO #2 (migration strategy):** **Pick B** — Phased. Marker
+  `tempo_distractions_migration_v1='1'` gates idempotency. Legacy
+  keys retained as safety net. Cleanup PR deferred per Pick C on
+  TODO #6.
+- **TODO #3 (orphan data):** **Pick B** — Attach to active session
+  if running; otherwise store orphans under synthetic
+  `'pre-migration-orphan'` sessionId key. UI never reads orphan key
+  (filters by current session). Data preserved for Export-backup
+  recovery if user cares.
+- **TODO #4 (module location):** **Pick A** — New
+  `js/distractions.js`. Mirrors `js/bfrb-events.js` (E-1d-f3) shape.
+  Owns both Flow + Pomo distraction stores in one module. Public
+  API: `Distractions.log({ context, sessionId, category, note? })`,
+  `.getForSession(context, sessionId)`,
+  `.clearSession(context, sessionId)`, `.snapshotForSync()`,
+  `._reconcileWriteRaw(records)`, `._runMigration()`.
+- **TODO #5 (sync wiring scope):** **Pick A** — Bundle into E-1d-f8.
+  Add `distractions` to `SYNCED_STORES` (6th entry); ship new
+  `js/sync-merge-distractions.js` (per-store merge fn — merge cloud +
+  local maps by sessionId; within each session, union + dedup by
+  `(deviceId, timestamp)`).
+- **TODO #6 (cleanup PR timing):** **Pick C** — Defer cleanup, no
+  predetermined timing. Matches F3 precedent.
+- **TODO #7 (dev flag carryover):** **Pick A** — Confirmed. E-1d-f8
+  does NOT touch `tempo_sync_steady_state_enabled`. E-1e flips it.
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value (v78 → v79).
+
+---
+
 ## What F8 is
 
 Today, distraction entries go into ONE of two flat-array localStorage
