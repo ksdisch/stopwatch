@@ -631,6 +631,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
       bfrb_events: SyncMergeBfrb.merge,
+      distractions: SyncMergeDistractions.merge,
     };
 
     try {
@@ -651,6 +652,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = () => ({ ok: false });
       SyncMergePresets.merge = () => ({ ok: false });
       SyncMergeBfrb.merge = () => ({ ok: true });
+      SyncMergeDistractions.merge = () => ({ ok: true });
 
       const completeP = new Promise((resolve) => {
         const cb = () => { SyncEngine.off('merge-cycle-complete', cb); resolve(); };
@@ -670,6 +672,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
+      SyncMergeDistractions.merge = savedMerges.distractions;
       _e1d_restore(saved);
     }
   });
@@ -683,6 +686,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
       bfrb_events: SyncMergeBfrb.merge,
+      distractions: SyncMergeDistractions.merge,
     };
 
     try {
@@ -696,6 +700,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = () => ({ ok: true });
       SyncMergePresets.merge = () => ({ ok: true });
       SyncMergeBfrb.merge = () => ({ ok: true });
+      SyncMergeDistractions.merge = () => ({ ok: true });
 
       SyncEngine._runMergeCycle();
 
@@ -711,6 +716,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
+      SyncMergeDistractions.merge = savedMerges.distractions;
       _e1d_restore(saved);
     }
   });
@@ -724,6 +730,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       rest_log: SyncMergeRestLog.merge,
       presets: SyncMergePresets.merge,
       bfrb_events: SyncMergeBfrb.merge,
+      distractions: SyncMergeDistractions.merge,
     };
 
     try {
@@ -738,6 +745,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = function () { throw null; };
       SyncMergePresets.merge = function () { throw new Error('stub'); };
       SyncMergeBfrb.merge = function () { throw 'string-throw-bfrb'; };
+      SyncMergeDistractions.merge = function () { throw 'string-throw-distractions'; };
 
       SyncEngine._runMergeCycle();
 
@@ -749,6 +757,7 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
       SyncMergeRestLog.merge = savedMerges.rest_log;
       SyncMergePresets.merge = savedMerges.presets;
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
+      SyncMergeDistractions.merge = savedMerges.distractions;
       _e1d_restore(saved);
     }
   });

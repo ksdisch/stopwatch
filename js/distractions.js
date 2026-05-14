@@ -215,18 +215,26 @@ const Distractions = (() => {
       if (isArray) {
         // Determine target sessionId. Call the engine's accessor via
         // typeof-guarded probes so test contexts that omit Flow / Pomodoro
-        // fall through to the orphan key.
+        // fall through to the orphan key. Read via `window.Flow` /
+        // `window.Pomodoro` so test stubs that replace the global on
+        // window are honored — bare `Flow` resolves to the classic-script
+        // `const Flow = ...` binding from js/flow.js which tests can't
+        // override.
         let activeSessionId = null;
         try {
+          const FlowRef = (typeof window !== 'undefined' && window.Flow) ? window.Flow
+            : (typeof Flow !== 'undefined' ? Flow : null);
+          const PomoRef = (typeof window !== 'undefined' && window.Pomodoro) ? window.Pomodoro
+            : (typeof Pomodoro !== 'undefined' ? Pomodoro : null);
           if (context === 'flow'
-              && typeof Flow !== 'undefined'
-              && typeof Flow.getSessionStartedAt === 'function') {
-            const v = Flow.getSessionStartedAt();
+              && FlowRef
+              && typeof FlowRef.getSessionStartedAt === 'function') {
+            const v = FlowRef.getSessionStartedAt();
             if (typeof v === 'number' && isFinite(v)) activeSessionId = v;
           } else if (context === 'pomodoro'
-              && typeof Pomodoro !== 'undefined'
-              && typeof Pomodoro.getSessionStartedAt === 'function') {
-            const v = Pomodoro.getSessionStartedAt();
+              && PomoRef
+              && typeof PomoRef.getSessionStartedAt === 'function') {
+            const v = PomoRef.getSessionStartedAt();
             if (typeof v === 'number' && isFinite(v)) activeSessionId = v;
           }
         } catch (_) { /* defensive: probe never throws */ }
