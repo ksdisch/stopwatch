@@ -64,7 +64,15 @@ const Persistence = (() => {
     localStorage.removeItem('pomodoro_actual_work');
     localStorage.removeItem('pomodoro_saved_tasks');
     localStorage.removeItem('pomodoro_task_templates');
-    localStorage.removeItem('pomodoro_distractions');
+    // E-1d-f8: pomodoro_distractions is now a sessionId-keyed map owned
+    // by the Distractions module. App-mode-change away from Pomodoro
+    // drops every past Pomo session's entries (semantically broader than
+    // the legacy flat-array blow-away — but those entries are already
+    // persisted to history records via gatherTaskData, so no data loss).
+    // typeof-guarded so a missing module degrades gracefully (no-op).
+    if (typeof Distractions !== 'undefined' && typeof Distractions.clearAllForContext === 'function') {
+      Distractions.clearAllForContext('pomodoro');
+    }
     localStorage.removeItem('interval_state');
     localStorage.removeItem('cooking_timers');
   }

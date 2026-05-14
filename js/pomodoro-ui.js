@@ -183,7 +183,9 @@ function onPomodoroLeft() {
 
   const status = Pomodoro.getStatus();
   if (status === 'paused') {
-    // Save session before reset
+    // Save session before reset.
+    // Capture sessionId BEFORE Pomodoro.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Pomodoro.getSessionStartedAt();
     const elapsed = Pomodoro.getElapsedMs();
     if (elapsed > 1000) {
       const cfg = Pomodoro.getConfig();
@@ -199,7 +201,9 @@ function onPomodoroLeft() {
     Pomodoro.reset();
     BgNotify.cancel('pomodoro');
     savePomodoroState();
-    saveDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('pomodoro', sessionIdToClear);
+    }
     savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();
@@ -267,9 +271,13 @@ function onPomodoroRight() {
     startPomodoroRenderLoop();
     updatePomodoroUI();
   } else if (status === 'done') {
+    // Capture sessionId BEFORE Pomodoro.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Pomodoro.getSessionStartedAt();
     Pomodoro.reset();
     savePomodoroState();
-    saveDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('pomodoro', sessionIdToClear);
+    }
     savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();
@@ -868,6 +876,12 @@ function initTaskTemplates() {
 }
 
 // ── Distraction / Interruption Log ──
+// E-1d-f8: legacy helpers retained for emergency rollback only. All
+// active call sites switched to Distractions.log / .getForSession /
+// .clearSession (sessionId-keyed map shape). The legacy
+// `pomodoro_distractions` key is preserved on disk (Pick B on TODO #2
+// — cleanup deferred per Pick C on TODO #6). These helpers read/write
+// the legacy flat-array shape and are no longer wired anywhere.
 const DISTRACTION_LOG_KEY = 'pomodoro_distractions';
 
 function loadDistractions() {
@@ -894,15 +908,20 @@ function initDistractionLog() {
     catBtn.addEventListener('click', () => {
       const category = catBtn.dataset.cat;
       const note = noteInput ? noteInput.value.trim() : '';
-      const distractions = loadDistractions();
-      distractions.push({
-        category,
-        note,
-        timestamp: Date.now(),
-        phase: Pomodoro.getPhase(),
-        cycleIndex: Pomodoro.getCycleIndex(),
-      });
-      saveDistractions(distractions);
+      // E-1d-f8: routes through Distractions module (sessionId-keyed map).
+      // The picker button is only visible while Pomodoro.getStatus() === 'running'
+      // and phase === 'work' (see updateDistractionBtnVisibility), so
+      // sessionId is guaranteed non-null at log time.
+      if (typeof Distractions !== 'undefined') {
+        Distractions.log({
+          context: 'pomodoro',
+          sessionId: Pomodoro.getSessionStartedAt(),
+          category,
+          note,
+          phase: Pomodoro.getPhase(),
+          cycleIndex: Pomodoro.getCycleIndex(),
+        });
+      }
       picker.classList.add('hidden');
       Platform.haptic(30);
     });
@@ -1066,7 +1085,11 @@ function gatherTaskData() {
     breakTasks: loadBreakChecklist().filter(i => i.done).map(i => i.text),
     actualWork: loadActualWork(),
   };
-  const distractions = loadDistractions();
+  // E-1d-f8: distractions now filter by current sessionId from the
+  // consolidated map.
+  const distractions = (typeof Distractions !== 'undefined')
+    ? Distractions.getForSession('pomodoro', Pomodoro.getSessionStartedAt())
+    : [];
   if (distractions.length > 0) data.distractions = distractions;
   const bfrbs = getPomoSessionBFRBs();
   if (bfrbs.length > 0) data.bfrbs = bfrbs;
@@ -1146,6 +1169,8 @@ function initActionsDrawer() {
     const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
     const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0)
       + (Pomodoro.isOvershooting && Pomodoro.isOvershooting() ? Pomodoro.getOvershootMs() : 0);
+    // Capture sessionId BEFORE Pomodoro.reset() clears it (E-1d-f8 audit Risk #3).
+    const sessionIdToClear = Pomodoro.getSessionStartedAt();
     if (elapsed > 1000 || cycleIdx > 0) {
       History.addSession({
         type: 'pomodoro',
@@ -1162,7 +1187,9 @@ function initActionsDrawer() {
     BgNotify.cancel('pomodoro');
     Pomodoro.reset();
     savePomodoroState();
-    saveDistractions([]);
+    if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
+      Distractions.clearSession('pomodoro', sessionIdToClear);
+    }
     savePomoBFRBs([]);
     renderChecklist();
     renderBreakChecklist();

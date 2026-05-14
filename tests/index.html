@@ -45,6 +45,9 @@
        migration. Load before analytics.js so analytics' BFRB-trend read
        path sees the consolidated stream during tests. -->
   <script src="../js/bfrb-events.js"></script>
+  <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
+       pomodoro_distractions stores + migration. Load before any UI deps. -->
+  <script src="../js/distractions.js"></script>
   <!-- Presets is loaded for F19b storage-layer tests (the only tests that
        exercise it; UI-coupled methods like applyPreset/captureCurrentConfig
        aren't tested here and won't run without their UI deps in scope). -->
@@ -67,6 +70,7 @@
   <script src="../js/sync-merge-rest-log.js"></script>
   <script src="../js/sync-merge-presets.js"></script>
   <script src="../js/sync-merge-bfrb.js"></script>
+  <script src="../js/sync-merge-distractions.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
 
@@ -91,6 +95,8 @@
   <script src="sync-merge-history.test.js"></script>
   <script src="bfrb-events.test.js"></script>
   <script src="sync-merge-bfrb.test.js"></script>
+  <script src="distractions.test.js"></script>
+  <script src="sync-merge-distractions.test.js"></script>
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="export.test.js"></script>

@@ -959,6 +959,7 @@
   <script src="js/sync-merge-rest-log.js"></script>
   <script src="js/sync-merge-presets.js"></script>
   <script src="js/sync-merge-bfrb.js"></script>
+  <script src="js/sync-merge-distractions.js"></script>
   <script src="js/sync-auth.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/themes.js"></script>
@@ -972,6 +973,10 @@
   <script src="js/compare-ui.js"></script>
   <script src="js/timer-ui.js"></script>
   <script src="js/bfrb-recovery.js"></script>
+  <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
+       pomodoro_distractions stores + migration. MUST load BEFORE
+       pomodoro-ui.js + flow-ui.js (which call Distractions.* synchronously). -->
+  <script src="js/distractions.js"></script>
   <script src="js/pomodoro-ui.js"></script>
   <script src="js/flow-ui.js"></script>
   <script src="js/alert-ui.js"></script>

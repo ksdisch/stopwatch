@@ -114,6 +114,9 @@ Additional localStorage keys used for UI/config preferences:
 - `history_hide_imported` (D-1; UI toggle in the History panel filter bar. `'0'` (default) shows imported pre-sync rows; `'1'` filters them out of the rendered list. Only the chip + filter bar are gated on the presence of any imported rows.)
 - `bfrb_events` (E-1d-f3; F3 consolidated BFRB stream. Replaces the three legacy buckets (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs`) as the single source of truth for BFRB sync. Each entry: `{ takenAt, context, sessionId?, phase?, cycleIndex?, deviceId, updatedAt, schemaVersion }`. `context` ∈ `'global'|'flow'|'pomodoro'`. Legacy 3 keys retained for one release pending a deferred cleanup PR — no scheduled removal yet (Pick C on TODO #5).)
 - `tempo_bfrb_events_migration_v1` (E-1d-f3; phased-migration idempotency marker. Set to `'1'` once the union+write of legacy buckets into `bfrb_events` completes on first load post-upgrade. Module skips migration on subsequent loads.)
+- `flow_distractions` (E-1d-f8; F8 sessionId-keyed map `{ [sessionId]: [entries] }` where each entry is `{ category, note?, timestamp, deviceId, updatedAt, schemaVersion }`. Was a flat array pre-E-1d-f8 — migrated in place under a stable orphan-key fallback for entries without a sessionId. Synced as the 6th store via `js/sync-merge-distractions.js`.)
+- `pomodoro_distractions` (E-1d-f8; same shape as `flow_distractions` — sessionId-keyed map. Migrated in place by `js/distractions.js`. Synced as part of the 6th sync store.)
+- `tempo_distractions_migration_v1` (E-1d-f8; F8 phased-migration idempotency marker. Set to `'1'` once the legacy-flat-array → sessionId-keyed-map migration completes for both Flow + Pomo on first load post-upgrade. Module skips migration on subsequent loads.)
 
 ## What Has Been Built
 
