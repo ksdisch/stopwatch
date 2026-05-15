@@ -125,21 +125,113 @@ Plus:
 
 ---
 
-## RESOLUTIONS (Kyle, TBD — Phase 0 pending)
+## RESOLUTIONS (Kyle, 2026-05-15 — all 8 TODOs resolved as auditor-recommended)
 
-**Kyle: TODOs 1–8 need your call.** TODO #1 (listeners-vs-polling
-primary) and TODO #2 (subscription granularity + module location)
-are the most consequential — both shape blast radius and the
-per-store dispatch contract. TODO #4 (visibility / network event
-handling) controls the lifecycle complexity. TODO #5 (downlevel
-toast dedup) controls UX surface. TODO #7 (native parity) controls
-PR scope. **Auditor leans Pick A across the board** unless noted
-otherwise inside the individual TODO. Accept all defaults with
-"all defaults" or override per-TODO.
+All 8 TODOs resolved as auditor-recommended (Pick A across the
+board). **sync-auditor reads the locked-in picks below as the
+authoritative design contract; engine-implementer reads
+`docs/sync-impl/audits/E-3-AUDIT.md` for the spec; the framing
+language in the TODO sections below is preserved for historical
+context but overridden by the audit.**
 
-Once Kyle responds, the resolutions get codified here (replacing
-this TBD block, mirroring `docs/sync-impl/prompts/E-2-PROMPT.md:84-126`)
-and the audit fires next.
+**Note (orchestrator, post-Phase-0):** the brief's closing footer
+asserted "Auditor leans Pick A across the board" but TODO #7's
+per-TODO lean inside the body was Pick C (ship native `subscribe`
+parity). Kyle's "all defaults" reply resolves the conflict in
+favor of the footer's framing: **Pick A on TODO #7** — native
+listener parity stays deferred. A separate native-parity follow-up
+will queue alongside the long-deferred native CAS parity carry-
+forward.
+
+- **TODO #1 (listeners-vs-polling primary):** **Pick A** —
+  Listeners are primary; long-interval defensive poll runs at 5
+  minutes as a safety net. Net read budget drops ~80-90% vs
+  current 30s poll while preserving bounded recovery time when
+  listeners silently fail (iOS Safari WebView suspension is the
+  canonical scary case). The existing `STEADY_STATE_DEFAULT_MS`
+  interval becomes the defensive-poll interval; the listener
+  subscription is the new primary trigger for merge cycles.
+- **TODO #2 (subscription granularity + module location):**
+  **Pick A** — Per-collection subscriptions (6 total, one per
+  `SYNCED_STORES` entry: meds, history, rest_log, presets,
+  bfrb_events, distractions) + listener lifecycle extends
+  `js/sync-engine.js` next to `startSteadyState` /
+  `stopSteadyState`. New per-store dispatch seam
+  `_runMergeCycleForStore(storeKey)` lifts a single store out of
+  the existing `_runMergeCycle()` loop and shares the F19a
+  snapshot gate (`_filterFutureRecordsInSnapshot`) + the F13
+  SyncState gating. Per-record subscriptions rejected (exceeds
+  Firestore ~100-listener soft limit at Tempo's data scale); new
+  module rejected (lifecycle is tightly coupled to existing
+  steady-state seam, splitting creates two near-identical
+  wire-ups).
+- **TODO #3 (throttle/debounce shape):** **Pick A** — Trailing 1s
+  debounce, per-store. First snapshot in a burst queues a merge;
+  subsequent snapshots within 1s reset the timer; one merge fires
+  1s after the last snapshot in the burst. Per-store debounce so
+  a `meds` burst doesn't delay a single `presets` change. Bounded
+  worst-case latency; minimum read cost under bursty loads.
+- **TODO #4 (visibility + network event handling):** **Pick A** —
+  Pause-and-unsubscribe on `visibilitychange` to hidden OR
+  `Platform.network.onChange(offline)`. Re-subscribe + fire a
+  one-shot catch-up `_runMergeCycle()` on `visibilitychange` to
+  visible OR `Platform.network.onChange(online)`. The catch-up
+  cycle on resume is the safety net for the "WebView suspended
+  for 30 minutes" case. The existing 2055-2122 lifecycle block
+  in `js/sync-engine.js` extends with listener subscribe/unsubscribe
+  alongside the timer pause/resume.
+- **TODO #5 (downlevel-warning toast dedup):** **Pick A** — Fire
+  once per session via module-scope `_downlevelWarningShown` flag
+  in `js/sync-toast.js`. First refuse-writeback event paints the
+  toast + sets the flag. Subsequent events `console.warn` only.
+  Flag resets on `'sign-out'` event emitted by SyncEngine
+  (`SyncAuth.signOut` path) so the warning re-arms on next sign-in.
+  Toast text per PLAN.md §E-3: "Your phone is on a newer
+  version. This device is read-only until you update."
+- **TODO #6 (sync activity indicator placement):** **Pick A** —
+  Extend the existing `#cloud-sync-status` text content at
+  `index.html:167-168` (already `aria-live="polite"`). Stable
+  text format parseable by tests
+  (e.g., `Last sync: <relative time> · Listeners: <state>`).
+  `tempo-nav.js` subscribes to new SyncEngine events
+  (`'listener-connected'` / `'listener-disconnected'` /
+  `'merge-complete'` — the last is already in the event
+  vocabulary at `js/sync-engine.js:376-383`) and updates the
+  text content + visibility. No new DOM elements; minimal CSS.
+- **TODO #7 (native parity scope):** **Pick A** — Ship web-only
+  `subscribe`; document the native gap. Native (iOS) clients get
+  listenerless fallback (the 5-minute defensive poll from TODO #1
+  still runs on native). Native CAS parity stays deferred
+  (carry-forward from E-1b through E-2). A separate native-parity
+  follow-up PR will pair `addSnapshotListener` + `runTransaction`
+  for the `@capacitor-firebase/firestore` plugin in one shot;
+  filed as a tracked carry-forward.
+- **TODO #8 (E-2 follow-up bundling):** **Pick A** — Close E-2
+  open question (i) only — the one-line `typeof SyncBuffer !==
+  'undefined'` symmetry fix at `js/sync-engine.js:1842` rides
+  along with E-3 since E-3 already modifies the same lifecycle
+  neighborhood. E-2 open question (ii) — pre-existing E-1e
+  visibilityState test flakiness — defers to a separate test-
+  infrastructure cleanup PR.
+
+**Phase 4 ui-wirer FIRES** in SMOKE-ONLY mode (5th invocation in
+Stage E lineage, after E-1d, E-1d-f3, E-1d-f8, E-1e, E-2). The
+audit's affected-files table will enumerate `js/sync-toast.js`
+(toast extension) + `index.html` (status-indicator copy) + likely
+`css/styles.css` (minor styling) + `js/tempo-nav.js` (event-
+subscription wire-up to the existing status surface). Phase 4
+verifies: boot path clean, no console errors, synthetic
+`SyncEngine.emit('refuse-writeback', {...})` paints the toast
+(once per session per Pick A on TODO #5), `#cloud-sync-status`
+text renders the locked-in format on synthetic
+`SyncEngine.emit('listener-connected', {...})`, one neighboring
+route still renders. NO real Firestore listener connection
+required — the toast + indicator are testable end-to-end in
+isolation via synthetic emits.
+
+The audit's affected-files table will codify the exact line
+targets, test-case names, and CACHE_NAME bump value
+(`v81` → `v82`).
 
 ---
 
