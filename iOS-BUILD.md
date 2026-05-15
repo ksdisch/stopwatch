@@ -31,6 +31,38 @@ Then in Xcode hit `⌘R` (Run). If Xcode is closed, run `npm run ios:open` inste
 
 The web version updates separately and instantly via `git push` to GitHub Pages.
 
+## Podfile gotchas (Capacitor sync regenerates parts of the Podfile)
+
+`npx cap sync ios` (and `npm run ios:sync`) regenerates the `capacitor_pods` function block inside `ios/App/Podfile` based on whatever Capacitor plugins are installed in `node_modules/`. **Any manual edit inside that function gets overwritten.**
+
+In practice this matters for plugins that need subspec selection or other non-default pod syntax. The `@capacitor-firebase/authentication` plugin is the canonical example — its `/Google` subspec is what enables `signInWithGoogle`, but on this CocoaPods version the `:path`-based subspec selection is broken (the subspec gets parsed as an aggregate-only target with no compiled source files).
+
+The working pattern, used in the current `Podfile`:
+
+1. Keep the auto-generated `capacitor_pods` function alone — it gets the plain `pod 'CapacitorFirebaseAuthentication'` entry that cap sync regenerates.
+2. Add `pod 'GoogleSignIn', '7.1.0'` directly inside the `target 'App'` block (cap sync doesn't touch target-level pod entries).
+3. Use a `post_install` hook to:
+   - Inject `-DRGCFA_INCLUDE_GOOGLE` into the plugin target's `OTHER_SWIFT_FLAGS` (so the `#if RGCFA_INCLUDE_GOOGLE` code paths compile in).
+   - Add `${PODS_CONFIGURATION_BUILD_DIR}/GoogleSignIn` to the plugin target's `FRAMEWORK_SEARCH_PATHS` (so `import GoogleSignIn` resolves).
+   - Add `GoogleSignIn` as a target dependency (so the framework is built before the plugin compiles).
+
+The post_install hook and the standalone `GoogleSignIn` entry both survive cap sync regenerations, so the workflow stays cap-sync-friendly.
+
+**When editing the Podfile, prefer `pod install` over `npx cap sync ios`** — `pod install` only re-resolves dependencies from the current Podfile, while `cap sync` runs `cap update` (regenerates the Podfile) and then `pod install` (with the freshly regenerated Podfile, potentially clobbering your edits). The right sequence after a Podfile edit:
+
+```bash
+cd ios/App
+pod install
+```
+
+And after a web-asset change that needs to land on the device:
+
+```bash
+npm run ios:copy        # or npm run ios:open
+```
+
+Neither of those regenerates the Podfile. `npm run ios:sync` does — only use it when you've added/removed a Capacitor plugin via `npm install`.
+
 ## The 7-day signing cert (free Apple ID limitation)
 
 Free Apple ID signing issues a **7-day** development cert. After 7 days, the Tempo app on your iPhone won't launch — tapping the icon just bounces you back to the home screen.

@@ -11,6 +11,12 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  # Install with default (Lite) subspec — the only configuration that produces
+  # a native build target with source_files compiled on this CocoaPods version.
+  # Google sign-in support is layered on in the post_install hook below:
+  # GoogleSignIn pod is added explicitly (target 'App' block), then the plugin
+  # target is patched with -DRGCFA_INCLUDE_GOOGLE and FRAMEWORK_SEARCH_PATHS
+  # pointing at GoogleSignIn's framework so `import GoogleSignIn` resolves.
   pod 'CapacitorFirebaseAuthentication', :path => '../../node_modules/@capacitor-firebase/authentication'
   pod 'CapacitorFirebaseFirestore', :path => '../../node_modules/@capacitor-firebase/firestore'
   pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
@@ -21,9 +27,42 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+  # Google Sign-In SDK — separate entry because @capacitor-firebase/authentication's
+  # /Google subspec is broken on path-based pods (the subspec selection drops the
+  # parent's source_files from the build). Version matches what the plugin's
+  # Google subspec would normally pull in.
+  pod 'GoogleSignIn', '7.1.0'
 end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+
+  # Manually wire what @capacitor-firebase/authentication's /Google subspec
+  # would have done: set -DRGCFA_INCLUDE_GOOGLE so #if RGCFA_INCLUDE_GOOGLE code
+  # paths activate, link GoogleSignIn as a target dependency so build order is
+  # correct, and add GoogleSignIn's framework directory to FRAMEWORK_SEARCH_PATHS
+  # so `import GoogleSignIn` resolves at Swift compile time.
+  google_signin_target = installer.pods_project.targets.find { |t| t.name == 'GoogleSignIn' }
+
+  installer.pods_project.targets.each do |target|
+    next unless target.name == 'CapacitorFirebaseAuthentication'
+    target.build_configurations.each do |config|
+      # 1. Activate Google code paths.
+      existing_flags = config.build_settings['OTHER_SWIFT_FLAGS'] || '$(inherited)'
+      unless existing_flags.to_s.include?('-DRGCFA_INCLUDE_GOOGLE')
+        config.build_settings['OTHER_SWIFT_FLAGS'] = "#{existing_flags} -DRGCFA_INCLUDE_GOOGLE"
+      end
+      # 2. Make GoogleSignIn's framework visible to Swift's module loader.
+      existing_paths = config.build_settings['FRAMEWORK_SEARCH_PATHS'] || '$(inherited)'
+      gs_path = '"${PODS_CONFIGURATION_BUILD_DIR}/GoogleSignIn"'
+      unless existing_paths.to_s.include?(gs_path)
+        config.build_settings['FRAMEWORK_SEARCH_PATHS'] = "#{existing_paths} #{gs_path}"
+      end
+    end
+    # 3. Build-order dependency so GoogleSignIn.framework exists before the
+    #    plugin's compile step references it.
+    if google_signin_target && !target.dependencies.any? { |d| d.target == google_signin_target }
+      target.add_dependency(google_signin_target)
+    end
+  end
 end
