@@ -1682,6 +1682,133 @@ const SyncEngine = (() => {
     return Math.min(STEADY_STATE_MAX_MS, Math.max(STEADY_STATE_MIN_MS, parsed));
   }
 
+  // E-2: dispatcher-level write-site hook. Called from `_runMergeCycle`
+  // when the network is offline; enqueues a buffer pointer per dirty
+  // record so the user's offline writes drain FIFO on reconnect (with
+  // `originalWallClock` preserved per strategy doc Q3 lock).
+  //
+  // Per Pick A on E-2-PROMPT TODO #1, the buffer is pointer-based, so
+  // this helper does NOT mutate the local record — it captures a
+  // `(store, recordId, originalWallClock)` triplet for replay.
+  //
+  // Feature-detect SyncBuffer: a partial test stub / pre-deploy
+  // environment may omit it. Missing module is a silent fall-through
+  // (local-first contract: correctness from local state alone).
+  function _maybeBufferOnOffline(storeKey, recordId, originalWallClock) {
+    if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+    if (typeof SyncAuth === 'undefined' || typeof SyncAuth.getCurrentUser !== 'function') return;
+    const user = SyncAuth.getCurrentUser();
+    if (!user || !user.uid) return;
+    if (typeof Platform === 'undefined' || !Platform || !Platform.network) return;
+    if (typeof Platform.network.isOnline !== 'function') return;
+    if (Platform.network.isOnline() !== false) return;
+    if (typeof SyncBuffer === 'undefined' || typeof SyncBuffer.enqueue !== 'function') return;
+    try {
+      const ret = SyncBuffer.enqueue({
+        store: storeKey,
+        recordId: String(recordId == null ? '' : recordId),
+        originalWallClock: (typeof originalWallClock === 'number') ? originalWallClock : Date.now(),
+      });
+      // enqueue is async; swallow rejection so caller never breaks.
+      if (ret && typeof ret.then === 'function') {
+        ret.catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  // E-2: enumerate dirty records in a per-store snapshot + enqueue
+  // pointers via _maybeBufferOnOffline. Lightweight Pick (a) on audit:
+  // when offline, the dispatcher walks each store's snapshot and
+  // enqueues one pointer per record. Compaction in `SyncBuffer.enqueue`
+  // (for COMPACTABLE_STORES) keeps the queue bounded under chatty UX.
+  //
+  // Payload shapes are the same per-store envelopes consumed by
+  // `_filterFutureRecordsInSnapshot` — meds[], history.sessions[],
+  // rest_log{date}, presets[], bfrb_events.events[],
+  // distractions.flow{}/.pomodoro{}.
+  function _enqueueDirtyRecordsForStore(storeKey, snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !snapshot.payload) return;
+    const payload = snapshot.payload;
+    const now = Date.now();
+
+    if (storeKey === 'meds') {
+      const arr = Array.isArray(payload.meds) ? payload.meds : [];
+      for (const r of arr) {
+        if (!r || typeof r.id === 'undefined' || r.id === null) continue;
+        const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : now;
+        _maybeBufferOnOffline('meds', String(r.id), wc);
+      }
+      return;
+    }
+    if (storeKey === 'history') {
+      const arr = Array.isArray(payload.sessions) ? payload.sessions : [];
+      for (const r of arr) {
+        if (!r || typeof r.id === 'undefined' || r.id === null) continue;
+        const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : now;
+        _maybeBufferOnOffline('history', String(r.id), wc);
+      }
+      return;
+    }
+    if (storeKey === 'rest_log') {
+      const obj = (payload.rest_log && typeof payload.rest_log === 'object'
+                   && !Array.isArray(payload.rest_log))
+        ? payload.rest_log : {};
+      for (const dateKey of Object.keys(obj)) {
+        const day = obj[dateKey];
+        const wc = (day && day.sleep && typeof day.sleep.updatedAt === 'number')
+          ? day.sleep.updatedAt
+          : ((day && typeof day.updatedAt === 'number') ? day.updatedAt : now);
+        _maybeBufferOnOffline('rest_log', String(dateKey), wc);
+      }
+      return;
+    }
+    if (storeKey === 'presets') {
+      const arr = Array.isArray(payload.presets) ? payload.presets : [];
+      for (const r of arr) {
+        if (!r || typeof r.id === 'undefined' || r.id === null) continue;
+        const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : now;
+        _maybeBufferOnOffline('presets', String(r.id), wc);
+      }
+      return;
+    }
+    if (storeKey === 'bfrb_events') {
+      const arr = Array.isArray(payload.events) ? payload.events : [];
+      for (const r of arr) {
+        if (!r || typeof r.takenAt !== 'number') continue;
+        const dev = (typeof r.deviceId === 'string' && r.deviceId) ? r.deviceId : 'no-device';
+        const recordId = dev + '-' + r.takenAt;
+        const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.takenAt;
+        _maybeBufferOnOffline('bfrb_events', recordId, wc);
+      }
+      return;
+    }
+    if (storeKey === 'distractions') {
+      const flow = (payload.flow && typeof payload.flow === 'object') ? payload.flow : {};
+      const pomo = (payload.pomodoro && typeof payload.pomodoro === 'object') ? payload.pomodoro : {};
+      for (const sessionId of Object.keys(flow)) {
+        const entries = Array.isArray(flow[sessionId]) ? flow[sessionId] : [];
+        for (const r of entries) {
+          if (!r || typeof r.timestamp !== 'number') continue;
+          const dev = (typeof r.deviceId === 'string' && r.deviceId) ? r.deviceId : 'no-device';
+          const recordId = 'flow-' + sessionId + '-' + dev + '-' + r.timestamp;
+          const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.timestamp;
+          _maybeBufferOnOffline('distractions', recordId, wc);
+        }
+      }
+      for (const sessionId of Object.keys(pomo)) {
+        const entries = Array.isArray(pomo[sessionId]) ? pomo[sessionId] : [];
+        for (const r of entries) {
+          if (!r || typeof r.timestamp !== 'number') continue;
+          const dev = (typeof r.deviceId === 'string' && r.deviceId) ? r.deviceId : 'no-device';
+          const recordId = 'pomodoro-' + sessionId + '-' + dev + '-' + r.timestamp;
+          const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.timestamp;
+          _maybeBufferOnOffline('distractions', recordId, wc);
+        }
+      }
+      return;
+    }
+  }
+
   function _runMergeCycle() {
     // Re-entry guard — coalesce overlapping ticks. A slow merge cycle
     // (e.g. an IDB read on tick N still running) means tick N+1 returns
@@ -1698,6 +1825,42 @@ const SyncEngine = (() => {
       const state = SyncState.get();
       if (state === 'hydrating' || state === 'error') return;
     }
+
+    // E-2: offline-branch early-return. If `Platform.network.isOnline()`
+    // is defined AND returns `false`, enumerate dirty records per store
+    // + enqueue buffer pointers, then short-circuit the cloud-write
+    // phase. The next `online` event triggers `SyncBuffer.drain()`
+    // (wired in the network listener at lines ~1911-1955 below).
+    // Defensive feature-detect — when Platform.network is unavailable
+    // (legacy environments, partial test stubs), fall through to the
+    // normal merge cycle.
+    let _offlineBuffered = false;
+    try {
+      if (typeof Platform !== 'undefined' && Platform && Platform.network
+          && typeof Platform.network.isOnline === 'function'
+          && Platform.network.isOnline() === false
+          && typeof SyncBuffer !== 'undefined' && typeof SyncBuffer.enqueue === 'function') {
+        for (const { key, adapter } of SYNCED_STORES) {
+          if (!adapter || typeof adapter.read !== 'function') continue;
+          let snapshot;
+          try { snapshot = adapter.read(); } catch (_) { continue; }
+          if (snapshot && typeof snapshot.then === 'function') {
+            // Async snapshot (History) — fire-and-forget the enumeration.
+            // Errors swallowed; the next online tick rebuilds the queue.
+            const captureKey = key;
+            snapshot.then((resolved) => {
+              try { _enqueueDirtyRecordsForStore(captureKey, resolved); } catch (_) {}
+            }).catch(() => {});
+          } else {
+            try { _enqueueDirtyRecordsForStore(key, snapshot); } catch (_) {}
+          }
+        }
+        _offlineBuffered = true;
+      }
+    } catch (_) {
+      // Defensive — buffer enqueue path must never break the dispatcher.
+    }
+    if (_offlineBuffered) return;
 
     _steadyRunInFlight = true;
     const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null, distractions: null };
@@ -1908,7 +2071,7 @@ const SyncEngine = (() => {
       catch (_) { _steadyVisibilityHandler = null; }
     }
 
-    // Feature-detect Platform.network (E-2 will land it; E-1b is
+    // Feature-detect Platform.network (E-2 landed it; E-1b is
     // forward-compatible). If `onChange` returns an unsubscribe
     // function, stash it so stopSteadyState() can call it.
     try {
@@ -1932,6 +2095,21 @@ const SyncEngine = (() => {
             if (_steadyTimer == null && visible) {
               _steadyTimer = setInterval(() => _runMergeCycle(), interval);
             }
+            // E-2: also drain any buffered pending ops authored
+            // during the offline window. Defensive feature-detect
+            // so a missing module (legacy environments / partial
+            // test stubs) doesn't break the steady-state resume.
+            // Failures are logged + swallowed — buffer correctness
+            // is opportunistic; the steady-state cycle will pick up
+            // any remaining changes on the next tick regardless.
+            try {
+              if (typeof SyncBuffer !== 'undefined' && typeof SyncBuffer.drain === 'function') {
+                SyncBuffer.drain().catch((err) => {
+                  try { console.warn('[SyncEngine] SyncBuffer.drain failed during online handler:', err); }
+                  catch (_e) {}
+                });
+              }
+            } catch (_) {}
           }
         });
         if (typeof unsub === 'function') {

@@ -1371,6 +1371,35 @@ input:focus:not(:focus-visible) {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Sync Toast (E-2 — first real cloud-sync visible toast surface).
+   Mirrors .undo-toast byte-identical (class names swapped). Audit
+   Risk #6 flagged a possible bottom: 90px tweak for overlap with
+   undo-toast during simultaneous fire — deferred to a follow-up if
+   Phase 4 SMOKE surfaces it. */
+.sync-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 200;
+}
+
+.sync-toast.sync-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .undo-btn {
   background: none;
   border: none;

@@ -436,6 +436,153 @@ const Platform = (() => {
     onAuthChange:   authOnChange,
   };
 
+  // ── Network (E-2) ─────────────────────────────────────────────────────
+  //
+  // Online/offline detection + subscription. Mirrors the Platform.auth
+  // shim's web-vs-native pattern.
+  //
+  // - Web build: uses `navigator.onLine` for the synchronous `isOnline()`
+  //   read and `window.addEventListener('online'/'offline')` for change
+  //   notifications. `navigator.onLine` is famously unreliable on flaky
+  //   Wi-Fi (Chrome / Safari / Firefox each have their quirks) — false
+  //   positives are documented in the E-2 audit Risk #2; the
+  //   dispatcher's offline-branch falls through to the 30s steady-state
+  //   cycle on a spurious `true`, so correctness is preserved.
+  // - Native build (Capacitor iOS): routes to
+  //   `window.Capacitor.Plugins.Network` (from `@capacitor/network@^6.0.0`).
+  //   `Network.getStatus()` is async, so the shim caches the latest
+  //   `connected` value at module init + refreshes the cache on the
+  //   `networkStatusChange` listener; subsequent `isOnline()` calls
+  //   return the cached value synchronously.
+  //
+  // The dispatcher hook in `js/sync-engine.js:1911-1942` was wired
+  // forward-compatibly in E-1b — once this shim lands, the existing
+  // feature-detect block activates retroactively (steady-state
+  // pause-on-offline + resume-on-online become real). The
+  // `onChange` callback shape is duck-typed for `status.connected`,
+  // `status.online`, and bare `true`/`false` — matching both Capacitor
+  // and our web wrapper.
+  //
+  // Contract:
+  //   - `isOnline()` is synchronous and returns a `boolean`. Defaults
+  //     to `true` if the runtime offers no signal (safe default —
+  //     forces the steady-state cycle to try; correctness via cloud-
+  //     layer error handling).
+  //   - `onChange(callback)` returns an unsubscribe fn.
+  //   - All methods are independent of the cloud-sync flag — network
+  //     detection is useful even when sync is off (future surfaces).
+
+  let _networkCachedOnline = null;
+  const _networkListeners = [];
+  let _networkInitialized = false;
+  let _networkNativeUnavailableLogged = false;
+  let _networkNativePluginHandle = null;
+  let _networkWebHandlersInstalled = false;
+
+  function _networkPlugin() {
+    const np = plugins && plugins.Network;
+    if (!np) {
+      if (!_networkNativeUnavailableLogged) {
+        try { console.warn('[Platform.network] Capacitor Network plugin unavailable — rebuild iOS app via `npx cap sync ios`.'); } catch (_e) {}
+        _networkNativeUnavailableLogged = true;
+      }
+      return null;
+    }
+    return np;
+  }
+
+  function _dispatchNetworkChange(status) {
+    // Normalize a duck-typed status into the canonical
+    // `{ connected: boolean }` shape consumed by listeners
+    // (including the existing `js/sync-engine.js:1911-1942` hook).
+    const online = (status && (status.connected === true || status.online === true)) ||
+                   (status === 'online') || (status === true);
+    const normalized = { connected: online === true };
+    _networkCachedOnline = normalized.connected;
+    for (const cb of _networkListeners.slice()) {
+      try { cb(normalized); }
+      catch (_e) { /* listener errors must not break the chain */ }
+    }
+  }
+
+  function _networkInit() {
+    if (_networkInitialized) return;
+    _networkInitialized = true;
+
+    if (isNative) {
+      const np = _networkPlugin();
+      if (!np) return;
+      // Seed the synchronous cache from the plugin's async getStatus().
+      // Until the first promise resolves, `isOnline()` falls back to
+      // `navigator.onLine` (which the WKWebView still exposes), so the
+      // dispatcher's pre-resolve offline check stays safe.
+      try {
+        const p = np.getStatus();
+        if (p && typeof p.then === 'function') {
+          p.then((status) => {
+            const online = (status && status.connected === true) || status === true;
+            _networkCachedOnline = online;
+          }).catch(() => {});
+        }
+      } catch (_e) {}
+      // Subscribe once so future native status changes refresh the
+      // cache AND notify listeners. We stash the handle so a future
+      // teardown can remove the listener.
+      try {
+        if (typeof np.addListener === 'function') {
+          const handle = np.addListener('networkStatusChange', (status) => {
+            _dispatchNetworkChange(status);
+          });
+          _networkNativePluginHandle = handle;
+        }
+      } catch (_e) {}
+      return;
+    }
+
+    // Web branch: install the `online`/`offline` window listeners
+    // exactly once. Each listener fires a normalized payload to
+    // every registered callback.
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+        && !_networkWebHandlersInstalled) {
+      _networkWebHandlersInstalled = true;
+      try {
+        window.addEventListener('online', () => _dispatchNetworkChange({ connected: true }));
+        window.addEventListener('offline', () => _dispatchNetworkChange({ connected: false }));
+      } catch (_e) {}
+    }
+  }
+
+  function networkIsOnline() {
+    // Defensive cache hit first — native branch updates this on every
+    // status change; web branch updates it only via the event listeners.
+    // If the cache is unset, fall through to navigator.onLine, which
+    // both branches share (WKWebView still exposes it on iOS).
+    if (_networkCachedOnline !== null) return _networkCachedOnline === true;
+    if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
+      return navigator.onLine;
+    }
+    return true; // safe default — see audit Risk #2
+  }
+
+  function networkOnChange(callback) {
+    if (typeof callback !== 'function') return () => {};
+    // Lazy init — first listener registration arms the underlying
+    // event/plugin wiring. Subsequent calls are no-ops.
+    if (!_networkInitialized) {
+      try { _networkInit(); } catch (_e) {}
+    }
+    _networkListeners.push(callback);
+    return function unsubscribe() {
+      const idx = _networkListeners.indexOf(callback);
+      if (idx !== -1) _networkListeners.splice(idx, 1);
+    };
+  }
+
+  const network = {
+    isOnline: networkIsOnline,
+    onChange: networkOnChange,
+  };
+
   return {
     isNative,
     haptic,
@@ -444,5 +591,6 @@ const Platform = (() => {
     cancelNotification,
     requestNotificationPermission,
     auth,
+    network,
   };
 })();
