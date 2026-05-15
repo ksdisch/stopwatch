@@ -1388,6 +1388,141 @@ reached.
 
 ---
 
+## 2026-05-15 — E-2: offline buffer + Platform.network shim (Stage E reliability follow-up 1/2)
+
+### What We Built
+
+Stage E shipped end-to-end last session, but two reliability caveats
+remained on the table: (1) buffered ops while offline silently
+dropped, and (2) `setInterval` polling unreliable when tabs unfocus
+(Chrome throttles; iOS Safari suspends). E-2 closes the offline-write
+gap with a pending-op queue in a dedicated IDB DB + a new
+`Platform.network` shim; E-3 (real-time listeners) is the proper fix
+for the polling caveat and lands next.
+
+- **New `js/sync-buffer.js` (~441 LOC IIFE).** Owns a new IndexedDB
+  database `tempo_sync_db v1` with a single `pending_ops` object store
+  (`keyPath: 'id'` autoincrement + `enqueuedAt` index). Public API:
+  `enqueue({ store, recordId, originalWallClock })`, `drain()`,
+  `count()`, `_open()`. Hard cap at `PENDING_OP_CAP = 1000` ops; on
+  overflow, evicts oldest by `enqueuedAt` ascending and emits
+  `SyncEngine.emit('buffer-overflow', { droppedCount })`. Per-field-LWW
+  op compaction over 4 chatty stores
+  (`history-note` / `history-tags` / `rest_log-sleep` / `presets`) — if
+  the queue already contains a pending op for the same `(store,
+  recordId)` and the store is in `COMPACTABLE_STORES`, the older op is
+  replaced (saves quota on rapid edits).
+- **New `js/sync-toast.js` (~141 LOC IIFE).** First real cloud-sync
+  visible toast surface. `Toast.bufferOverflow(droppedCount)` paints a
+  `.sync-toast` div at module init with the verbatim PLAN.md copy
+  ("Buffered changes exceeded cap; oldest changes lost — please
+  re-sync."), auto-dismisses after 5s with a 200ms fade. DOM idiom
+  mirrors the existing undo-toast in `js/ui.js:354-462`. Module init
+  registers `SyncEngine.on('buffer-overflow', ...)` so the listener is
+  live as soon as `sync-toast.js` loads. `Toast.medsArrival` deferred
+  with a TODO marker per scope decision (B-4 ticket carries forward).
+- **`js/platform.js` extension (+148 LOC).** New
+  `Platform.network = { isOnline, onChange }` namespace mirroring the
+  existing `Platform.auth` web-vs-native pattern. Web branch uses
+  `navigator.onLine` + `window 'online'/'offline'` events. Native
+  branch routes to `window.Capacitor.Plugins.Network`
+  (`@capacitor/network@^6.0.0` newly installed via `npm install` +
+  `npx cap sync ios` to regen `ios/App/Podfile`). The engine-side
+  `Platform.network.onChange` block in `js/sync-engine.js` was wired
+  back in E-1b but dormant — it activates retroactively now that the
+  shim lands.
+- **`js/sync-engine.js` extensions (~180 LOC added across 4 surgical
+  edits).** Dispatcher-level offline-branch in `_runMergeCycle`:
+  enumerates dirty records per synced store via the new
+  `_enqueueDirtyRecordsForStore` helper + the `_maybeBufferOnOffline`
+  early-return gate; on the online path (current default), behaves
+  exactly as before. Online-event drain trigger lands inside the
+  existing `Platform.network.onChange` block — one-line `SyncBuffer.drain()`
+  call. Steady-state pause-on-offline + resume-on-online behavior
+  activates retroactively.
+- **+22 tests** (baseline 543 → 565, all passing via kapture on a
+  fresh-origin port 8767 to bypass cache poisoning).
+  `tests/sync-buffer.test.js` (14 new cases): compaction, FIFO,
+  cap-overflow + buffer-overflow emit, cross-restart persistence,
+  IDB-unavailable fast-path, `SYNC_DISABLED` + unauthenticated
+  short-circuits, per-store dedup. `tests/sync-engine.test.js`
+  extension (8 new cases): dispatcher offline-branch hook fires
+  `SyncBuffer.enqueue`, online-event drain trigger, no-op when
+  flag-off / signed-out, F13 gate coordination,
+  `Platform.network` feature-detect, drain-failure non-fatal in
+  online handler, toast listener integration.
+- **`sw.js` bump:** `stopwatch-v80-e1e-stage-e-complete` →
+  `stopwatch-v81-e2-offline-buffer`; two new `ASSETS` entries
+  (`./js/sync-buffer.js` + `./js/sync-toast.js`).
+- **9th use of the brief-driven scope-expansion clause**
+  (`.claude/agents/engine-implementer.md` lines 30-44). Paths covered:
+  `tests/index.html` (3 new `<script>` tags) + `sw.js` (CACHE_NAME +
+  ASSETS) + `package.json` + `package-lock.json` + `ios/App/Podfile` +
+  `index.html` (2 new script tags) + `css/styles.css` (`.sync-toast`
+  rule block). All explicitly enumerated in both the audit and the
+  brief.
+- **Orchestrator sandbox branch pattern.** Sandbox branch
+  `claude/orchestrator-e2` carried the brief skeleton (`164ca99`),
+  resolutions (`ce9cd74`), and audit (`0be15e9`) before the feat
+  branch `feat/sync-stage-e2-offline-buffer` was created from it. The
+  3 sandbox commits ride along to main with the feat merge; the
+  sandbox itself is not merged.
+
+### Suggested Next Steps
+
+- **E-3 (real-time `onSnapshot` listeners).** Closes caveat (a) at the
+  source — drops polling latency from <30s to <1s and eliminates the
+  iOS-Safari-suspends-`setInterval` reliability gap. Includes the
+  downlevel-client warning toast (`Toast.downlevelWarning`) and a
+  per-store subscribe-on-hydrate registry. Last big sync work item.
+- **Caveat (b) cleanup PR.** Distinguish "first sync" from "force
+  re-sync" in B-3's read-cloud-first guard so Stage D handoff stops
+  re-firing on every manual "Push to cloud" attempt after first push.
+- **Caveat (c) cleanup PR.** Wire a UI re-render hook into
+  `SyncEngine.on('merge-complete', ...)` so the Presets drawer (and
+  similar surfaces) refreshes without close + reopen. E-3 listeners +
+  this hook are complementary — both should land together.
+- **Caveat (d) cleanup PR.** Coalesce the 12-per-cycle
+  `[SyncEngine] reconcile history sessionId collision (cloud wins)`
+  log spam in `js/sync-merge-history.js` into a single summary line.
+  Small warm-up PR.
+- **Backlog GC.** Drop legacy `bfrbs_global` / `flow_bfrbs` /
+  `pomodoro_bfrbs` buckets + `tempo_bfrb_events_migration_v1` marker
+  (E-1d-f3 carry-over); drop pre-migration flat-array distractions +
+  `tempo_distractions_migration_v1` marker (E-1d-f8 carry-over). No
+  fixed schedule.
+- **Native CAS parity follow-up.** `runTransaction` is still web-only
+  (queued from E-1b). Worth queuing the Capacitor branch before E-3
+  listeners ship.
+- **Kyle's two-device manual validation for E-2.** Phone DevTools →
+  Network → "Offline"; log a dose; confirm `SyncBuffer.count() === 1`
+  in console. Toggle back online; confirm the doseLog entry shows up
+  on laptop within ~30s. Real E2E offline-write check.
+
+**Non-blocking open questions surfaced this session (post-merge
+follow-up):**
+- `typeof SyncBuffer !== 'undefined'` defensive check at
+  `js/sync-engine.js:1842` is unreachable in practice (const
+  declaration creates lexical binding; `delete window.SyncBuffer`
+  doesn't make `typeof SyncBuffer` become `'undefined'`). The
+  secondary `typeof SyncBuffer.enqueue === 'function'` check IS the
+  real feature-detect. Worth revisiting for symmetry with the audit's
+  wording.
+- Pre-existing E-1e tests #6 + #11 flakiness around `visibilityState`
+  mocking in kapture/headless — NOT introduced by E-2; exists on
+  main. Worth a separate small-cleanup PR.
+
+### Commits
+```
+164ca99 docs(sync-impl): E-2 brief skeleton with 7 TODO blocks
+ce9cd74 docs(sync-impl): E-2 RESOLUTIONS codified (Kyle, all 7 TODOs)
+0be15e9 docs(sync-impl): E-2 audit (sync-auditor Phase 1)
+<SHA>   feat(sync): offline buffer + Platform.network shim (E-2)
+<SHA>   docs(sync-impl): move E-2 to shipped, mark PR #<N>
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v80-e1e-stage-e-complete';
+const CACHE_NAME = 'stopwatch-v81-e2-offline-buffer';
 const ASSETS = [
   './',
   './index.html',
@@ -16,7 +16,9 @@ const ASSETS = [
   './js/sync-firebase-config.js',
   './js/sync-flag.js',
   './js/sync-firestore.js',
+  './js/sync-buffer.js',
   './js/sync-engine.js',
+  './js/sync-toast.js',
   './js/sync-manual-dedupe.js',
   './js/sync-merge-meds.js',
   './js/sync-merge-history.js',

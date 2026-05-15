@@ -1813,3 +1813,445 @@ describe('E-1e — flag-removal regression (Pick A on TODO #5)', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// E-2 — buffer-engine integration
+// ────────────────────────────────────────────────────────────────────────
+//
+// Verifies the dispatcher's offline-branch write-site hook in
+// `_runMergeCycle` + the steady-state `online`-event drain trigger at
+// the network-status listener (around js/sync-engine.js:2074-2118).
+//
+// Mocking pattern: hot-swap `Platform.network.isOnline` /
+// `Platform.network.onChange` on a transient `window.Platform.network`
+// override (the real Platform stays untouched), plus hot-swap
+// `SyncBuffer.enqueue` and `SyncBuffer.drain` as spies on the
+// real SyncBuffer module surface. Restored in finally.
+
+function _e2_saveEnv() {
+  return {
+    sync_flag_storage: localStorage.getItem('tempo_sync_enabled'),
+    hydrated_all: localStorage.getItem('tempo_sync_hydrated_all'),
+    flag_enabled: SyncFlag.isEnabled,
+    auth_getCurrentUser: SyncAuth.getCurrentUser,
+    merge_meds: SyncMergeMeds.merge,
+    merge_history: SyncMergeHistory.merge,
+    merge_rest_log: SyncMergeRestLog.merge,
+    merge_presets: SyncMergePresets.merge,
+    merge_bfrb: SyncMergeBfrb.merge,
+    merge_distractions: SyncMergeDistractions.merge,
+    sync_buffer_enqueue: (typeof SyncBuffer !== 'undefined') ? SyncBuffer.enqueue : undefined,
+    sync_buffer_drain:   (typeof SyncBuffer !== 'undefined') ? SyncBuffer.drain   : undefined,
+    prev_platform: window.Platform,
+    prev_syncState: window.SyncState,
+    prev_setInterval: window.setInterval,
+    prev_clearInterval: window.clearInterval,
+    real_history: window.History,
+    real_recoveryUI: window.RecoveryUI,
+  };
+}
+
+function _e2_restore(saved) {
+  window.setInterval = saved.prev_setInterval;
+  window.clearInterval = saved.prev_clearInterval;
+  try { SyncEngine.stopSteadyState(); } catch (_) {}
+  SyncFlag.isEnabled = saved.flag_enabled;
+  SyncAuth.getCurrentUser = saved.auth_getCurrentUser;
+  SyncMergeMeds.merge = saved.merge_meds;
+  SyncMergeHistory.merge = saved.merge_history;
+  SyncMergeRestLog.merge = saved.merge_rest_log;
+  SyncMergePresets.merge = saved.merge_presets;
+  SyncMergeBfrb.merge = saved.merge_bfrb;
+  SyncMergeDistractions.merge = saved.merge_distractions;
+  if (typeof SyncBuffer !== 'undefined') {
+    if (saved.sync_buffer_enqueue !== undefined) SyncBuffer.enqueue = saved.sync_buffer_enqueue;
+    if (saved.sync_buffer_drain !== undefined)   SyncBuffer.drain   = saved.sync_buffer_drain;
+  }
+  if (saved.sync_flag_storage === null) localStorage.removeItem('tempo_sync_enabled');
+  else localStorage.setItem('tempo_sync_enabled', saved.sync_flag_storage);
+  if (saved.hydrated_all === null) localStorage.removeItem('tempo_sync_hydrated_all');
+  else localStorage.setItem('tempo_sync_hydrated_all', saved.hydrated_all);
+  if (saved.prev_platform === undefined) delete window.Platform;
+  else window.Platform = saved.prev_platform;
+  if (saved.prev_syncState === undefined) delete window.SyncState;
+  else window.SyncState = saved.prev_syncState;
+  if (saved.real_history === undefined) delete window.History;
+  else window.History = saved.real_history;
+  if (saved.real_recoveryUI === undefined) delete window.RecoveryUI;
+  else window.RecoveryUI = saved.real_recoveryUI;
+}
+
+// Install a tracked Platform.network with isOnline + onChange. Returns
+// { setOnline(bool), fireChange(status), unsubCalls, listeners }.
+function _e2_installNetwork(online) {
+  const state = {
+    online: online !== false,
+    listeners: [],
+    unsubCalls: 0,
+  };
+  window.Platform = {
+    network: {
+      isOnline: () => state.online,
+      onChange: (cb) => {
+        state.listeners.push(cb);
+        return () => { state.unsubCalls++; };
+      },
+    },
+  };
+  state.setOnline = (v) => { state.online = v; };
+  state.fireChange = (status) => {
+    for (const cb of state.listeners.slice()) {
+      try { cb(status); } catch (_) {}
+    }
+  };
+  return state;
+}
+
+// Sentinel merge stubs that always succeed — used when the dispatcher
+// runs the normal online path.
+function _e2_stubAllMerges() {
+  SyncMergeMeds.merge = () => null;
+  SyncMergeHistory.merge = () => null;
+  SyncMergeRestLog.merge = () => null;
+  SyncMergePresets.merge = () => null;
+  SyncMergeBfrb.merge = () => null;
+  SyncMergeDistractions.merge = () => null;
+}
+
+describe('E-2 — buffer-engine integration', () => {
+
+  it('1. dispatcher offline-branch enqueues a buffer pointer per dirty record (meds)', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+      _e2_installNetwork(false);  // offline
+
+      // Spy on SyncBuffer.enqueue.
+      const enqueueCalls = [];
+      SyncBuffer.enqueue = function (opts) {
+        enqueueCalls.push(opts);
+        return Promise.resolve({ ok: true, id: enqueueCalls.length });
+      };
+
+      // Stub MedsManager.snapshotForSync to seed 2 dirty meds records.
+      const prevMedsSnap = MedsManager.snapshotForSync;
+      MedsManager.snapshotForSync = () => ({
+        deviceId: 'dev-x',
+        schemaVersion: 1,
+        payload: {
+          meds: [
+            { id: 'm1', schemaVersion: 1, name: 'A', updatedAt: 1000 },
+            { id: 'm2', schemaVersion: 1, name: 'B', updatedAt: 1001 },
+          ],
+        },
+      });
+
+      // Stub other adapters to return empty so they don't add noise.
+      const prevPresetsSnap = Presets.snapshotForSync;
+      Presets.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { presets: [] } });
+      const prevBfrbSnap = BfrbEvents.snapshotForSync;
+      BfrbEvents.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { events: [] } });
+      const prevDistSnap = Distractions.snapshotForSync;
+      Distractions.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { flow: {}, pomodoro: {} } });
+      // History.snapshotForSync (async) + RecoveryUI.snapshotForSync stubs.
+      window.History = {
+        getDeviceId: () => 'dev-x',
+        snapshotForSync: async () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { sessions: [] } }),
+      };
+      window.RecoveryUI = {
+        snapshotForSync: () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { rest_log: {} } }),
+      };
+
+      try {
+        SyncEngine._runMergeCycle();
+
+        // Filter to meds enqueues (other stores enqueue 0 since payload is empty).
+        const medsEnqueues = enqueueCalls.filter((c) => c.store === 'meds');
+        assertEqual(medsEnqueues.length, 2,
+          'dispatcher enqueued 2 buffer pointers for 2 dirty meds records');
+        assertEqual(medsEnqueues[0].recordId, 'm1', 'first pointer is m1');
+        assertEqual(medsEnqueues[1].recordId, 'm2', 'second pointer is m2');
+        assertEqual(medsEnqueues[0].originalWallClock, 1000,
+          'originalWallClock preserved verbatim from record updatedAt');
+      } finally {
+        MedsManager.snapshotForSync = prevMedsSnap;
+        Presets.snapshotForSync = prevPresetsSnap;
+        BfrbEvents.snapshotForSync = prevBfrbSnap;
+        Distractions.snapshotForSync = prevDistSnap;
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('2. no-op when sync flag is off — SyncBuffer.enqueue NOT invoked', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '0');
+      SyncFlag.isEnabled = () => false;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+      _e2_installNetwork(false);
+
+      const enqueueCalls = [];
+      SyncBuffer.enqueue = function (opts) {
+        enqueueCalls.push(opts);
+        return Promise.resolve({ ok: true, id: 1 });
+      };
+
+      SyncEngine._runMergeCycle();
+      assertEqual(enqueueCalls.length, 0,
+        'no enqueue calls when flag is off (early flag-guard bail)');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('3. no-op when signed out — SyncBuffer.enqueue NOT invoked', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      // Signed out — getCurrentUser returns null.
+      SyncAuth.getCurrentUser = () => null;
+      delete window.SyncState;
+      _e2_installNetwork(false);
+
+      const enqueueCalls = [];
+      SyncBuffer.enqueue = function (opts) {
+        enqueueCalls.push(opts);
+        return Promise.resolve({ ok: true, id: 1 });
+      };
+
+      SyncEngine._runMergeCycle();
+      assertEqual(enqueueCalls.length, 0,
+        'no enqueue calls when signed out (early auth-guard bail)');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('4. Platform.network shim absent — dispatcher runs normal merge cycle, no enqueue', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+      delete window.Platform;  // Platform shim absent
+
+      const enqueueCalls = [];
+      SyncBuffer.enqueue = function (opts) {
+        enqueueCalls.push(opts);
+        return Promise.resolve({ ok: true, id: 1 });
+      };
+
+      let mergeCalls = 0;
+      _e2_stubAllMerges();
+      SyncMergeMeds.merge = () => { mergeCalls++; };
+      SyncMergeHistory.merge = () => { mergeCalls++; };
+      SyncMergeRestLog.merge = () => { mergeCalls++; };
+      SyncMergePresets.merge = () => { mergeCalls++; };
+      SyncMergeBfrb.merge = () => { mergeCalls++; };
+      SyncMergeDistractions.merge = () => { mergeCalls++; };
+
+      let threw = false;
+      try { SyncEngine._runMergeCycle(); }
+      catch (_) { threw = true; }
+      assertEqual(threw, false, 'must not throw when Platform.network is undefined');
+      assertEqual(enqueueCalls.length, 0, 'no enqueue calls (no offline-branch trigger)');
+      // Normal merge cycle proceeded — all 6 merges ran.
+      assertEqual(mergeCalls, 6,
+        'feature-detect fall-through runs the 6 per-store merges');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('5. online — dispatcher runs normal merge cycle, NO enqueue', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+      _e2_installNetwork(true);  // ONLINE
+
+      const enqueueCalls = [];
+      SyncBuffer.enqueue = function (opts) {
+        enqueueCalls.push(opts);
+        return Promise.resolve({ ok: true, id: 1 });
+      };
+
+      let mergeCalls = 0;
+      _e2_stubAllMerges();
+      SyncMergeMeds.merge = () => { mergeCalls++; };
+      SyncMergeHistory.merge = () => { mergeCalls++; };
+      SyncMergeRestLog.merge = () => { mergeCalls++; };
+      SyncMergePresets.merge = () => { mergeCalls++; };
+      SyncMergeBfrb.merge = () => { mergeCalls++; };
+      SyncMergeDistractions.merge = () => { mergeCalls++; };
+
+      SyncEngine._runMergeCycle();
+      assertEqual(enqueueCalls.length, 0, 'no buffer enqueue when online');
+      assertEqual(mergeCalls, 6, 'all 6 stores ran normal merge cycle');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('6. SyncBuffer.enqueue missing (partial-stub feature-detect) — dispatcher offline-branch falls through to normal cycle', () => {
+    // The dispatcher's offline branch gates on `typeof SyncBuffer !== 'undefined'
+    // && typeof SyncBuffer.enqueue === 'function'`. Since `const SyncBuffer`
+    // is a module-level binding, deleting `window.SyncBuffer` doesn't hide
+    // the const from the engine's typeof check. The realistic feature-detect
+    // gap is when an older/partial SyncBuffer module ships without an
+    // `enqueue` method — we simulate that here by hot-swapping `.enqueue`
+    // to undefined.
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+      _e2_installNetwork(false);
+
+      // Strip enqueue so the dispatcher's typeof check fails.
+      SyncBuffer.enqueue = undefined;
+
+      let mergeCalls = 0;
+      _e2_stubAllMerges();
+      SyncMergeMeds.merge = () => { mergeCalls++; };
+      SyncMergeHistory.merge = () => { mergeCalls++; };
+      SyncMergeRestLog.merge = () => { mergeCalls++; };
+      SyncMergePresets.merge = () => { mergeCalls++; };
+      SyncMergeBfrb.merge = () => { mergeCalls++; };
+      SyncMergeDistractions.merge = () => { mergeCalls++; };
+
+      let threw = false;
+      try { SyncEngine._runMergeCycle(); }
+      catch (_) { threw = true; }
+      assertEqual(threw, false, 'must not throw when SyncBuffer.enqueue is missing');
+      // SyncBuffer.enqueue missing → offline branch falls through to normal cycle.
+      assertEqual(mergeCalls, 6,
+        'normal cycle runs when SyncBuffer.enqueue is undefined (defensive fall-through)');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('7. online-event fires SyncBuffer.drain via Platform.network.onChange (steady-state listener)', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+
+      // Override visibilityState so startSteadyState arms the timer.
+      const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true, value: 'visible', writable: false,
+        });
+      } catch (_) {}
+
+      // Install Platform.network and capture the registered callback.
+      const net = _e2_installNetwork(true);
+
+      // Spy on SyncBuffer.drain — should fire when online event triggers.
+      let drainCalls = 0;
+      SyncBuffer.drain = function () {
+        drainCalls++;
+        return Promise.resolve({ ok: true, drained: 0, failed: 0 });
+      };
+
+      // Use a setInterval spy so the steady-state timer is observable.
+      const intervalCalls = [];
+      window.setInterval = function (cb, ms) {
+        intervalCalls.push({ cb, ms });
+        return { _fake: intervalCalls.length };
+      };
+
+      try {
+        SyncEngine.startSteadyState();
+        // The startSteadyState code calls Platform.network.onChange, which
+        // we captured into net.listeners.
+        assert(net.listeners.length >= 1,
+          'Platform.network.onChange registered a callback');
+
+        // Fire the online event with the canonical { connected: true } shape.
+        net.fireChange({ connected: true });
+
+        assertEqual(drainCalls, 1, 'SyncBuffer.drain invoked once on online event');
+      } finally {
+        try { SyncEngine.stopSteadyState(); } catch (_) {}
+        // Restore visibilityState.
+        try {
+          if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
+          else delete document.visibilityState;
+        } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('8. drain failure during online-handler does not throw (best-effort + log)', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e2-test' });
+      delete window.SyncState;
+
+      // Override visibilityState.
+      const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true, value: 'visible', writable: false,
+        });
+      } catch (_) {}
+
+      const net = _e2_installNetwork(true);
+
+      // SyncBuffer.drain rejects — the online-handler should swallow.
+      SyncBuffer.drain = function () {
+        return Promise.reject(new Error('drain failed'));
+      };
+
+      // Capture console.warn so we can verify the engine logs the failure.
+      const warnings = [];
+      const prevWarn = console.warn;
+      console.warn = function () {
+        warnings.push(Array.prototype.slice.call(arguments).map(String).join(' '));
+      };
+
+      // setInterval spy.
+      window.setInterval = function () { return { _fake: 1 }; };
+
+      try {
+        SyncEngine.startSteadyState();
+
+        // Fire online event — should call drain which rejects.
+        let threw = false;
+        try { net.fireChange({ connected: true }); }
+        catch (_) { threw = true; }
+        assertEqual(threw, false, 'online handler must not throw on drain rejection');
+      } finally {
+        console.warn = prevWarn;
+        try { SyncEngine.stopSteadyState(); } catch (_) {}
+        try {
+          if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
+          else delete document.visibilityState;
+        } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+});
