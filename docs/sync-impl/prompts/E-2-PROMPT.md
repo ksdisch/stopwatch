@@ -81,6 +81,64 @@ Plus:
 
 ---
 
+## RESOLUTIONS (Kyle, 2026-05-15 — all 7 TODOs resolved as auditor-recommended)
+
+All 7 TODOs resolved as auditor-recommended (Pick A across the board).
+**Engine-implementer reads `docs/sync-impl/audits/E-2-AUDIT.md` for the
+authoritative spec; the framing language in the TODO sections below is
+preserved for historical context but overridden by the audit.**
+
+- **TODO #1 (buffer scope of capture):** **Pick A** — Op = pointer to
+  local record state (`{ store, recordId, originalWallClock, enqueuedAt }`).
+  Dispatcher detects offline and enqueues a pointer per dirty record;
+  drain reads current local state and routes through the per-store merge
+  fn. The 11 engine write sites stay untouched. Compaction is trivial
+  (dedup by `(store, recordId)`).
+- **TODO #2 (IDB store ownership):** **Pick A** — New `tempo_sync_db v1`
+  inside `js/sync-buffer.js` with its own connection. Clean module boundary;
+  sync-buffer independently revertable; matches the meds/presets/bfrb/
+  distractions pattern of stores owning their own storage. Two open IDB
+  connections at runtime is accepted cost.
+- **TODO #3 (op-compaction policy):** **Pick A** — Per-field-LWW stores
+  only. `COMPACTABLE_STORES = ['history-note', 'history-tags', 'rest_log-sleep', 'presets']`
+  documents the list explicitly. The other 6 stores are append-only with
+  sub-second timestamps; no compaction needed.
+- **TODO #4 (pending-op cap):** **Pick A** — Constant `PENDING_OP_CAP = 1000`
+  in `js/sync-buffer.js`. Immutable per release. No localStorage override.
+- **TODO #5 (toast UX for overflow):** **Pick A** — New `js/sync-toast.js`
+  module with `Toast.bufferOverflow(droppedCount)`. First real cloud-sync
+  visible toast. Mirrors the existing `undo-toast` DOM pattern from
+  `js/ui.js:354-462` + `css/styles.css:1350-1369`. **Phase 4 ui-wirer
+  FIRES** for the new toast surface. Bonus opportunity: wire up the
+  deferred B-4 `meds-arrival` listener in the same module as a freebie
+  (engine-implementer's call whether to bundle it in this PR or defer).
+- **TODO #6 (optimistic-vs-ack write semantics):** **Pick A** — Optimistic.
+  Local write happens immediately; UI reflects the change instantly;
+  buffer enqueues the cloud-push for replay on reconnect. No visible
+  "pending sync" indicator in E-2.
+- **TODO #7 (Native Network plugin install):** **Pick A** — Install
+  `@capacitor/network@^6.0.0` in this PR. Add to `package.json` deps;
+  `npm install` updates `package-lock.json`; `npx cap sync ios` updates
+  `ios/App/Podfile` + pulls the plugin's native module. Web branch uses
+  `navigator.onLine` + `window 'online'/'offline'` events. Native branch
+  routes to `window.Capacitor.Plugins.Network`. `Platform.network` shim
+  in `js/platform.js` mirrors the existing `Platform.auth` shim's
+  web-vs-native branch.
+
+**Phase 4 ui-wirer FIRES** in SMOKE-ONLY mode (4th invocation in Stage E
+including the three E-1d sub-PRs + E-1e). The audit's affected-files
+table will explicitly enumerate `js/sync-toast.js` + `index.html` (one
+new `<script>` tag) + `css/styles.css` (toast style additions). Phase 4
+verifies: boot path clean, no console errors, synthetic
+`buffer-overflow` event paints the toast, toast auto-dismisses after 5s,
+one neighboring route still renders. NO real Firestore connection
+required — the buffer + toast are testable end-to-end in isolation.
+
+The audit's affected-files table will codify the exact line targets,
+test-case names, and CACHE_NAME bump value (`v80` → `v81`).
+
+---
+
 ## What's true about the codebase E-2 edits
 
 **`js/sync-engine.js:1911-1942` already feature-detects `Platform.network`.**
