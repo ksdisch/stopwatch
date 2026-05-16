@@ -1,10 +1,10 @@
-// E-2: SyncToast — visible toast surface for cloud-sync user notifications.
+// E-2 + E-3: SyncToast — visible toast surface for cloud-sync user notifications.
 //
 // First real cloud-sync visible toast in the codebase. Mirrors the existing
 // `.undo-toast` DOM pattern from `js/ui.js:354-462` + `css/styles.css`'s
 // `.undo-toast` block (lines 1350-1369) — single global toast surface
 // appended to `document.body` so it survives route changes. No concurrent-
-// toast queue; a second overflow within the visible window replaces the
+// toast queue; a second toast within the visible window replaces the
 // first (acceptable UX for an edge-case warning).
 //
 // **Current scope (E-2):**
@@ -18,18 +18,38 @@
 //     buffer's `enqueue()` overflow path paints the toast without coupling
 //     `js/sync-buffer.js` to DOM (engine-no-DOM rule).
 //
+// **E-3 scope additions:**
+//   - Toast.downlevelWarning(remoteSchemaVersion) — paints the F19a
+//     refuse-writeback warning with the verbatim PLAN.md §E-3 line 409
+//     copy: 'Your phone is on a newer version. This device is read-only
+//     until you update.' The `remoteSchemaVersion` parameter is accepted
+//     for parity with the `'refuse-writeback'` event payload but NOT
+//     surfaced in the copy (matches `bufferOverflow`'s `droppedCount`
+//     pattern — Kyle's UX choice).
+//   - Once-per-session dedup via the module-scope `_downlevelWarningShown`
+//     flag (Pick A on E-3-PROMPT TODO #5). The F19a contract has THREE
+//     code paths that emit `'refuse-writeback'` (per-record CAS in each
+//     of the 6 sync-merge files, per-merge-fn cloud-side gate in each
+//     file, and the dispatcher snapshot pre-filter in `js/sync-engine.js`);
+//     without dedup the user could see dozens of toasts per cycle. The
+//     flag resets on `'auth-change'` with `null` (the existing sign-out
+//     contract from `js/sync-auth.js:48-50`) so the warning re-arms on
+//     next sign-in.
+//   - `_resetForTests()` — test-only escape hatch returned on the public
+//     API. Resets the dedup flag + tears down any visible toast so each
+//     test case starts from a clean baseline. NOT production API; tests
+//     under `tests/sync-toast.test.js` consume it directly.
+//
 // **Deferred:** B-4 `Toast.medsArrival(medId, count)` — the
 // `sync-merge-meds.js` merge fn already emits `meds-arrival` events but no
 // UI surface paints them. Audit flags this as a freebie the implementer
-// MAY land in E-2. SKIPPED in this PR to keep the commit message clean
-// ("E-2 offline buffer" vs "E-2 offline buffer + B-4 medsArrival
-// activation"). The listener wire-up is a single-line addition in a
-// future B-4 follow-up — TODO marker below.
+// MAY land in E-2; explicitly NOT bundled in E-3 either (separate PR).
 //
 // **No engine logic in this module** — pure DOM + event listener.
-// Engine-implementer ships in lockstep with the buffer module; Phase 4
-// ui-wirer does SMOKE-ONLY verification via a synthetic
-// `SyncEngine.emit('buffer-overflow', { droppedCount: 5 })`.
+// Engine-implementer ships in lockstep with the engine modules; Phase 4
+// ui-wirer does SMOKE-ONLY verification via synthetic
+// `SyncEngine.emit('buffer-overflow', { droppedCount: 5 })` /
+// `SyncEngine.emit('refuse-writeback', { store: 'meds', remoteSchemaVersion: 99 })`.
 
 const Toast = (() => {
 
@@ -38,6 +58,13 @@ const Toast = (() => {
   const VISIBLE_CLASS = 'sync-visible';
   const AUTO_DISMISS_MS = 5000;
   const FADE_OUT_MS = 200;
+
+  // E-3: once-per-session dedup flag for `downlevelWarning`. The F19a
+  // refuse-writeback contract has 3 code paths that can emit; without
+  // this flag the user could see N toasts per cycle. Flag resets on
+  // `'auth-change'` with `null` (sign-out) so the warning re-arms on
+  // next sign-in.
+  let _downlevelWarningShown = false;
 
   // Single active timeout slot so a second toast replaces the first
   // cleanly (no double-dismiss race).
@@ -99,6 +126,35 @@ const Toast = (() => {
     _show('Buffered changes exceeded cap; oldest changes lost — please re-sync.');
   }
 
+  // E-3 public — paint the downlevel-client warning. Triggered by the
+  // `'refuse-writeback'` event emitted from the F19a contract's three
+  // existing layers (per-record CAS, per-merge-fn cloud-side gate,
+  // dispatcher snapshot pre-filter). Once-per-session dedup via the
+  // module-scope `_downlevelWarningShown` flag (Pick A on TODO #5):
+  // first event paints + sets the flag; subsequent events `console.warn`
+  // only. Flag resets on the sign-out signal so the warning re-arms on
+  // next sign-in. The `remoteSchemaVersion` param is accepted for
+  // parity with the event payload but NOT surfaced in the copy.
+  function downlevelWarning(/* remoteSchemaVersion */) {
+    if (_downlevelWarningShown) {
+      try { console.warn('[Toast] downlevel-warning suppressed (already shown this session)'); }
+      catch (_) {}
+      return;
+    }
+    // Verbatim PLAN.md §E-3 line 409 copy.
+    _show('Your phone is on a newer version. This device is read-only until you update.');
+    _downlevelWarningShown = true;
+  }
+
+  // Test-only escape hatch — resets the dedup flag + tears down any
+  // visible toast so each test case starts from a clean baseline.
+  // Production callers SHOULD NOT call this — the natural reset path
+  // is `SyncEngine.emit('auth-change', null)` (the sign-out signal).
+  function _resetForTests() {
+    try { _downlevelWarningShown = false; } catch (_) {}
+    try { _hide(); } catch (_) {}
+  }
+
   // ── Module init: subscribe to engine events ──────────────────────────
   //
   // Lazy registration: if SyncEngine.on isn't available at script-load
@@ -117,12 +173,44 @@ const Toast = (() => {
       });
     } catch (_) {}
 
+    // E-3: downlevel-warning listener. Consumes the `'refuse-writeback'`
+    // event emitted by the F19a contract's three layers (per-record CAS
+    // in each of 6 sync-merge files, per-merge-fn cloud-side gate in
+    // each file, and the dispatcher snapshot pre-filter in
+    // `js/sync-engine.js`). Dedup happens inside `downlevelWarning` via
+    // the module-scope flag; this listener fires on every event but
+    // paints at most once per session.
+    try {
+      SyncEngine.on('refuse-writeback', (payload) => {
+        const ver = (payload && typeof payload.remoteSchemaVersion === 'number')
+          ? payload.remoteSchemaVersion
+          : 0;
+        try { downlevelWarning(ver); } catch (_) {}
+      });
+    } catch (_) {}
+
+    // E-3: sign-out reset listener. The existing `'auth-change'` event
+    // from `js/sync-auth.js:48-50` carries the new user (or `null` on
+    // sign-out). When `null` arrives, reset the dedup flag so the
+    // downlevel warning re-arms on next sign-in. We re-use this
+    // existing event rather than introducing a brand-new `'sign-out'`
+    // event (matches the audit's recommended shape — fewer cross-module
+    // contracts to maintain).
+    try {
+      SyncEngine.on('auth-change', (user) => {
+        if (!user) {
+          _downlevelWarningShown = false;
+        }
+      });
+    } catch (_) {}
+
     // TODO (B-4 freebie — deferred per implementer scope decision):
     // wire `Toast.medsArrival(medId, count)` here to consume the
     // `meds-arrival` event emitted by `js/sync-merge-meds.js:10`. The
     // method body would mirror `bufferOverflow` — a single-line listener
-    // registration. Splitting this into its own PR keeps the E-2 commit
-    // message focused; no functional reason it couldn't land alongside.
+    // registration. Splitting this into its own PR keeps the E-2/E-3
+    // commit messages focused; no functional reason it couldn't land
+    // alongside.
   }
 
   try { _registerListener(); }
@@ -130,6 +218,9 @@ const Toast = (() => {
 
   return {
     bufferOverflow,
+    downlevelWarning,
+    // Test-only escape hatch — see `_resetForTests` definition above.
+    _resetForTests,
     // Internal hooks exposed for tests + future surfaces.
     _hide,
     _show,

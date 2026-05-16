@@ -796,7 +796,7 @@ describe('SyncEngine.on/off/emit — emitter happy path', () => {
 //   6.  Interval clamp — boundary inclusive at MAX (600000).
 //   7.  Interval clamp — below MIN clamps up to MIN.
 //   8.  Interval clamp — above MAX clamps down to MAX.
-//   9.  Interval clamp — NaN falls back to default 30000.
+//   9.  Interval clamp — NaN falls back to default 300000 (E-3 bump).
 //   10. Dispatcher invokes all 4 stub merge functions in order
 //       (meds → history → rest_log → presets).
 //   11. Dispatcher tolerates per-store throws.
@@ -936,8 +936,8 @@ describe('SyncEngine — startSteadyState (E-1b)', () => {
       SyncEngine.startSteadyState();
       assertEqual(spyInterval.calls.length, 1,
         'setInterval called exactly once');
-      assertEqual(spyInterval.calls[0].interval, 30000,
-        'default interval is 30000ms');
+      assertEqual(spyInterval.calls[0].interval, 300000,
+        'default interval is 300000ms (E-3: STEADY_STATE_DEFAULT_MS bumped from 30000 → 300000 per Pick A on TODO #1)');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }
@@ -995,14 +995,14 @@ describe('SyncEngine — startSteadyState (E-1b)', () => {
     }
   });
 
-  it('clamp — NaN (non-numeric string) falls back to default 30000', () => {
+  it('clamp — NaN (non-numeric string) falls back to default 300000', () => {
     const saved = _e1b_saveSteadyEnv();
     try {
       localStorage.setItem('tempo_sync_steady_interval_ms', 'abc');
       const spyInterval = _e1b_makeSetIntervalSpy();
       window.setInterval = spyInterval;
       SyncEngine.startSteadyState();
-      assertEqual(spyInterval.calls[0].interval, 30000, 'NaN → default 30000');
+      assertEqual(spyInterval.calls[0].interval, 300000, 'NaN → default 300000 (E-3 bump)');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }
@@ -2248,6 +2248,397 @@ describe('E-2 — buffer-engine integration', () => {
           if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
           else delete document.visibilityState;
         } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// E-3 — listener lifecycle + per-store dispatch seam (extension block).
+// Inherits the _e2_saveEnv / _e2_restore / _e2_installNetwork / _e2_stubAllMerges
+// helpers from the E-2 block above.
+// ────────────────────────────────────────────────────────────────────────
+
+// Build a per-store SyncFirestore.subscribe spy. Captures (path, callback)
+// pairs and returns per-store unsubscribe functions. Test code can fire
+// the captured callback directly to simulate an onSnapshot snapshot.
+function _e3_makeSubscribeSpy() {
+  const subs = [];
+  const spy = function (path, callback) {
+    const entry = { path, callback, unsubCalls: 0 };
+    entry.unsub = function () { entry.unsubCalls++; };
+    subs.push(entry);
+    return entry.unsub;
+  };
+  spy.subs = subs;
+  spy.byStore = (k) => subs.filter(s => s.path.endsWith('/' + k));
+  return spy;
+}
+
+describe('E-3 — listener lifecycle + per-store dispatch', () => {
+
+  it('1. _runMergeCycleForStore invokes the correct per-store merge fn only (not all 6)', async () => {
+    // Flush any pending promises from prior tests (E-2 test 7/8 may leak
+    // a pending _runMergeCycle's `_steadyRunInFlight=true` latch — the
+    // real merge fns return promises that settle on the microtask queue
+    // AFTER the test fn returns. We sleep briefly to let those settle.
+    await new Promise(r => setTimeout(r, 100));
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+      _e2_installNetwork(true);
+
+      const order = [];
+      SyncMergeMeds.merge = () => { order.push('meds'); };
+      SyncMergeHistory.merge = () => { order.push('history'); };
+      SyncMergeRestLog.merge = () => { order.push('rest_log'); };
+      SyncMergePresets.merge = () => { order.push('presets'); };
+      SyncMergeBfrb.merge = () => { order.push('bfrb_events'); };
+      SyncMergeDistractions.merge = () => { order.push('distractions'); };
+
+      SyncEngine._runMergeCycleForStore('history');
+
+      assertArrayEqual(order, ['history'],
+        'only history merge fn called — other 5 untouched');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('2. _runMergeCycleForStore honors SyncState early-exit on "hydrating"', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      // Install SyncState that reports hydrating — the per-store merge
+      // must NOT run.
+      window.SyncState = {
+        get: () => 'hydrating',
+        set: () => true,
+      };
+      _e2_installNetwork(true);
+      _e2_stubAllMerges();
+
+      let medsCalls = 0;
+      SyncMergeMeds.merge = () => { medsCalls++; };
+
+      SyncEngine._runMergeCycleForStore('meds');
+
+      assertEqual(medsCalls, 0,
+        'meds merge NOT called during hydrating SyncState');
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('3. _runMergeCycleForStore flips SyncState to "ready" after sync merge fn', async () => {
+    // Flush pending promises from E-2 tests so _steadyRunInFlight is false.
+    await new Promise(r => setTimeout(r, 100));
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+
+      const stateLog = [];
+      let currentState = 'ready';
+      window.SyncState = {
+        get: () => currentState,
+        set: (s) => {
+          stateLog.push(s);
+          currentState = s;
+          return true;
+        },
+      };
+      _e2_installNetwork(true);
+      _e2_stubAllMerges();
+
+      SyncEngine._runMergeCycleForStore('meds');
+
+      // The dispatcher flips to hydrating before the merge runs, then
+      // back to ready in _finalizePerStore.
+      const lastSet = stateLog[stateLog.length - 1];
+      assertEqual(lastSet, 'ready',
+        'SyncState restored to "ready" after sync merge — last set was: ' + JSON.stringify(stateLog));
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('4. startSteadyState arms 6 listeners via SyncFirestore.subscribe', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+      _e2_installNetwork(true);
+      _e2_stubAllMerges();
+
+      // Override visibilityState to 'visible' so startSteadyState doesn't
+      // short-circuit on hidden.
+      const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true, value: 'visible', writable: false,
+        });
+      } catch (_) {}
+
+      // Stub setInterval so we don't arm a real timer.
+      window.setInterval = () => ({ _fake: 1 });
+
+      const prevSubscribe = SyncFirestore.subscribe;
+      const spy = _e3_makeSubscribeSpy();
+      SyncFirestore.subscribe = spy;
+
+      try {
+        SyncEngine.startSteadyState();
+        assertEqual(spy.subs.length, 6,
+          'startSteadyState armed 6 per-store listeners');
+        const stores = spy.subs.map(s => s.path.split('/').pop()).sort();
+        assertArrayEqual(stores,
+          ['bfrb_events', 'distractions', 'history', 'meds', 'presets', 'rest_log'],
+          'paths cover all 6 SYNCED_STORES entries');
+      } finally {
+        try { SyncEngine.stopSteadyState(); } catch (_) {}
+        SyncFirestore.subscribe = prevSubscribe;
+        try {
+          if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
+          else delete document.visibilityState;
+        } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('5. stopSteadyState tears down listeners — each unsub called once', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+      _e2_installNetwork(true);
+      _e2_stubAllMerges();
+
+      const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true, value: 'visible', writable: false,
+        });
+      } catch (_) {}
+
+      window.setInterval = () => ({ _fake: 1 });
+
+      const prevSubscribe = SyncFirestore.subscribe;
+      const spy = _e3_makeSubscribeSpy();
+      SyncFirestore.subscribe = spy;
+
+      try {
+        SyncEngine.startSteadyState();
+        assertEqual(spy.subs.length, 6, 'armed 6 listeners pre-stop');
+
+        SyncEngine.stopSteadyState();
+        for (const sub of spy.subs) {
+          assertEqual(sub.unsubCalls, 1,
+            'unsub for ' + sub.path + ' called exactly once on stop');
+        }
+      } finally {
+        SyncFirestore.subscribe = prevSubscribe;
+        try {
+          if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
+          else delete document.visibilityState;
+        } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('6. Network online resume re-subscribes + fires catch-up _runMergeCycle', async () => {
+    // Flush pending promises so _steadyRunInFlight is false.
+    await new Promise(r => setTimeout(r, 100));
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+      const net = _e2_installNetwork(true);
+
+      // Stub merges + count cycle calls.
+      let cycleCalls = 0;
+      SyncMergeMeds.merge = () => { cycleCalls++; };
+      SyncMergeHistory.merge = () => {};
+      SyncMergeRestLog.merge = () => {};
+      SyncMergePresets.merge = () => {};
+      SyncMergeBfrb.merge = () => {};
+      SyncMergeDistractions.merge = () => {};
+
+      const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true, value: 'visible', writable: false,
+        });
+      } catch (_) {}
+
+      window.setInterval = () => ({ _fake: 1 });
+      window.clearInterval = () => {};
+
+      const prevSubscribe = SyncFirestore.subscribe;
+      const spy = _e3_makeSubscribeSpy();
+      SyncFirestore.subscribe = spy;
+
+      try {
+        SyncEngine.startSteadyState();
+        const armedFirst = spy.subs.length;
+        assertEqual(armedFirst, 6, 'first arm: 6 listeners');
+
+        // Reset the cycleCalls counter — startSteadyState itself does NOT
+        // fire a cycle; we want to count ONLY the catch-up cycle.
+        cycleCalls = 0;
+
+        // Fire offline → unsubscribes
+        net.fireChange({ connected: false });
+
+        // Fire online — re-subscribes + catch-up cycle.
+        net.fireChange({ connected: true });
+
+        // After online: another 6 fresh subscribes (round 2).
+        assertEqual(spy.subs.length, armedFirst + 6,
+          '6 fresh subscribes after online resume');
+        // Catch-up cycle fired meds merge at least once.
+        assert(cycleCalls >= 1,
+          'catch-up _runMergeCycle fired (meds merge count: ' + cycleCalls + ')');
+      } finally {
+        SyncFirestore.subscribe = prevSubscribe;
+        try { SyncEngine.stopSteadyState(); } catch (_) {}
+        try {
+          if (visDesc) Object.defineProperty(document, 'visibilityState', visDesc);
+          else delete document.visibilityState;
+        } catch (_) {}
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('7. Symmetry fix at line 1842 — offline path works with just `typeof SyncBuffer.enqueue === "function"`', async () => {
+    // E-3 TODO #8 Pick A: the outer `typeof SyncBuffer !== "undefined"` guard
+    // was redundant. The simplified check `typeof SyncBuffer.enqueue === "function"`
+    // is the actual feature-detect and must still gate the offline-branch.
+    // Flush pending promises so _steadyRunInFlight is false.
+    await new Promise(r => setTimeout(r, 100));
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+      _e2_installNetwork(false);  // OFFLINE
+
+      // Stub the enqueue so the offline path can write through it.
+      const calls = [];
+      SyncBuffer.enqueue = function (opts) {
+        calls.push(opts);
+        return Promise.resolve({ ok: true, id: calls.length });
+      };
+
+      // Seed dirty meds via snapshotForSync stub.
+      const prevMedsSnap = MedsManager.snapshotForSync;
+      MedsManager.snapshotForSync = () => ({
+        deviceId: 'dev-x', schemaVersion: 1,
+        payload: { meds: [{ id: 'm-sym', schemaVersion: 1, updatedAt: 1000 }] },
+      });
+      // Quiet other adapters.
+      const prevPresetsSnap = Presets.snapshotForSync;
+      Presets.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { presets: [] } });
+      window.History = { getDeviceId: () => 'dev-x', snapshotForSync: async () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { sessions: [] } }) };
+      window.RecoveryUI = { snapshotForSync: () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { rest_log: {} } }) };
+      _e2_stubAllMerges();
+
+      try {
+        SyncEngine._runMergeCycle();
+        // The offline branch should have called enqueue for the dirty med.
+        const medsEnqueues = calls.filter(c => c.store === 'meds');
+        assert(medsEnqueues.length >= 1,
+          'offline path enqueued meds dirty record via typeof SyncBuffer.enqueue gate (calls=' + JSON.stringify(calls) + ')');
+      } finally {
+        MedsManager.snapshotForSync = prevMedsSnap;
+        Presets.snapshotForSync = prevPresetsSnap;
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('8. _subscribeAllStores is a no-op when no signed-in user', () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => null;  // unauth
+      delete window.SyncState;
+
+      const prevSubscribe = SyncFirestore.subscribe;
+      const spy = _e3_makeSubscribeSpy();
+      SyncFirestore.subscribe = spy;
+
+      try {
+        SyncEngine._subscribeAllStores();
+        assertEqual(spy.subs.length, 0,
+          'no subscribes when signed out');
+      } finally {
+        SyncFirestore.subscribe = prevSubscribe;
+      }
+    } finally {
+      _e2_restore(saved);
+    }
+  });
+
+  it('9. Per-store snapshot triggers debounced merge cycle via _scheduleStoreMerge', async () => {
+    const saved = _e2_saveEnv();
+    try {
+      localStorage.setItem('tempo_sync_enabled', '1');
+      SyncFlag.isEnabled = () => true;
+      SyncAuth.getCurrentUser = () => ({ uid: 'u-e3-test' });
+      delete window.SyncState;
+
+      let medsCalls = 0;
+      SyncMergeMeds.merge = () => { medsCalls++; };
+      SyncMergeHistory.merge = () => {};
+      SyncMergeRestLog.merge = () => {};
+      SyncMergePresets.merge = () => {};
+      SyncMergeBfrb.merge = () => {};
+      SyncMergeDistractions.merge = () => {};
+
+      const prevSubscribe = SyncFirestore.subscribe;
+      const spy = _e3_makeSubscribeSpy();
+      SyncFirestore.subscribe = spy;
+
+      try {
+        SyncEngine._subscribeAllStores();
+        const medsSub = spy.byStore('meds')[0];
+        assert(medsSub, 'meds sub registered');
+
+        // Fire one snapshot.
+        medsSub.callback({ docs: [], count: 0 });
+        // Immediately: merge hasn't fired (debounced 1s).
+        assertEqual(medsCalls, 0, 'merge debounced — not fired immediately');
+
+        // Wait for the debounce window to pass.
+        await new Promise(r => setTimeout(r, 1100));
+        assertEqual(medsCalls, 1, 'merge fired exactly once after debounce');
+      } finally {
+        SyncFirestore.subscribe = prevSubscribe;
       }
     } finally {
       _e2_restore(saved);

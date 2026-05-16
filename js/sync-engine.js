@@ -84,15 +84,19 @@ const SyncEngine = (() => {
   // fire crisply for UX.
   const HYDRATE_STORE_ORDER = ['rest_log', 'meds', 'presets', 'history'];
 
-  // E-1b: steady-state merge timer constants. Default interval 30s
-  // (matches PLAN.md §E-1 spec). Clamp range [10s, 10m] — a 10s minimum
-  // protects against runaway polling; the 10m maximum keeps cross-
-  // device propagation latency bounded even if someone hand-tunes the
-  // interval. E-1e removed the `tempo_sync_steady_state_enabled` dev
-  // flag — steady-state runs by default when the four-condition gate
-  // (signed in + master sync flag on + all-hydrated + no Stage D
-  // handoff) is satisfied, gated only by `_maybeAutoStartSteady`.
-  const STEADY_STATE_DEFAULT_MS = 30000;
+  // E-1b: steady-state merge timer constants. E-3 BUMPED default
+  // interval from 30s to 5 minutes (300_000ms) per Pick A on TODO #1
+  // in docs/sync-impl/prompts/E-3-PROMPT.md — listeners are now the
+  // primary cross-device propagation mechanism, the timer is a
+  // defensive fallback only. Clamp range [10s, 10m] — a 10s minimum
+  // still protects against runaway polling if a future caller bumps
+  // it back down; the 10m maximum keeps cross-device propagation
+  // latency bounded even if someone hand-tunes the interval. E-1e
+  // removed the `tempo_sync_steady_state_enabled` dev flag — steady-
+  // state runs by default when the four-condition gate (signed in +
+  // master sync flag on + all-hydrated + no Stage D handoff) is
+  // satisfied, gated only by `_maybeAutoStartSteady`.
+  const STEADY_STATE_DEFAULT_MS = 300000;
   const STEADY_STATE_MIN_MS = 10000;
   const STEADY_STATE_MAX_MS = 600000;
   const STEADY_STATE_INTERVAL_KEY = 'tempo_sync_steady_interval_ms';
@@ -304,19 +308,28 @@ const SyncEngine = (() => {
       payload: {},
     };
     let skipped = 0;
+    // E-3: track the highest skipped `schemaVersion` so the post-walk
+    // emit can carry it on the `'refuse-writeback'` payload. We trail
+    // the existing filter walk in-place — no second pass.
+    let highestSkippedVersion = 0;
     const isFuture = (typeof Schema !== 'undefined' && typeof Schema.isFutureRecord === 'function')
       ? Schema.isFutureRecord
       : () => false;
+    function _trackSkip(record) {
+      skipped++;
+      const v = (record && typeof record.schemaVersion === 'number') ? record.schemaVersion : 0;
+      if (v > highestSkippedVersion) highestSkippedVersion = v;
+    }
 
     if (key === 'meds') {
       const arr = Array.isArray(snapshot.payload.meds) ? snapshot.payload.meds : [];
-      out.payload.meds = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+      out.payload.meds = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
     } else if (key === 'history') {
       // history payload may carry other top-level fields beyond sessions;
       // preserve them via shallow clone, then overwrite sessions.
       out.payload = Object.assign({}, snapshot.payload);
       const arr = Array.isArray(snapshot.payload.sessions) ? snapshot.payload.sessions : [];
-      out.payload.sessions = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+      out.payload.sessions = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
     } else if (key === 'rest_log') {
       // payload.rest_log is an OBJECT keyed by date. Filter the whole
       // day entry if its envelope (or its sleep sub-record) is future-
@@ -329,12 +342,18 @@ const SyncEngine = (() => {
       for (const k of Object.keys(obj)) {
         const day = obj[k];
         if (isFuture(day) || (day && isFuture(day.sleep))) {
-          skipped++;
+          // Track the highest version we can read — prefer the day
+          // envelope, fall back to the sleep sub-record's version.
+          if (isFuture(day)) {
+            _trackSkip(day);
+          } else if (day && isFuture(day.sleep)) {
+            _trackSkip(day.sleep);
+          }
           continue;
         }
         let dayOut = day;
         if (day && Array.isArray(day.naps)) {
-          const okNaps = day.naps.filter(n => { if (isFuture(n)) { skipped++; return false; } return true; });
+          const okNaps = day.naps.filter(n => { if (isFuture(n)) { _trackSkip(n); return false; } return true; });
           if (okNaps.length !== day.naps.length) dayOut = Object.assign({}, day, { naps: okNaps });
         }
         filtered[k] = dayOut;
@@ -342,12 +361,12 @@ const SyncEngine = (() => {
       out.payload.rest_log = filtered;
     } else if (key === 'presets') {
       const arr = Array.isArray(snapshot.payload.presets) ? snapshot.payload.presets : [];
-      out.payload.presets = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+      out.payload.presets = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
     } else if (key === 'bfrb_events') {
       out.payload = Object.assign({}, snapshot.payload);
       const arr = Array.isArray(snapshot.payload.events) ? snapshot.payload.events : null;
       if (arr) {
-        out.payload.events = arr.filter(r => { if (isFuture(r)) { skipped++; return false; } return true; });
+        out.payload.events = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
       }
     } else if (key === 'distractions') {
       // payload shape: { flow: {sessionId: [entries]}, pomodoro: same }.
@@ -359,7 +378,7 @@ const SyncEngine = (() => {
         const filteredMap = {};
         for (const sid of Object.keys(map)) {
           const entries = Array.isArray(map[sid]) ? map[sid] : [];
-          filteredMap[sid] = entries.filter(e => { if (isFuture(e)) { skipped++; return false; } return true; });
+          filteredMap[sid] = entries.filter(e => { if (isFuture(e)) { _trackSkip(e); return false; } return true; });
         }
         out.payload[ctx] = filteredMap;
       }
@@ -370,17 +389,41 @@ const SyncEngine = (() => {
     }
 
     out.__skipped = skipped;
+
+    // E-3: F19a observability emit — surface the dispatcher's local-side
+    // refuse-writeback event so `js/sync-toast.js`'s `downlevelWarning`
+    // listener can paint a user-facing message. Once-per-store emit
+    // (the dispatcher sees ≤6 future-schema events per cycle even in
+    // worst-case bursts; the toast's `_downlevelWarningShown` dedup
+    // collapses cross-store duplicates to one toast per session).
+    if (skipped > 0) {
+      try {
+        const localVer = (typeof Schema !== 'undefined' && typeof Schema.SCHEMA_VERSION === 'number')
+          ? Schema.SCHEMA_VERSION
+          : 0;
+        emit('refuse-writeback', {
+          store: key,
+          remoteSchemaVersion: highestSkippedVersion,
+          localSchemaVersion: localVer,
+        });
+      } catch (_) { /* listener errors must not break the filter chain */ }
+    }
+
     return out;
   }
 
   // ── Event emitter ─────────────────────────────────────────────────────
   //
-  // Minimal sync emitter. Future events:
-  //   - 'auth-change'      (B-2)  payload: { uid, email } | null
-  //   - 'merge-complete'   (D-2)  payload: { store, count }
-  //   - 'meds-arrival'     (B-4)  payload: { medId }
-  //   - 'error'            (any)  payload: { stage, error }
-  // B-1 ships the API surface but does not emit any event.
+  // Minimal sync emitter. Events:
+  //   - 'auth-change'             (B-2)  payload: { uid, email } | null
+  //   - 'merge-complete'          (D-2)  payload: { store, count }
+  //   - 'meds-arrival'            (B-4)  payload: { medId }
+  //   - 'error'                   (any)  payload: { stage, error }
+  //   - 'refuse-writeback'        (E-3)  payload: { store, remoteSchemaVersion, localSchemaVersion, remoteDeviceId? }
+  //   - 'listener-connected'      (E-3)  payload: { store }
+  //   - 'listener-disconnected'   (E-3)  payload: { store, reason? }
+  // B-1 shipped the API surface; downstream PRs (B-3 / C-1 / D-1 /
+  // E-1c→f8 / E-1e / E-2 / E-3) wire emits at the relevant call sites.
 
   function on(event, callback) {
     if (typeof event !== 'string' || typeof callback !== 'function') return;
@@ -1836,10 +1879,17 @@ const SyncEngine = (() => {
     // normal merge cycle.
     let _offlineBuffered = false;
     try {
+      // E-3 (TODO #8 Pick A): the outer `typeof SyncBuffer !== 'undefined'`
+      // check was unreachable in practice — the lexical binding from
+      // `const SyncBuffer = (() => {...})()` at the top of
+      // `js/sync-buffer.js` is always defined when the script loads.
+      // The secondary `typeof SyncBuffer.enqueue === 'function'` check
+      // IS the real feature-detect. One-line cleanup; identical runtime
+      // behavior. (E-2 follow-up symmetry fix.)
       if (typeof Platform !== 'undefined' && Platform && Platform.network
           && typeof Platform.network.isOnline === 'function'
           && Platform.network.isOnline() === false
-          && typeof SyncBuffer !== 'undefined' && typeof SyncBuffer.enqueue === 'function') {
+          && typeof SyncBuffer.enqueue === 'function') {
         for (const { key, adapter } of SYNCED_STORES) {
           if (!adapter || typeof adapter.read !== 'function') continue;
           let snapshot;
@@ -2030,6 +2080,235 @@ const SyncEngine = (() => {
     }
   }
 
+  // ── E-3: real-time onSnapshot listener registry + per-store dispatch ─
+  //
+  // Listeners are the primary cross-device propagation mechanism per
+  // Pick A on TODO #1; the 5-min `STEADY_STATE_DEFAULT_MS` poll is the
+  // defensive fallback. Per-collection subscriptions (6 total — one per
+  // SYNCED_STORES entry) wire up inside `startSteadyState()` next to
+  // the timer arm; they tear down inside `stopSteadyState()` and
+  // pause/resume on visibility + network state changes.
+  //
+  // Listener-driven snapshots invoke `_runMergeCycleForStore(storeKey)`
+  // — a per-store dispatch seam that runs the merge fn for ONE store
+  // only (vs `_runMergeCycle` which iterates all 6). Both paths share:
+  //   - The `_steadyRunInFlight` re-entry guard (concurrent listener +
+  //     timer cycles can't race).
+  //   - The F19a `_filterFutureRecordsInSnapshot` snapshot pre-filter.
+  //   - The F13 SyncState gate (early-exit on 'hydrating' / 'error').
+  //
+  // Trailing 1s debounce per Pick A on TODO #3: bursty snapshots from
+  // another device coalesce into ONE merge call per store. `meds` burst
+  // doesn't delay a single `presets` change — each store has its own
+  // debouncer slot in `_storeDebouncers`.
+  let _listenerUnsubs = new Map();   // storeKey → unsubscribe fn
+  let _storeDebouncers = new Map();  // storeKey → timeoutId
+  const LISTENER_DEBOUNCE_MS = 1000;
+
+  function _runMergeCycleForStore(storeKey) {
+    // Re-entry guard — shared with `_runMergeCycle`. A concurrent
+    // listener-driven cycle MUST NOT overlap a timer-driven cycle.
+    if (_steadyRunInFlight) return;
+
+    // Preconditions — same shape as `_runMergeCycle`. We early-exit
+    // silently on bail conditions so listener bursts during sign-out
+    // / hydrate / error states don't spam the console.
+    if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
+    if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.getCurrentUser === 'function') {
+      const user = SyncAuth.getCurrentUser();
+      if (!user || !user.uid) return;
+    }
+    if (typeof SyncState !== 'undefined' && typeof SyncState.get === 'function') {
+      const state = SyncState.get();
+      if (state === 'hydrating' || state === 'error') return;
+    }
+
+    // Resolve the per-store entry from SYNCED_STORES. Defensive — if
+    // the storeKey doesn't match any registered entry, no-op.
+    let entry = null;
+    for (const e of SYNCED_STORES) {
+      if (e.key === storeKey) { entry = e; break; }
+    }
+    if (!entry) return;
+
+    const moduleByKey = {
+      meds:         (typeof SyncMergeMeds         !== 'undefined') ? SyncMergeMeds         : null,
+      history:      (typeof SyncMergeHistory      !== 'undefined') ? SyncMergeHistory      : null,
+      rest_log:     (typeof SyncMergeRestLog      !== 'undefined') ? SyncMergeRestLog      : null,
+      presets:      (typeof SyncMergePresets      !== 'undefined') ? SyncMergePresets      : null,
+      bfrb_events:  (typeof SyncMergeBfrb         !== 'undefined') ? SyncMergeBfrb         : null,
+      distractions: (typeof SyncMergeDistractions !== 'undefined') ? SyncMergeDistractions : null,
+    };
+    const mod = moduleByKey[storeKey];
+    if (!mod || typeof mod.merge !== 'function') {
+      try { console.warn('[SyncEngine] per-store merge module missing:', storeKey); } catch (_) {}
+      emit('merge-error', { store: storeKey, error: new Error('merge module unavailable for store: ' + storeKey) });
+      return;
+    }
+
+    _steadyRunInFlight = true;
+
+    // F13 dispatcher write gate — flip BEFORE the merge fn runs so
+    // engine-side writes via `SyncState.canWrite()` are blocked while
+    // the listener-driven cycle runs. Restored to 'ready' below in
+    // both sync + async branches.
+    let _stateFlipped = false;
+    if (typeof SyncState !== 'undefined' && typeof SyncState.set === 'function') {
+      try {
+        if (SyncState.set('hydrating')) _stateFlipped = true;
+      } catch (_) { /* defensive — partial-stub envs */ }
+    }
+
+    // F19a snapshot pre-filter — share the same gate `_runMergeCycle`
+    // uses. The filtered snapshot is currently observability-only
+    // (today's merge fns pass null and re-read internally) but the
+    // future-proof contract is in place.
+    let filteredSnapshot = null;
+    const adapter = entry.adapter;
+    if (adapter && typeof adapter.read === 'function') {
+      try {
+        const rawSnapshot = adapter.read();
+        if (rawSnapshot && typeof rawSnapshot.then === 'function') {
+          // Async snapshot (History) — skip the local-side gate this
+          // cycle; the merge fn's cloud-side gate still protects.
+          filteredSnapshot = null;
+        } else {
+          filteredSnapshot = _filterFutureRecordsInSnapshot(storeKey, rawSnapshot);
+          if (filteredSnapshot && filteredSnapshot.__skipped > 0) {
+            try {
+              console.warn('[SyncEngine] dispatcher filtered '
+                           + filteredSnapshot.__skipped
+                           + ' future-schema local records from store: ' + storeKey);
+            } catch (_) {}
+          }
+        }
+      } catch (snapshotErr) {
+        try {
+          console.warn('[SyncEngine] snapshot read failed for ' + storeKey + ':', snapshotErr);
+        } catch (_) {}
+      }
+    }
+
+    function _finalizePerStore(result) {
+      try { emit('merge-complete', { store: storeKey, result }); } catch (_) {}
+      if (_stateFlipped) {
+        try { SyncState.set('ready'); } catch (_) {}
+      }
+      _steadyRunInFlight = false;
+    }
+
+    try {
+      const result = mod.merge(filteredSnapshot);
+      if (result && typeof result.then === 'function') {
+        result.then(
+          (r) => _finalizePerStore({ ok: true, result: r }),
+          (err) => {
+            try { console.warn('[SyncEngine] per-store merge error (' + storeKey + '):', err); }
+            catch (_) {}
+            emit('merge-error', { store: storeKey, error: err });
+            _finalizePerStore({ ok: false, error: err });
+          }
+        );
+      } else {
+        _finalizePerStore({ ok: true, result });
+      }
+    } catch (err) {
+      try { console.warn('[SyncEngine] per-store merge error (' + storeKey + '):', err); }
+      catch (_) {}
+      emit('merge-error', { store: storeKey, error: err });
+      _finalizePerStore({ ok: false, error: err });
+    }
+  }
+
+  // Trailing 1s debounce per-store. First snapshot in a burst queues a
+  // merge; subsequent snapshots within 1s reset the timer; one merge
+  // fires 1s after the last snapshot in the burst. Per-store, so a
+  // burst in `meds` doesn't delay a single change in `presets`.
+  function _scheduleStoreMerge(storeKey) {
+    const existing = _storeDebouncers.get(storeKey);
+    if (existing != null) {
+      try { clearTimeout(existing); } catch (_) {}
+    }
+    const timeoutId = setTimeout(() => {
+      _storeDebouncers.delete(storeKey);
+      try { _runMergeCycleForStore(storeKey); }
+      catch (e) {
+        try { console.warn('[SyncEngine] _runMergeCycleForStore threw:', e); } catch (_) {}
+      }
+    }, LISTENER_DEBOUNCE_MS);
+    _storeDebouncers.set(storeKey, timeoutId);
+  }
+
+  function _subscribeAllStores() {
+    if (typeof SyncFirestore === 'undefined' || typeof SyncFirestore.subscribe !== 'function') return;
+    if (typeof SyncAuth === 'undefined' || typeof SyncAuth.getCurrentUser !== 'function') return;
+    const user = SyncAuth.getCurrentUser();
+    if (!user || !user.uid) return;
+    const uid = user.uid;
+
+    for (const { key } of SYNCED_STORES) {
+      // Idempotent — if a listener for this store is already armed, skip.
+      // Defensive against double-invocation from concurrent visibility +
+      // network resume events.
+      if (_listenerUnsubs.has(key)) continue;
+      try {
+        const captureKey = key;
+        const unsub = SyncFirestore.subscribe(
+          'users/' + uid + '/' + captureKey,
+          function (snap) {
+            // The error branch carries `{ ok: false, error }`; treat as
+            // a disconnect signal so observers can update the UI status.
+            if (snap && snap.ok === false) {
+              try {
+                emit('listener-disconnected', { store: captureKey, reason: 'error' });
+              } catch (_) {}
+              return;
+            }
+            // Happy path — debounce + dispatch to the per-store merge fn.
+            _scheduleStoreMerge(captureKey);
+          }
+        );
+        if (typeof unsub === 'function') {
+          _listenerUnsubs.set(captureKey, unsub);
+          try { emit('listener-connected', { store: captureKey }); } catch (_) {}
+        }
+      } catch (err) {
+        // Per-store subscribe failure (e.g. native parity-pending throw)
+        // must not break the wire-up of the other 5 stores. Surface as
+        // a listener-disconnected event so the UI status reflects reality.
+        try {
+          emit('listener-disconnected', { store: key, reason: 'subscribe-failed' });
+        } catch (_) {}
+        try {
+          console.warn('[SyncEngine] subscribe failed for store ' + key + ':', err);
+        } catch (_) {}
+      }
+    }
+  }
+
+  function _unsubscribeAllStores(reason) {
+    // Walk the registry calling each unsubscribe inside try/catch — a
+    // failed individual unsubscribe must not block the rest. Then clear
+    // the map so a fresh subscribe wires up cleanly. Idempotent: safe
+    // to call when the map is already empty.
+    for (const [key, unsub] of _listenerUnsubs.entries()) {
+      try {
+        if (typeof unsub === 'function') unsub();
+      } catch (_) {}
+      try {
+        emit('listener-disconnected', { store: key, reason: reason || 'stopped' });
+      } catch (_) {}
+    }
+    _listenerUnsubs.clear();
+
+    // Clear any pending debouncers — a snapshot that arrived during the
+    // tear-down window must not fire a merge after we've unsubscribed.
+    for (const t of _storeDebouncers.values()) {
+      try { clearTimeout(t); } catch (_) {}
+    }
+    _storeDebouncers.clear();
+  }
+
   function startSteadyState() {
     // Idempotent — second call while timer is armed is a no-op.
     if (_steadyTimer != null) return;
@@ -2052,8 +2331,20 @@ const SyncEngine = (() => {
       _steadyTimer = setInterval(() => _runMergeCycle(), interval);
     }
 
+    // E-3: arm the per-store onSnapshot listeners alongside the timer.
+    // Defensive try/catch — listeners are the primary cross-device
+    // propagation mechanism (Pick A on TODO #1) but a wire-up failure
+    // (e.g. native parity-pending throw, Firestore SDK load failure)
+    // must NOT prevent the defensive 5-min poll from arming. The 5-min
+    // poll is the safety net for exactly this scenario.
+    try { _subscribeAllStores(); } catch (_) {}
+
     // Wire visibilitychange — same handler reference stashed so
     // stopSteadyState() can removeEventListener cleanly (Risk #6).
+    // E-3 extends the existing handler: pause-and-unsubscribe on hidden;
+    // re-subscribe + one-shot catch-up `_runMergeCycle()` on visible.
+    // The catch-up cycle is the safety net for the iOS Safari WebView
+    // suspension case per Pick A on TODO #4.
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       _steadyVisibilityHandler = function () {
         if (document.visibilityState === 'hidden') {
@@ -2061,10 +2352,19 @@ const SyncEngine = (() => {
             clearInterval(_steadyTimer);
             _steadyTimer = null;
           }
+          // E-3: tear down listeners while hidden — Firestore listeners
+          // burn read budget even idle. The next 'visible' event re-arms.
+          try { _unsubscribeAllStores('hidden'); } catch (_) {}
         } else if (document.visibilityState === 'visible') {
           if (_steadyTimer == null) {
             _steadyTimer = setInterval(() => _runMergeCycle(), interval);
           }
+          // E-3: re-arm listeners + fire a one-shot catch-up cycle to
+          // backfill anything missed while hidden. The catch-up is the
+          // safety net for the iOS Safari "suspended for 30 minutes" case
+          // where `onSnapshot` may not reconnect cleanly on resume.
+          try { _subscribeAllStores(); } catch (_) {}
+          try { _runMergeCycle(); } catch (_) {}
         }
       };
       try { document.addEventListener('visibilitychange', _steadyVisibilityHandler); }
@@ -2088,12 +2388,23 @@ const SyncEngine = (() => {
               clearInterval(_steadyTimer);
               _steadyTimer = null;
             }
+            // E-3: tear down listeners while offline — they can't reach
+            // Firestore anyway. The next 'online' event re-arms.
+            try { _unsubscribeAllStores('offline'); } catch (_) {}
           } else if (online === true) {
             // Only resume if visibility says we should be active.
             const visible = (typeof document === 'undefined') ||
                             (document.visibilityState !== 'hidden');
             if (_steadyTimer == null && visible) {
               _steadyTimer = setInterval(() => _runMergeCycle(), interval);
+            }
+            // E-3: re-arm listeners + fire a one-shot catch-up cycle on
+            // network resume (matches the visibility-resume semantic).
+            // The catch-up backfills any cloud-side changes that
+            // happened while we were offline.
+            if (visible) {
+              try { _subscribeAllStores(); } catch (_) {}
+              try { _runMergeCycle(); } catch (_) {}
             }
             // E-2: also drain any buffered pending ops authored
             // during the offline window. Defensive feature-detect
@@ -2138,6 +2449,9 @@ const SyncEngine = (() => {
       try { _steadyNetworkUnsubscribe(); } catch (_) {}
       _steadyNetworkUnsubscribe = null;
     }
+    // E-3: tear down all per-store listeners + clear pending debouncers.
+    // Idempotent — safe to call when the registry is already empty.
+    try { _unsubscribeAllStores('stopped'); } catch (_) {}
   }
 
   return {
@@ -2162,5 +2476,12 @@ const SyncEngine = (() => {
     startSteadyState,
     stopSteadyState,
     _runMergeCycle,
+    // E-3: per-store dispatch seam + listener registry helpers
+    // (exposed for test-only direct invocation; production wiring lives
+    // inside startSteadyState/stopSteadyState's listener arming and
+    // visibility/network handlers).
+    _runMergeCycleForStore,
+    _subscribeAllStores,
+    _unsubscribeAllStores,
   };
 })();

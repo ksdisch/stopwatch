@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v81-e2-offline-buffer';
+const CACHE_NAME = 'stopwatch-v82-e3-listeners';
 const ASSETS = [
   './',
   './index.html',

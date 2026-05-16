@@ -11,6 +11,7 @@
 //   SyncFirestore.setDoc(path, data)    : Promise<void>
 //   SyncFirestore.getCollection(path)   : Promise<{ docs: [{id,data}], count }>
 //   SyncFirestore.runTransaction(fn)    : Promise<any>   — CAS wrapper (E-1b; web-only)
+//   SyncFirestore.subscribe(path, cb)   : () => void    — onSnapshot wrapper (E-3; web-only)
 //   SyncFirestore.setBatch(writes)      : Promise<void>  — STUB (throws in B-3)
 //
 // Error normalization:
@@ -148,6 +149,10 @@ const SyncFirestore = (() => {
       // wrapper below can call `runTransaction(db, fn)` against the
       // same lazy-loaded SDK without re-importing on every call.
       runTransaction:  firestoreMod.runTransaction,
+      // E-3: pulled in alongside the existing imports so the subscribe
+      // wrapper below can call `onSnapshot(ref, next, error)` against
+      // the same lazy-loaded SDK without re-importing on every call.
+      onSnapshot:      firestoreMod.onSnapshot,
     };
     return _sdk;
   }
@@ -379,6 +384,118 @@ const SyncFirestore = (() => {
     }
   }
 
+  // ── E-3: real-time onSnapshot wrapper for per-collection subscriptions ─
+  //
+  // Caller supplies a path (`users/{uid}/{store}`) and a callback. Each
+  // time the cloud-side collection mutates (Firestore batches naturally
+  // coalesce bursty writes from another device), the callback is invoked
+  // with `{ docs, count }` — the same shape `getCollection` returns —
+  // OR `{ ok: false, error: <normalized> }` if the listener emits an
+  // error mid-stream (e.g. permission revoked while the listener is
+  // alive). The caller's callback is invoked in both branches so the
+  // engine can emit `'listener-disconnected'` on error without coupling
+  // this module to SyncEngine.
+  //
+  // Returns the SDK's `unsubscribe` fn verbatim — calling it tears down
+  // the listener. Idempotent + safe to call repeatedly per Firestore
+  // SDK contract.
+  //
+  // Web branch: lazy-imports `onSnapshot` alongside the existing
+  // `firebase-firestore.js` CDN module (the cached `_sdk` object now
+  // carries `onSnapshot` after E-3's `_loadWebSdk` extension above).
+  //
+  // Native branch: throws `kind: 'unknown'` with "subscribe native parity
+  // pending" mirroring the existing `runTransaction` native branch
+  // (carry-forward filed alongside the long-deferred native CAS parity).
+  // The engine's `_subscribeAllStores` outer try/catch catches this
+  // throw so listener wire-up fails silently on native — iOS users fall
+  // back to the 5-min defensive poll until a separate native-parity
+  // follow-up bundles `addSnapshotListener` + `runTransaction`.
+  //
+  // SYNC_DISABLED fast-path matches the other public methods: throw
+  // synchronously when the master flag is off.
+  function subscribe(path, callback) {
+    if (!_flagOn()) throw _wrap('unknown', 'SYNC_DISABLED', false, null);
+    if (typeof callback !== 'function') {
+      throw _wrap('unknown', 'subscribe requires a callback function', false, null);
+    }
+    const norm = _normPath(path);
+
+    if (isNative) {
+      // E-3 sub-decision per Pick A on TODO #7 (RESOLUTIONS in
+      // docs/sync-impl/prompts/E-3-PROMPT.md): native subscribe parity
+      // is a documented follow-up. Filed as a tracked carry-forward
+      // alongside the long-deferred native CAS parity from E-1b.
+      throw _wrap(
+        'unknown',
+        'subscribe native parity pending — web-only in E-3; see follow-up issue',
+        false,
+        null
+      );
+    }
+
+    // Web branch — lazy-load the SDK + db handle, resolve the path as a
+    // collection ref, register `onSnapshot(ref, next, error)`. The SDK
+    // returns an `unsubscribe` fn that we hand back to the caller verbatim.
+    //
+    // The lazy-load is async, but `subscribe` MUST return the unsubscribe
+    // fn synchronously so callers can stash it in the listener registry
+    // before the next event loop tick. We solve this with a "deferred
+    // unsubscribe" pattern: return a closure that either calls the real
+    // unsubscribe (if the SDK has loaded) or sets a flag so the load
+    // resolution callback no-ops.
+    let _realUnsub = null;
+    let _cancelled = false;
+    (async () => {
+      try {
+        const { sdk, db } = await _getWebDb();
+        if (_cancelled) return;
+        const ref = sdk.collection(db, norm);
+        _realUnsub = sdk.onSnapshot(
+          ref,
+          function _onNext(snapshot) {
+            try {
+              const docs = [];
+              snapshot.forEach(d => docs.push({ id: d.id, data: d.data() }));
+              callback({ docs, count: docs.length });
+            } catch (_e) {
+              // Caller's callback threw — must not break the listener.
+            }
+          },
+          function _onError(err) {
+            try {
+              callback({ ok: false, error: _normalizeError(err) });
+            } catch (_e) {
+              // Caller's callback threw — must not break the listener.
+            }
+          }
+        );
+        if (_cancelled && typeof _realUnsub === 'function') {
+          // Caller invoked unsubscribe before the SDK finished loading;
+          // tear down immediately to avoid leaking a listener.
+          try { _realUnsub(); } catch (_) {}
+          _realUnsub = null;
+        }
+      } catch (err) {
+        // Setup failed — surface the normalized error via the callback
+        // so the engine can emit `'listener-disconnected'`. The caller
+        // already has the deferred-unsubscribe closure; calling it is a
+        // no-op since we never registered.
+        try {
+          callback({ ok: false, error: _normalizeError(err) });
+        } catch (_e) {}
+      }
+    })();
+
+    return function unsubscribe() {
+      _cancelled = true;
+      if (typeof _realUnsub === 'function') {
+        try { _realUnsub(); } catch (_) {}
+        _realUnsub = null;
+      }
+    };
+  }
+
   // Defined for future use; B-3 uses a per-record setDoc loop instead
   // because Firestore batched writes have a 500-write cap (F14's
   // doseLog cap is 1000 entries which can blow past 500).
@@ -391,6 +508,7 @@ const SyncFirestore = (() => {
     setDoc,
     getCollection,
     runTransaction,
+    subscribe,
     setBatch,
   };
 })();

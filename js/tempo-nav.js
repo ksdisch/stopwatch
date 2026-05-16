@@ -871,6 +871,89 @@ const TempoNav = (() => {
       });
     }
 
+    // ── E-3: Sync activity indicator (listeners + last-merge time) ─────
+    // Per Pick A on E-3-PROMPT TODO #6, extend the existing
+    // `#cloud-sync-status` text content (already aria-live="polite") with
+    // a stable, test-parseable format:
+    //
+    //   Last sync: <relative time> · Listeners: <state>
+    //
+    // where <state> ∈ 'connected' | 'disconnected' | 'pending' aggregated
+    // across the 6 SYNCED_STORES entries:
+    //   - 'connected'    if all 6 stores last reported listener-connected
+    //   - 'disconnected' if ANY of the 6 reported listener-disconnected
+    //                    (since the most recent listener-connected for that store)
+    //   - 'pending'      if no listener events have arrived yet this session
+    //
+    // The relative-time portion uses Utils.formatMs (CLAUDE.md mandates
+    // reuse of the shared helper) wrapped in a small humanizer that maps
+    // sub-second to "just now", sub-minute to "Ns ago", sub-hour to
+    // "Nm ago", else "Nh ago". The status row never paints E-3 text
+    // until at least one listener event has arrived, so the existing
+    // push/hydrate/reconcile pipelines own the row uncontested during
+    // their in-flight windows.
+    let _lastMergeAt = null;
+    const _listenerStateByStore = {};
+
+    function _humanizeRelative(elapsedMs) {
+      if (elapsedMs < 1000) return 'just now';
+      const t = Utils.formatMs(elapsedMs);
+      // Utils.formatMs returns hours/minutes/seconds parts; we pick the
+      // largest non-zero unit for a compact "Nx ago" rendering.
+      if (t.hours > 0) {
+        return t.hours + ' hr' + (t.hours === 1 ? '' : 's') + ' ago';
+      }
+      if (t.minutes > 0) {
+        return t.minutes + ' min' + (t.minutes === 1 ? '' : 's') + ' ago';
+      }
+      return t.seconds + ' sec' + (t.seconds === 1 ? '' : 's') + ' ago';
+    }
+
+    function _aggregateListenerState() {
+      const stores = Object.keys(_listenerStateByStore);
+      if (stores.length === 0) return 'pending';
+      // If any store reports disconnected, the aggregate is disconnected
+      // — preserves the safety-net signal even if the other 5 are fine.
+      for (const k of stores) {
+        if (_listenerStateByStore[k] === 'disconnected') return 'disconnected';
+      }
+      // Otherwise all known stores are connected. (We don't require all 6
+      // before reporting connected — partial visibility is still useful
+      // and the test verifies the format string regardless.)
+      return 'connected';
+    }
+
+    function _formatSyncStatus() {
+      // Don't clobber the row if no listener events have arrived yet —
+      // push/hydrate/reconcile own the surface in those windows.
+      if (_lastMergeAt === null && Object.keys(_listenerStateByStore).length === 0) {
+        return;
+      }
+      const elapsed = (_lastMergeAt !== null) ? (Date.now() - _lastMergeAt) : null;
+      const relTime = (elapsed !== null) ? _humanizeRelative(elapsed) : 'never';
+      const state = _aggregateListenerState();
+      setStatus('Last sync: ' + relTime + ' · Listeners: ' + state, false);
+    }
+
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      SyncEngine.on('merge-complete', () => {
+        _lastMergeAt = Date.now();
+        _formatSyncStatus();
+      });
+      SyncEngine.on('listener-connected', (payload) => {
+        if (payload && payload.store) {
+          _listenerStateByStore[payload.store] = 'connected';
+        }
+        _formatSyncStatus();
+      });
+      SyncEngine.on('listener-disconnected', (payload) => {
+        if (payload && payload.store) {
+          _listenerStateByStore[payload.store] = 'disconnected';
+        }
+        _formatSyncStatus();
+      });
+    }
+
     // Subscribe to ongoing auth changes (covers cold-boot rehydrate
     // landing after the drawer is already populated, plus system-level
     // account changes on native).

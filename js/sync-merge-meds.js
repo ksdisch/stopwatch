@@ -134,6 +134,21 @@ const SyncMergeMeds = (() => {
         skipped++;
         warnings.push('skipped future-schema cloud record: ' + recId
                       + ' (schemaVersion=' + data.schemaVersion + ')');
+        // E-3: F19a observability emit — surface the cloud-side
+        // refuse-writeback event so `js/sync-toast.js`'s
+        // `downlevelWarning` listener can paint a user-facing message.
+        // Defensive guard mirrors existing emit patterns.
+        if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.emit === 'function') {
+          try {
+            SyncEngine.emit('refuse-writeback', {
+              store: 'meds',
+              remoteSchemaVersion: data.schemaVersion,
+              localSchemaVersion: (typeof Schema !== 'undefined' && typeof Schema.SCHEMA_VERSION === 'number')
+                ? Schema.SCHEMA_VERSION : 0,
+              remoteDeviceId: (typeof data.deviceId === 'string') ? data.deviceId : undefined,
+            });
+          } catch (_) { /* listener errors must not break the merge */ }
+        }
         continue;
       }
       // Defensive: ensure record carries an id field (cloud doc may have
@@ -311,6 +326,10 @@ const SyncMergeMeds = (() => {
         skipped++;
         continue;
       }
+      // E-3: stash the remote record from inside the transaction so
+      // the catch block below can include `remoteSchemaVersion` +
+      // `remoteDeviceId` on the F19a `'refuse-writeback'` emit.
+      let _remoteForEmit = null;
       try {
         await SyncFirestore.runTransaction(async (tx) => {
           const remote = await tx.get('users/' + uid + '/meds/' + med.id);
@@ -318,6 +337,7 @@ const SyncMergeMeds = (() => {
               && typeof Schema !== 'undefined'
               && typeof Schema.isFutureRecord === 'function'
               && Schema.isFutureRecord(remote.data)) {
+            _remoteForEmit = remote.data;
             tx.refuseWriteback(remote.data, Schema.SCHEMA_VERSION);
           }
           // Stamp deviceId + updatedAt + schemaVersion via Schema.stamp.
@@ -337,6 +357,23 @@ const SyncMergeMeds = (() => {
         if (err && err.kind === 'refuse-writeback') {
           skipped++;
           warnings.push('CAS refused writeback for med ' + med.id + ': ' + err.message);
+          // E-3: F19a observability emit — surface the per-record CAS
+          // refuse-writeback event so the downlevel-warning toast can
+          // paint a user-facing message. Payload mirrors the cloud-side
+          // gate emit above.
+          if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.emit === 'function') {
+            try {
+              SyncEngine.emit('refuse-writeback', {
+                store: 'meds',
+                remoteSchemaVersion: (_remoteForEmit && typeof _remoteForEmit.schemaVersion === 'number')
+                  ? _remoteForEmit.schemaVersion : 0,
+                localSchemaVersion: (typeof Schema !== 'undefined' && typeof Schema.SCHEMA_VERSION === 'number')
+                  ? Schema.SCHEMA_VERSION : 0,
+                remoteDeviceId: (_remoteForEmit && typeof _remoteForEmit.deviceId === 'string')
+                  ? _remoteForEmit.deviceId : undefined,
+              });
+            } catch (_) { /* listener errors must not break the merge */ }
+          }
           continue;
         }
         // Other errors (network, permission-denied, etc.) — record and
