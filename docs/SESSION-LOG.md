@@ -1523,6 +1523,205 @@ ce9cd74 docs(sync-impl): E-2 RESOLUTIONS codified (Kyle, all 7 TODOs)
 
 ---
 
+## 2026-05-15 — E-3: real-time onSnapshot listeners + downlevel-warning toast (Stage E reliability follow-up 2/2)
+
+### What We Built
+
+E-2 closed the offline-write gap last session; E-3 closes the polling-
+latency + tab-suspension caveat at its source. Real-time `onSnapshot`
+listeners now drive cross-device propagation (sub-second) and the
+30-second `setInterval` polling cycle demotes to a 5-minute defensive
+fallback. The F19a refuse-writeback contract gains its first
+user-visible UX surface via a new downlevel-warning toast. This is the
+second and final Stage E reliability follow-up; the cloud-sync
+initiative is now functionally complete (Stage F deferred
+indefinitely).
+
+- **New `SyncFirestore.subscribe(path, callback)` wrapper
+  (`js/sync-firestore.js` +118 LOC).** Extends the single-Firestore-SDK
+  seam alongside the existing `getDoc` / `setDoc` / `getCollection` /
+  `runTransaction` / `setBatch` methods. **Web branch:** lazy-imports
+  `onSnapshot` via the existing `_loadWebSdk` cache; resolves
+  per-collection refs; the inner callback walks
+  `snapshot.forEach(d => docs.push({ id: d.id, data: d.data() }))`
+  matching the existing `getCollection` shape; returns the SDK's
+  unsubscribe fn verbatim. A deferred-unsubscribe closure handles the
+  SDK-lazy-load race (unsubscribe-before-load resolves to a no-op).
+  **Native branch:** throws `kind: 'unknown'` with "native parity
+  pending" message mirroring the existing `runTransaction` native
+  branch — filed as a tracked carry-forward alongside the long-deferred
+  native CAS parity. `SYNC_DISABLED` fast-path matches existing
+  methods.
+- **`js/sync-engine.js` listener lifecycle + per-store dispatch seam
+  (~367 LOC across 5 surgical edits).** New module-scope state:
+  `_listenerUnsubs = new Map()` (storeKey → unsubscribe fn) +
+  `_storeDebouncers = new Map()` (storeKey → timeoutId) +
+  `LISTENER_DEBOUNCE_MS = 1000`. Four new helpers:
+  `_runMergeCycleForStore(storeKey)` lifts a single store out of the
+  existing `_runMergeCycle()` loop (sharing the F19a
+  `_filterFutureRecordsInSnapshot` gate + F13 SyncState gating);
+  `_subscribeAllStores()` walks the 6 `SYNCED_STORES` keys and arms
+  per-collection subscriptions with the trailing-1s-debounce callback;
+  `_scheduleStoreMerge(storeKey)` is the per-store trailing debounce;
+  `_unsubscribeAllStores(reason)` walks the registry, calls each
+  unsubscribe fn inside try/catch, emits per-store
+  `'listener-disconnected'`, and clears all pending debouncers.
+  `startSteadyState()` / `stopSteadyState()` extend with
+  arm/teardown calls. Visibility (`visibilitychange`) + network
+  (`Platform.network.onChange`) handlers extend symmetrically: pause-
+  on-hidden / pause-on-offline unsubscribes the 6 stores; resume-on-
+  visible / resume-on-online re-subscribes AND fires a one-shot
+  `_runMergeCycle()` catch-up to backfill anything missed while
+  paused. **`STEADY_STATE_DEFAULT_MS` bumped 30000 → 300000
+  (5 minutes).** Listeners are now primary; the timer is a defensive
+  fallback. Event vocabulary extended with `'refuse-writeback'`,
+  `'listener-connected'`, `'listener-disconnected'`. E-2 follow-up
+  symmetry fix at line 1842 closed as a one-line ride-along
+  (`typeof SyncBuffer !== 'undefined' && typeof SyncBuffer.enqueue ===
+  'function'` → just `typeof SyncBuffer.enqueue === 'function'`; the
+  outer guard was unreachable because the `const SyncBuffer = (() =>
+  {...})()` binding is always defined when the script loads). Listener
+  helpers exposed on the public API so tests can invoke them directly.
+- **F19a observability — 3 new `SyncEngine.emit('refuse-writeback',
+  payload)` call sites across 3 layers, byte-identical underlying
+  refuse-writeback semantics.** **(a)** Dispatcher snapshot pre-filter:
+  inside `_filterFutureRecordsInSnapshot` in `js/sync-engine.js`,
+  emit per filtered record with the highest skipped `schemaVersion`.
+  **(b)** Per-merge-fn cloud-side gate: one new emit in each
+  `js/sync-merge-{meds,history,rest-log,presets,bfrb,distractions}.js`
+  body at the `Schema.isFutureRecord` filter call site. **(c)** Per-
+  record CAS path: one new emit in each sync-merge file at the
+  `try/catch` block that handles `err.kind === 'refuse-writeback'`,
+  using a stashed `_remoteForEmit` to surface the remote record's
+  `schemaVersion` + `deviceId`. **F19a logic is byte-identical** — the
+  new emits are pure observability.
+- **`js/sync-toast.js` extension (+113 LOC).** New module-scope
+  `_downlevelWarningShown = false` flag + public method
+  `downlevelWarning(remoteSchemaVersion)` paints the verbatim
+  PLAN.md §E-3 copy ("Your phone is on a newer version. This device is
+  read-only until you update."), 5s auto-dismiss + 200ms fade, and
+  sets the dedup flag so subsequent emits in the same session no-op.
+  Two new listeners inside `_registerListener()`:
+  `SyncEngine.on('refuse-writeback', payload => downlevelWarning(...))`
+  and `SyncEngine.on('auth-change', user => { if (!user)
+  _downlevelWarningShown = false; })` (re-uses the existing
+  `'auth-change'` event from `js/sync-auth.js:48-50` rather than
+  introducing a new `'sign-out'` event). `_resetForTests()` test hook
+  exposed. Module header comment extended with an "E-3 scope"
+  subsection.
+- **`js/tempo-nav.js` extension (+83 LOC).** Inside `wireCloudSync(...)`
+  closure, 3 new `SyncEngine.on(...)` subscribers
+  (`'merge-complete'` / `'listener-connected'` /
+  `'listener-disconnected'`) + closure-scoped state `_lastMergeAt` +
+  `_listenerStateByStore` + helper `_formatSyncStatus()` paints the
+  stable text `Last sync: <relative time> · Listeners: <state>` via
+  the existing `setStatus(text, false)` helper. Aggregation:
+  `pending` / `disconnected` / `connected`. Reuses `Utils.formatMs`
+  via the new `_humanizeRelative` helper (`just now` / `N sec ago` /
+  `N min ago` / `N hr ago`). No new DOM; no new CSS; the existing
+  `#cloud-sync-status` div + `.tempo-cloud-sync-status` rule carry
+  the new content.
+- **Tests: baseline 565 → 605 (+40).** New
+  `tests/sync-listeners.test.js` (22 cases) covers `SyncFirestore.
+  subscribe` happy-path / SYNC_DISABLED fast-path / native branch
+  throw / per-store dispatch / trailing 1s debounce / per-store
+  isolation / subscribe-on-`startSteadyState` / unsubscribe-on-
+  `stopSteadyState` / visibility pause-resume + catch-up cycle /
+  network pause-resume + catch-up cycle / 3-layer refuse-writeback
+  emits / legacy environment fallback (`Platform.network` undefined) /
+  cleanup idempotency. New `tests/sync-toast.test.js` (9 cases) covers
+  `downlevelWarning` copy + auto-dismiss + dedup-via-flag /
+  sign-out-reset (`SyncEngine.emit('auth-change', null)`) /
+  refuse-writeback listener integration / concurrent `bufferOverflow`
+  + `downlevelWarning` single-slot semantic / retroactive
+  `bufferOverflow` symmetry cases. `tests/sync-engine.test.js`
+  extension (9 new cases in `describe('E-3 — listener lifecycle +
+  per-store dispatch')`) covers per-store dispatch seam /
+  shared-F19a-gate / shared-F13-gate / re-entry-guard / constant bump
+  300_000ms / lifecycle / visibility-resume / network-resume / line
+  1842 symmetry verification. 2 existing assertions updated for the
+  bumped constant. **All 605/605 passing via kapture on a fresh-origin
+  port 8765 with `?nosw=1` bypass + cache buster `?fresh=verify3`.**
+- **`sw.js` bump:** `stopwatch-v81-e2-offline-buffer` →
+  `stopwatch-v82-e3-listeners`. **No new ASSETS entries** — all E-3
+  code lives in existing modules (no new JS files).
+- **No new persistence keys.** All listener state is in-memory;
+  refuse-writeback emits are in-memory only and never persisted or
+  synced.
+- **Scope-expansion clause use count: unchanged at 9.** All 9 engine
+  files (Phase 2) were `js/*.js` default-allowed; Phase 4 stayed
+  inside `js/*-ui.js` + `js/tempo-nav.js` adjacent; only `sw.js`
+  required pr-shipper's standard scope (NOT the brief-driven
+  expansion clause). E-3 is the second consecutive Stage E sub-PR
+  with no scope-expansion-clause usage.
+- **Orchestrator sandbox branch pattern.** Sandbox branch
+  `claude/orchestrator-e3` carried the brief skeleton (`d38f56e`),
+  resolutions (`dbb9b91`), and audit (`4c0a0d4`) before the feat
+  branch `feat/sync-stage-e3-listeners` was created from it. The 3
+  sandbox commits ride along to main with the feat merge; the sandbox
+  itself is not merged.
+
+### Suggested Next Steps
+
+- **Caveat (b) cleanup PR.** Distinguish "first sync" from "force
+  re-sync" in B-3's read-cloud-first guard so Stage D handoff stops
+  re-firing on every manual "Push to cloud" attempt after first
+  push.
+- **Caveat (c) cleanup PR — per-surface re-render hooks.** Wire
+  `SyncEngine.on('merge-complete', ...)` subscribers into the Presets
+  drawer, History panel, Meds list, etc. so each surface refreshes
+  without close + reopen. E-3 now emits `'merge-complete'` sub-second
+  via listeners; the remaining work is per-surface plumbing.
+- **Caveat (d) cleanup PR.** Coalesce the 12-per-cycle
+  `[SyncEngine] reconcile history sessionId collision (cloud wins)`
+  log spam in `js/sync-merge-history.js` into a single summary line.
+  Small warm-up PR.
+- **iOS "Signing in…" label reset bug from PR #74 deferred
+  follow-up.** Unchanged by E-3 — flagged for a separate fix.
+- **Native CAS + listener parity follow-up (carry-forward grew with
+  E-3).** `runTransaction` was queued from E-1b; `subscribe` now
+  also defers native parity. Pair `addSnapshotListener` +
+  `runTransaction` for `@capacitor-firebase/firestore` in one
+  follow-up PR.
+- **Backlog GC for preset tombstones (carry-forward).** Same as
+  prior sessions.
+- **Deferred legacy-key cleanup PRs (carry-forward from E-1d-f3 +
+  E-1d-f8).** Drop legacy `bfrbs_global` / `flow_bfrbs` /
+  `pomodoro_bfrbs` buckets + `tempo_bfrb_events_migration_v1`
+  marker; drop pre-migration flat-array distractions +
+  `tempo_distractions_migration_v1` marker. No fixed schedule.
+- **Future cleanup: `SyncEngine._resetForTests()` helper.** Mirror
+  `Toast._resetForTests()` so sync-engine extension tests don't need
+  to pre-await `setTimeout(100)` to flush leaked microtasks from
+  prior E-2 tests #7/#8 (engine-tester open question; test-side
+  workaround; engine behavior correct).
+- **Kyle's two-device manual validation for E-3.** Phone DevTools →
+  Network → throttle Wi-Fi to "Slow 3G" then back to no-throttle;
+  observe the catch-up `_runMergeCycle` fires + `#cloud-sync-status`
+  text updates. Phone → log a dose; observe sub-second propagation
+  to laptop via the listener (vs the prior 30s-polling delay).
+
+**Non-blocking open questions surfaced this session (post-merge
+follow-up):**
+- Sync-engine extension tests #1/#3/#6/#7 pre-await `setTimeout(100)`
+  to flush leaked microtasks from prior E-2 tests #7/#8 — test-side
+  workaround; engine behavior correct. Future cleanup could expose
+  `SyncEngine._resetForTests()` mirroring `Toast._resetForTests()`.
+- Toast "single-slot" semantic test #6 documents a transient 200ms
+  two-toast window during fade-out. Pre-existing E-2 design choice;
+  not new in E-3.
+
+### Commits
+```
+d38f56e docs(sync-impl): E-3 brief skeleton with 8 TODO blocks
+dbb9b91 docs(sync-impl): E-3 RESOLUTIONS codified (Kyle, all 8 TODOs)
+4c0a0d4 docs(sync-impl): E-3 audit (sync-auditor Phase 1)
+<SHA>   feat(sync): real-time onSnapshot listeners + downlevel warning (E-3)
+<SHA>   docs(sync-impl): move E-3 to shipped, mark PR #<N>
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
