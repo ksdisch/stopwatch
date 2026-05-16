@@ -1716,8 +1716,8 @@ follow-up):**
 d38f56e docs(sync-impl): E-3 brief skeleton with 8 TODO blocks
 dbb9b91 docs(sync-impl): E-3 RESOLUTIONS codified (Kyle, all 8 TODOs)
 4c0a0d4 docs(sync-impl): E-3 audit (sync-auditor Phase 1)
-<SHA>   feat(sync): real-time onSnapshot listeners + downlevel warning (E-3)
-<SHA>   docs(sync-impl): move E-3 to shipped, mark PR #<N>
+5f6f039 feat(sync): real-time onSnapshot listeners + downlevel warning (E-3)
+<SHA>   docs(sync-impl): move E-3 to shipped, mark PR #75
 ```
 
 ---
