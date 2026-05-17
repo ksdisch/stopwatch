@@ -122,6 +122,20 @@ function initHistoryPanel() {
     logForm.classList.add('hidden');
     renderHistory();
   });
+
+  // Backlog #6 caveat (c): re-render the history panel when the sync
+  // engine reports a history-store merge so cross-device session
+  // additions / edits propagate without close+reopen. Guarded on
+  // panel visibility — re-rendering a hidden panel is wasted work.
+  if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+    try {
+      SyncEngine.on('merge-complete', (payload) => {
+        if (!payload || payload.store !== 'history') return;
+        if (!panel || panel.classList.contains('hidden')) return;
+        try { renderHistory(); } catch (_) {}
+      });
+    } catch (_) {}
+  }
 }
 
 let activeTagFilter = null;

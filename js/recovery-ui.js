@@ -481,6 +481,27 @@ const RecoveryUI = (() => {
     refreshTickId = setInterval(() => {
       if (surface.offsetParent !== null) refreshDerivedStatus(surface);
     }, 30000);
+
+    // Backlog #6 caveat (c): re-render when sync brings in remote
+    // rest_log or history changes so the recovery dashboard (sleep
+    // card, nap list, "Last focus" derived line) reflects cross-device
+    // updates without leaving + returning to the surface. Two stores
+    // matter here:
+    //   - rest_log: direct render data (sleep entries, naps)
+    //   - history:  drives the "Last focus block: N hours ago" +
+    //               "Focus today: N min" lines via History.getSessions
+    // Guarded on visibility (offsetParent) so background merges don't
+    // burn cycles re-rendering hidden surfaces.
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      try {
+        SyncEngine.on('merge-complete', (payload) => {
+          if (!payload) return;
+          if (payload.store !== 'rest_log' && payload.store !== 'history') return;
+          if (surface.offsetParent === null) return;
+          try { render(surface); } catch (_) {}
+        });
+      } catch (_) {}
+    }
   }
 
   // B-1: snapshot adapter, no DOM access — loadLog() is a pure

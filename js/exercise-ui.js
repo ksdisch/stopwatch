@@ -130,6 +130,19 @@ const ExerciseUI = (() => {
     window.addEventListener('hashchange', () => {
       if (isSurfaceVisible()) renderRecent();
     });
+
+    // Backlog #6 caveat (c): re-render Recent Activity when sync
+    // brings in remote history changes so cross-device workouts
+    // surface without close+reopen. Guarded on visibility.
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      try {
+        SyncEngine.on('merge-complete', (payload) => {
+          if (!payload || payload.store !== 'history') return;
+          if (!isSurfaceVisible()) return;
+          try { renderRecent(); } catch (_) {}
+        });
+      } catch (_) {}
+    }
   }
 
   function isSurfaceVisible() {
