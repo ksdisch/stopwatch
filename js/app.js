@@ -90,6 +90,7 @@ ExerciseUI.init();
 MindfulUI.init();
 WellnessCookingUI.init();
 RecoveryUI.init();
+RhythmUI.init();
 
 // ── Service worker (web only) ──
 // In the Capacitor iOS shell the WebView loads from capacitor:// — there's no

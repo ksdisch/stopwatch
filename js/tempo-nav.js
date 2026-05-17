@@ -172,6 +172,13 @@ const TempoNav = (() => {
       // Apply wellness sub-nav visual state only; all tiles are placeholder.
       syncSubnavActive('wellness', sub || 'meds');
       showWellnessSub(sub || 'meds');
+    } else if (pillar === 'rhythm') {
+      // Rhythm pillar: render the daily timeline on activation. The UI
+      // module owns its own DOM + tick interval; calling render() is
+      // idempotent and re-paints with today's data.
+      if (typeof RhythmUI !== 'undefined' && typeof RhythmUI.render === 'function') {
+        RhythmUI.render();
+      }
     } else if (pillar === 'analytics') {
       // Placeholder shows an "Open dashboard" CTA that opens the existing
       // analytics slide-up panel on demand. Keeping it one tap away avoids

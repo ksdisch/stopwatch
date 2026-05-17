@@ -1032,6 +1032,11 @@
   <script src="js/mindful-ui.js"></script>
   <script src="js/wellness-cooking-ui.js"></script>
   <script src="js/recovery-ui.js"></script>
+  <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
+       Engine has no DOM deps; UI replaces the placeholder copy inside the
+       #rhythm pillar section and renders on hashchange to #/rhythm. -->
+  <script src="js/rhythm-engine.js"></script>
+  <script src="js/rhythm-ui.js"></script>
   <!-- Global BFRB tally + competing-response routine. Always visible,
        floats above all modes and pages. Tap or keyboard shortcut B
        triggers the tally and kicks off a 60s countdown. -->
@@ -1042,7 +1047,7 @@
        MUST load BEFORE global-bfrb.js (which calls BfrbEvents.log synchronously). -->
   <script src="js/bfrb-events.js"></script>
   <script src="js/global-bfrb.js"></script>
-  <script src="js/tempo-nav.js?v=1"></script>
+  <script src="js/tempo-nav.js?v=2"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

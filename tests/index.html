@@ -55,6 +55,10 @@
   <!-- Analytics depends on History.getSessions() + localStorage. Tests
        stub window.History per-case; no history.js load required here. -->
   <script src="../js/analytics.js"></script>
+  <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
+       window.History per-case + writes localStorage fixtures (mirrors
+       analytics pattern). -->
+  <script src="../js/rhythm-engine.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
   <!-- Sync flag + engine for B-1 SyncEngine tests. History / RecoveryUI are
@@ -106,6 +110,7 @@
   <script src="sync-toast.test.js"></script>
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
+  <script src="rhythm.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
 
