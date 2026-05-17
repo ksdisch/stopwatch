@@ -366,6 +366,17 @@
             </select>
           </label>
         </div>
+        <div class="vibrate-area">
+          <label class="vibrate-label">
+            <span>Ambient sound</span>
+            <select id="flow-ambient-profile" aria-label="Background noise to play during focus block">
+              <option value="">Off</option>
+              <option value="brown">Brown noise</option>
+              <option value="pink">Pink noise</option>
+              <option value="white">White noise</option>
+            </select>
+          </label>
+        </div>
         <div class="flow-checklist">
           <div class="flow-checklist-label">Pre-block checklist</div>
           <div id="flow-checklist-items"></div>
@@ -526,6 +537,15 @@
         <div class="pomodoro-setting-row">
           <label>Cycles</label>
           <input type="number" id="pomo-cycles" min="1" max="10" value="4" inputmode="numeric">
+        </div>
+        <div class="pomodoro-setting-row">
+          <label for="pomo-ambient-profile">Ambient sound</label>
+          <select id="pomo-ambient-profile" aria-label="Background noise to play during Pomodoro work phases">
+            <option value="">Off</option>
+            <option value="brown">Brown noise</option>
+            <option value="pink">Pink noise</option>
+            <option value="white">White noise</option>
+          </select>
         </div>
         <div class="offset-buttons">
           <button id="pomo-settings-save" class="offset-btn">Save</button>

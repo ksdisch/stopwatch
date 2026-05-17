@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v88-flow-vibrate-intervals';
+const CACHE_NAME = 'stopwatch-v89-ambient-noise-procedural';
 const ASSETS = [
   './',
   './index.html',

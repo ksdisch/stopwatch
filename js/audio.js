@@ -90,6 +90,21 @@ const SFX = (() => {
   function toggleMute() {
     muted = !muted;
     localStorage.setItem('sound_muted', muted ? '1' : '0');
+    // Ambient noise honors the global mute. On mute, tear down the
+    // playing source but remember the profile so a future unmute can
+    // resume the same noise. On unmute, restart if a profile is
+    // remembered AND the user is mid-session (the source node was
+    // either torn down on mute or was never started; either way,
+    // startAmbient is idempotent and safe to call).
+    if (muted) {
+      const remembered = _ambientProfile;
+      _stopAmbientNode();
+      _ambientProfile = remembered;
+    } else if (_ambientProfile) {
+      const resume = _ambientProfile;
+      _ambientProfile = null; // force startAmbient to re-arm
+      startAmbient(resume);
+    }
     return muted;
   }
 
@@ -111,9 +126,145 @@ const SFX = (() => {
     localStorage.setItem(BFRB_VOLUME_KEY, String(clamped));
   }
 
+  // ── Backlog #3: Ambient noise (procedural) ──────────────────────────
+  //
+  // Generates continuous white / brown / pink noise via a single 5-second
+  // AudioBuffer per profile, played through a looped AudioBufferSourceNode.
+  // Buffer is generated lazily on first start of each profile and cached
+  // for the lifetime of the AudioContext — cheap (~880 KB per profile at
+  // 44.1 kHz mono) and avoids the ScriptProcessorNode deprecation path.
+  //
+  // Honors the global `muted` flag: if the user toggles sound off via the
+  // existing settings toggle, ambient stops mid-session too. (Future split
+  // is easy if the request comes — separate `ambient_muted` key.)
+  //
+  // Volume is persisted under `ambient_volume` so it survives reloads.
+  // Default 0.05 keeps the noise unobtrusive on default device speakers.
+
+  const AMBIENT_VOLUME_KEY = 'ambient_volume';
+  const AMBIENT_VOLUME_DEFAULT = 0.05;
+  const AMBIENT_BUFFER_SECONDS = 5;
+  const AMBIENT_PROFILES = ['white', 'brown', 'pink'];
+
+  let ambientVolume = (() => {
+    const raw = parseFloat(localStorage.getItem(AMBIENT_VOLUME_KEY));
+    return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : AMBIENT_VOLUME_DEFAULT;
+  })();
+  const _ambientBuffers = Object.create(null); // profile → AudioBuffer
+  let _ambientSource = null;                   // AudioBufferSourceNode
+  let _ambientGain = null;                     // GainNode (volume control)
+  let _ambientProfile = null;                  // 'white' | 'brown' | 'pink' | null
+
+  function _generateAmbientBuffer(c, profile) {
+    const sampleRate = c.sampleRate;
+    const length = Math.floor(sampleRate * AMBIENT_BUFFER_SECONDS);
+    const buf = c.createBuffer(1, length, sampleRate);
+    const data = buf.getChannelData(0);
+    if (profile === 'white') {
+      for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    } else if (profile === 'brown') {
+      // Leaky integrator on white noise → "red" / brown spectrum.
+      let last = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        last = (last + 0.02 * white) / 1.02;
+        data[i] = last * 3.5; // amplitude compensation
+      }
+    } else if (profile === 'pink') {
+      // Paul Kellet's pink-noise approximation — 7 filter taps, ~1/f spectrum.
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        b6 = white * 0.115926;
+        data[i] = pink * 0.11; // amplitude compensation
+      }
+    }
+    return buf;
+  }
+
+  function _stopAmbientNode() {
+    if (_ambientSource) {
+      try { _ambientSource.stop(); } catch (_) {}
+      try { _ambientSource.disconnect(); } catch (_) {}
+      _ambientSource = null;
+    }
+    if (_ambientGain) {
+      try { _ambientGain.disconnect(); } catch (_) {}
+      _ambientGain = null;
+    }
+  }
+
+  // Public — start (or restart) ambient noise on the given profile.
+  // Idempotent: starting the same profile that's already playing is a
+  // no-op; switching profiles tears down the existing source first.
+  function startAmbient(profile) {
+    if (!AMBIENT_PROFILES.includes(profile)) {
+      stopAmbient();
+      return;
+    }
+    if (_ambientProfile === profile && _ambientSource) return;
+    if (muted) {
+      _ambientProfile = profile;
+      return; // Honor global mute; remember the choice for a future unmute.
+    }
+    try {
+      const c = getCtx();
+      _stopAmbientNode();
+      if (!_ambientBuffers[profile]) {
+        _ambientBuffers[profile] = _generateAmbientBuffer(c, profile);
+      }
+      const src = c.createBufferSource();
+      src.buffer = _ambientBuffers[profile];
+      src.loop = true;
+      const gain = c.createGain();
+      gain.gain.value = ambientVolume;
+      src.connect(gain);
+      gain.connect(c.destination);
+      src.start();
+      _ambientSource = src;
+      _ambientGain = gain;
+      _ambientProfile = profile;
+    } catch (_) {
+      // Audio context unavailable / suspended — silently no-op. The
+      // user-gesture-required suspended-context case is covered by
+      // callers being invoked from a click handler (Flow.start /
+      // Pomodoro.start are both user-triggered).
+    }
+  }
+
+  function stopAmbient() {
+    _stopAmbientNode();
+    _ambientProfile = null;
+  }
+
+  function getAmbientProfile() { return _ambientProfile; }
+
+  function getAmbientVolume() { return ambientVolume; }
+  function setAmbientVolume(v) {
+    const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+    ambientVolume = clamped;
+    localStorage.setItem(AMBIENT_VOLUME_KEY, String(clamped));
+    if (_ambientGain) {
+      try { _ambientGain.gain.value = clamped; } catch (_) {}
+    }
+  }
+
+  function getAmbientProfiles() {
+    return AMBIENT_PROFILES.map(id => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1) }));
+  }
+
   return {
     playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, playBFRBEnd,
     isMuted, toggleMute, getProfile, setProfile, getProfiles,
     getBFRBVolume, setBFRBVolume,
+    startAmbient, stopAmbient, getAmbientProfile,
+    getAmbientVolume, setAmbientVolume, getAmbientProfiles,
   };
 })();
