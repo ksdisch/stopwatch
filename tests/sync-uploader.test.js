@@ -264,7 +264,7 @@ describe('B-3 pushSnapshot — cloud-empty happy path uploads in dependency orde
   });
 });
 
-describe('B-3 pushSnapshot — cloud-non-empty without partial-upload marker → Stage D handoff', () => {
+describe('B-3 pushSnapshot — cloud-non-empty with FOREIGN deviceId stamp → Stage D handoff', () => {
   it('aborts to Stage D handoff: no setDoc, stage-d marker set, SyncState stays ready', async () => {
     const markers = _b3_snapshotMarkers();
     _b3_clearMarkers();
@@ -280,7 +280,12 @@ describe('B-3 pushSnapshot — cloud-non-empty without partial-upload marker →
         fs_setDoc: setDoc.fn,
         fs_getCollection: async (path) => {
           if (path.indexOf('/meds') !== -1) {
-            return { docs: [{ id: 'existing', data: {} }], count: 1 };
+            // Cloud doc carries a deviceId stamp from a DIFFERENT device.
+            // Post-caveat-b fix: the F9 push guard inspects deviceId
+            // stamps and routes only to Stage D when at least one
+            // foreign deviceId is present in cloud. (_b3_smallSnapshot's
+            // default device id is "d-test"; cloud reports "d-other".)
+            return { docs: [{ id: 'existing', data: { deviceId: 'd-other', updatedAt: 999 } }], count: 1 };
           }
           return { docs: [], count: 0 };
         },
@@ -301,6 +306,90 @@ describe('B-3 pushSnapshot — cloud-non-empty without partial-upload marker →
       // SyncState stayed at ready (no hydrating transition).
       assertEqual(stateSpy.spy.length, 0, 'SyncState.set was NEVER called');
       assertEqual(stateSpy.obj.get(), 'ready', 'SyncState stayed at ready');
+    } finally {
+      _b3_restoreModuleMethods(orig);
+      _b3_restoreMarkers(markers);
+    }
+  });
+});
+
+describe('B-3 pushSnapshot — cloud-non-empty with ONLY this-device deviceId stamps → proceeds (caveat b fix)', () => {
+  it('skips Stage D when every cloud deviceId matches this device; setDoc IS called and upload completes', async () => {
+    const markers = _b3_snapshotMarkers();
+    _b3_clearMarkers();
+    const orig = _b3_saveModuleMethods();
+
+    const stateSpy = _b3_makeSyncStateSpy('ready');
+    const setDoc = _b3_makeSetDocSpy();
+
+    try {
+      _b3_install({
+        fs_setDoc: setDoc.fn,
+        // Cloud has docs in every store, BUT all carry this device's
+        // deviceId ("d-test" — matches _b3_smallSnapshot default). Pre-
+        // caveat-b this would have routed to Stage D because the
+        // partial-upload marker was cleared after the prior successful
+        // push. Post-fix: the F9 guard recognizes all-self-writes and
+        // proceeds with the idempotent re-upload.
+        fs_getCollection: async () => ({
+          docs: [{ id: 'existing', data: { deviceId: 'd-test', updatedAt: 999 } }],
+          count: 1,
+        }),
+        syncStateObj: stateSpy.obj,
+      });
+
+      const result = await SyncEngine.pushSnapshot();
+
+      assertEqual(result.ok, true,
+        'push proceeded past F9 guard: ' + JSON.stringify(result));
+      assert(setDoc.calls.length > 0,
+        'setDoc was called — upload actually ran (got ' + setDoc.calls.length + ' calls)');
+
+      // Stage D flag NOT set.
+      assertEqual(localStorage.getItem('tempo_sync_stage_d_handoff'), null,
+        'stage-d flag NOT set on all-self-writes path');
+    } finally {
+      _b3_restoreModuleMethods(orig);
+      _b3_restoreMarkers(markers);
+    }
+  });
+
+  it('detects foreign deviceId nested inside an array (rest_log naps shape) and routes to Stage D', async () => {
+    const markers = _b3_snapshotMarkers();
+    _b3_clearMarkers();
+    const orig = _b3_saveModuleMethods();
+
+    const setDoc = _b3_makeSetDocSpy();
+
+    try {
+      _b3_install({
+        fs_setDoc: setDoc.fn,
+        // Realistic rest_log day doc shape: top-level has no deviceId,
+        // but the `naps` array contains entries with deviceId stamps.
+        // Guard must walk nested structures to find foreign writes.
+        fs_getCollection: async (path) => {
+          if (path.indexOf('/rest_log') !== -1) {
+            return {
+              docs: [{
+                id: '2026-05-17',
+                data: {
+                  sleep: { hours: 7, deviceId: 'd-test', updatedAt: 1 },
+                  naps: [{ startedAt: 1, durationMs: 1800000, deviceId: 'd-other' }],
+                },
+              }],
+              count: 1,
+            };
+          }
+          return { docs: [], count: 0 };
+        },
+      });
+
+      const result = await SyncEngine.pushSnapshot();
+
+      assertEqual(result.ok, false, 'push returned ok=false');
+      assertEqual(result.kind, 'stage-d-handoff',
+        'foreign deviceId nested inside naps array still triggers Stage D');
+      assertEqual(setDoc.calls.length, 0, 'no setDoc invocations');
     } finally {
       _b3_restoreModuleMethods(orig);
       _b3_restoreMarkers(markers);
