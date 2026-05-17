@@ -6,21 +6,6 @@ const FLOW_BFRB_KEY = 'flow_bfrbs';
 const FLOW_CHECKLIST_STATE_KEY = 'flow_checklist_state';
 const FLOW_CHECKLIST_SKIPPED_KEY = 'flow_checklist_skipped';
 
-// Backlog #2: vibration interval for Flow focus blocks. Same RAF-loop
-// check pattern as Stopwatch's `vibrate_interval` in js/ui.js — fires
-// a haptic at each crossing of the configured interval. Stored under
-// its own localStorage key so the user can pick different cadences
-// for Stopwatch (lap-style) vs. Flow (long-block check-in style)
-// without one bleeding into the other.
-const FLOW_VIBRATE_INTERVAL_KEY = 'flow_vibrate_interval';
-let flowVibrateIntervalMs = parseInt(
-  localStorage.getItem(FLOW_VIBRATE_INTERVAL_KEY) || '0', 10
-);
-// Cursor for the last interval boundary we vibrated through. Reset on
-// every new focus block (start) so the first haptic fires at
-// `vibrateIntervalMs` elapsed, not relative to the previous session.
-let flowLastVibrateMs = 0;
-
 // Fixed pre-block checklist items. Index order must be stable — local state
 // arrays are indexed by position.
 const FLOW_CHECKLIST_ITEMS = [
@@ -126,30 +111,6 @@ function initFlowUI() {
       updateFlowChecklistGate();
     });
   }
-
-  // Vibration interval dropdown (backlog #2). Reads the persisted value
-  // into the select on init, then mirrors any change back to localStorage.
-  // The RAF tick reads flowVibrateIntervalMs each frame so the new value
-  // takes effect immediately — no restart required.
-  const vibrateSelect = document.getElementById('flow-vibrate-interval');
-  if (vibrateSelect) {
-    vibrateSelect.value = String(flowVibrateIntervalMs);
-    vibrateSelect.addEventListener('change', () => {
-      flowVibrateIntervalMs = parseInt(vibrateSelect.value, 10) || 0;
-      localStorage.setItem(FLOW_VIBRATE_INTERVAL_KEY, String(flowVibrateIntervalMs));
-    });
-  }
-  // Resume guard: if loadState restored a 'running' / 'overflowing'
-  // session (user reopened the tab mid-block), seed the in-memory
-  // vibrate cursor at the current elapsed so the first tick after
-  // resume doesn't fire a "catch-up" haptic for every missed interval.
-  // Fresh starts reset the cursor inside Flow.start()'s click handler.
-  try {
-    const resumedStatus = Flow.getStatus();
-    if (resumedStatus === 'running' || resumedStatus === 'overflowing') {
-      flowLastVibrateMs = Flow.getElapsedMs();
-    }
-  } catch (_) {}
 
   // Pre-block checklist
   renderFlowChecklist();
@@ -288,10 +249,6 @@ function onFlowRight() {
     // PR deferred per Pick C on TODO #6).
     saveFlowBFRBs([]);
     Flow.start();
-    // Backlog #2: reset the vibrate cursor so the first haptic fires
-    // at vibrateIntervalMs elapsed in THIS focus block (not relative
-    // to a previous session's leftover state).
-    flowLastVibrateMs = 0;
     BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', 'Focus block complete! Time for recovery.');
     saveFlowState();
     SFX.playStart();
@@ -784,21 +741,6 @@ function startFlowRenderLoop() {
     if (ticking) {
       Flow.checkFinished();
       updateFlowUI();
-      // Backlog #2: periodic check-in haptic during the focus phase.
-      // Mirrors the Stopwatch implementation at js/ui.js:429-437 —
-      // fire when elapsed crosses each multiple of vibrateIntervalMs.
-      // Gated on `running` only (not recovery / overflowing) so the
-      // 15-min recovery countdown and post-block overflow time stay
-      // quiet; the user has already finished the focus work.
-      if (flowVibrateIntervalMs > 0 && st === 'running') {
-        const elapsed = Flow.getElapsedMs();
-        const currentInterval = Math.floor(elapsed / flowVibrateIntervalMs);
-        const lastInterval = Math.floor(flowLastVibrateMs / flowVibrateIntervalMs);
-        if (currentInterval > lastInterval && elapsed > flowVibrateIntervalMs) {
-          Platform.haptic([100, 50, 100]);
-        }
-        flowLastVibrateMs = elapsed;
-      }
       const after = Flow.getStatus();
       const stillTicking = after === 'running' || after === 'recovery'
         || after === 'overflowing' || after === 'recoveryOverflowing';
