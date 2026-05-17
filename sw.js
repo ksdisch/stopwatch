@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v83-listener-cold-boot-rearm';
+const CACHE_NAME = 'stopwatch-v84-reconcile-log-coalesce';
 const ASSETS = [
   './',
   './index.html',

@@ -835,8 +835,8 @@ describe('D-1 SyncEngine.clearStageDHandoff — removes the tempo_sync_stage_d_h
 // Group E: SyncEngine.reconcileImportedBucket — merge collision rules
 // ────────────────────────────────────────────────────────────────────────
 
-describe('D-1 reconcileImportedBucket — history sessionId collision prefers cloud + logs console.warn', () => {
-  it('cloud rec wins on collision; at least one console.warn fires during the merge', async () => {
+describe('D-1 reconcileImportedBucket — history sessionId collision prefers cloud + logs single summary console.warn', () => {
+  it('cloud rec wins on collision; exactly one summary console.warn fires (matches collision count + ID preview)', async () => {
     const markers = _d1_snapshotMarkers();
     const medsSnap = _d1_snapshotMedsKeys();
     _d1_clearMarkers();
@@ -845,7 +845,12 @@ describe('D-1 reconcileImportedBucket — history sessionId collision prefers cl
 
     const origWarn = console.warn;
     let warnCount = 0;
-    console.warn = function () { warnCount++; };
+    const warnMsgs = [];
+    console.warn = function () {
+      warnCount++;
+      try { warnMsgs.push(Array.prototype.slice.call(arguments).map(String).join(' ')); }
+      catch (_) {}
+    };
 
     const collisionId = 'dev-A-100-0';
     const localRow = { id: collisionId, duration: 1000, type: 'stopwatch', schemaVersion: 1, deviceId: 'd-local', updatedAt: 100, bucket: 'imported' };
@@ -882,8 +887,108 @@ describe('D-1 reconcileImportedBucket — history sessionId collision prefers cl
       assert(merged !== undefined, 'collision id present in merged write');
       assertEqual(merged.duration, 9999,
         'cloud record wins on collision (duration=9999, not 1000)');
-      assert(warnCount >= 1,
-        `at least one console.warn fired during merge (got ${warnCount})`);
+
+      // Coalesced log: exactly one summary warning across the whole
+      // reconcile pass for the history-merge collision class. Format:
+      // "[SyncEngine] reconcile history: N sessionId collision(s) resolved cloud-wins; ids=[...]"
+      const summaryWarns = warnMsgs.filter(m =>
+        m.indexOf('reconcile history:') !== -1 && m.indexOf('sessionId collision') !== -1
+      );
+      assertEqual(summaryWarns.length, 1,
+        'exactly one summary console.warn for collision class (got ' +
+        summaryWarns.length + ' from ' + warnMsgs.length + ' total)');
+      assert(summaryWarns[0].indexOf('1 sessionId collision(s)') !== -1,
+        'summary log includes the collision count: ' + summaryWarns[0]);
+      assert(summaryWarns[0].indexOf(collisionId) !== -1,
+        'summary log includes the colliding id in the preview: ' + summaryWarns[0]);
+    } finally {
+      console.warn = origWarn;
+      _d1_restoreModuleMethods(orig);
+      _d1_restoreMedsKeys(medsSnap);
+      _d1_restoreMarkers(markers);
+    }
+  });
+
+  it('13-collision burst (the live 2026-05-17 case) → still exactly 1 summary warn with "+N more" suffix', async () => {
+    const markers = _d1_snapshotMarkers();
+    const medsSnap = _d1_snapshotMedsKeys();
+    _d1_clearMarkers();
+    _d1_clearMedsKeys();
+    const orig = _d1_saveModuleMethods();
+
+    const origWarn = console.warn;
+    let warnCount = 0;
+    const warnMsgs = [];
+    console.warn = function () {
+      warnCount++;
+      try { warnMsgs.push(Array.prototype.slice.call(arguments).map(String).join(' ')); }
+      catch (_) {}
+    };
+
+    // 13 colliding rows — mirrors the burst caught in two-tab kapture
+    // validation. PREVIEW_LIMIT in _mergeHistory is 10, so 13 collisions
+    // means the summary log should carry "+3 more".
+    const N = 13;
+    const colliders = [];
+    for (let i = 0; i < N; i++) {
+      colliders.push('dev-A-' + i + '-collision');
+    }
+    const localRows = colliders.map((id, i) => ({
+      id, duration: 1000 + i, type: 'stopwatch',
+      schemaVersion: 1, deviceId: 'd-local', updatedAt: 100 + i,
+      bucket: 'imported',
+    }));
+    const cloudRows = colliders.map((id, i) => ({
+      id, duration: 9000 + i, type: 'stopwatch',
+      schemaVersion: 1, deviceId: 'd-cloud', updatedAt: 500 + i,
+      bucket: 'synced',
+    }));
+    const writeCalls = [];
+
+    try {
+      _d1_install({
+        history: {
+          getDeviceId: () => 'd-local',
+          getSessions: async () => localRows.map(r => Object.assign({}, r)),
+          _reconcileWriteRaw: async (rows) => {
+            writeCalls.push(rows.map(r => Object.assign({}, r)));
+            return { written: rows.length, skipped: 0 };
+          },
+        },
+        medsAll: () => [],
+        medsReconcileRaw: () => ({ written: 0, skipped: 0 }),
+        fs_getCollection: async (path) => {
+          if (path === 'users/u1/history') {
+            return {
+              docs: cloudRows.map(r => ({ id: r.id, data: r })),
+              count: cloudRows.length,
+            };
+          }
+          return { docs: [], count: 0 };
+        },
+      });
+
+      const result = await SyncEngine.reconcileImportedBucket();
+      assertEqual(result.ok, true, 'reconcile ok: ' + JSON.stringify(result));
+
+      const summaryWarns = warnMsgs.filter(m =>
+        m.indexOf('reconcile history:') !== -1 && m.indexOf('sessionId collision') !== -1
+      );
+      assertEqual(summaryWarns.length, 1,
+        'exactly one summary console.warn for the whole 13-collision burst (got ' +
+        summaryWarns.length + ')');
+      assert(summaryWarns[0].indexOf('13 sessionId collision(s)') !== -1,
+        'summary log surfaces the full burst count: ' + summaryWarns[0]);
+      assert(summaryWarns[0].indexOf('+3 more') !== -1,
+        'summary log carries "+3 more" suffix when burst > PREVIEW_LIMIT(10): ' + summaryWarns[0]);
+      // First and last preview IDs should be present.
+      assert(summaryWarns[0].indexOf(colliders[0]) !== -1,
+        'first collider id in preview: ' + summaryWarns[0]);
+      assert(summaryWarns[0].indexOf(colliders[9]) !== -1,
+        '10th collider id in preview: ' + summaryWarns[0]);
+      // The 11th, 12th, 13th IDs should NOT be in the preview (they're in the +N tail).
+      assert(summaryWarns[0].indexOf(colliders[10]) === -1,
+        '11th collider id is NOT in preview (covered by "+N more"): ' + summaryWarns[0]);
     } finally {
       console.warn = origWarn;
       _d1_restoreModuleMethods(orig);
