@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v84-reconcile-log-coalesce';
+const CACHE_NAME = 'stopwatch-v85-signin-timeout';
 const ASSETS = [
   './',
   './index.html',

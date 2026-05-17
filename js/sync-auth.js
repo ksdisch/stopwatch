@@ -30,6 +30,15 @@ const SyncAuth = (() => {
   const _listeners = [];          // array of onAuthChange callbacks
   let _platformUnsubscribe = null; // teardown for Platform.auth.onAuthChange
 
+  // Hard ceiling on how long we wait for `Platform.auth.signIn()` to settle
+  // before failing the call with a structured timeout error. PR #74 fixed
+  // the iOS Podfile race that caused the native promise to never resolve,
+  // but the JS-side defense was deferred — without a cap, any future
+  // plugin / SDK regression silently hangs the UI on "Signing in…".
+  // 60s comfortably covers an interactive OAuth flow (account picker +
+  // password + 2FA) without making a wedged plugin feel permanent.
+  const SIGN_IN_TIMEOUT_MS = 60000;
+
   // ── Internal: dispatch a state transition ────────────────────────────────
   //
   // Single entry point for "user changed" — keeps the cache, local listeners,
@@ -99,7 +108,28 @@ const SyncAuth = (() => {
   async function signIn() {
     if (typeof Platform === 'undefined' || !Platform.auth) return null;
     try {
-      const user = await Platform.auth.signIn();
+      // Promise.race against SIGN_IN_TIMEOUT_MS so a non-resolving native
+      // promise (the iOS race PR #74 fixed at the Podfile layer; this is
+      // the JS-side defense) can't strand the UI on "Signing in…". If
+      // Platform.auth.signIn eventually resolves with a user after the
+      // race lost, the cached _setUser path is unreachable from here,
+      // but the platform-layer onAuthChange subscriber (wired in init())
+      // still picks it up — so the user becomes signed-in via the next
+      // auth-change emission, no manual retry needed.
+      let timeoutId = null;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const err = new Error('Sign-in timed out. Try again.');
+          err.code = 'auth/timeout';
+          reject(err);
+        }, SIGN_IN_TIMEOUT_MS);
+      });
+      let user;
+      try {
+        user = await Promise.race([Platform.auth.signIn(), timeout]);
+      } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+      }
       if (!user) {
         // User cancelled (popup-closed-by-user on web, plugin cancellation
         // on native). Do NOT fire auth-change — UI stays on signed-out.
