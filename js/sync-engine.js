@@ -531,17 +531,56 @@ const SyncEngine = (() => {
     try { ls.removeItem(PARTIAL_UPLOAD_KEY); } catch (_) {}
   }
 
-  // Probe the cloud per-store. Returns { isEmpty, counts }.
+  // Walk an object / array recursively and collect every `deviceId`
+  // string found at any depth into `out` (a Set). Used by the F9
+  // read-cloud-first guard to distinguish "cloud has writes from this
+  // device" (post-first-push retry / re-sync) from "cloud has writes
+  // from another device" (the real Stage D handoff case). Closes
+  // caveat (b) — without this, every Push after the first lands in
+  // Stage D because the guard saw cloud-non-empty and couldn't tell
+  // self-writes from foreign writes.
+  //
+  // Reaches into nested structures because some stores stamp deviceId
+  // on inner entries rather than the top-level doc (e.g. rest_log day
+  // records contain `naps[].deviceId`).
+  function _collectDeviceIds(value, out) {
+    if (value == null || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      for (const v of value) _collectDeviceIds(v, out);
+      return;
+    }
+    for (const key of Object.keys(value)) {
+      const v = value[key];
+      if (key === 'deviceId' && typeof v === 'string' && v) {
+        out.add(v);
+      } else {
+        _collectDeviceIds(v, out);
+      }
+    }
+  }
+
+  // Probe the cloud per-store. Returns { isEmpty, counts, deviceIds }.
+  // `deviceIds` is a Set<string> of every `deviceId` value found across
+  // all cloud docs (top-level and nested) — consumed by the F9 push
+  // guard's "all-self-writes" check (caveat b fix).
   async function _pullCloudSnapshot(uid) {
     const counts = {};
+    const deviceIds = new Set();
     let total = 0;
     for (const { key } of SYNCED_STORES) {
       const result = await SyncFirestore.getCollection(`users/${uid}/${key}`);
       const c = (result && typeof result.count === 'number') ? result.count : 0;
       counts[key] = c;
       total += c;
+      // Walk each doc's data to harvest deviceId stamps. Defensive
+      // typeof + Array.isArray guards keep this safe against backend
+      // shape changes / partial responses.
+      const docs = (result && Array.isArray(result.docs)) ? result.docs : [];
+      for (const d of docs) {
+        if (d && d.data) _collectDeviceIds(d.data, deviceIds);
+      }
     }
-    return { isEmpty: total === 0, counts };
+    return { isEmpty: total === 0, counts, deviceIds };
   }
 
   // Pull the per-record list from each store's snapshot envelope. Each
@@ -660,21 +699,50 @@ const SyncEngine = (() => {
       }
 
       if (!cloudProbe.isEmpty) {
-        // Cloud has data. Distinguish "my failed retry" from "another
-        // device's existing data" via the partial-upload marker.
+        // Cloud has data. Three sub-paths to distinguish:
+        //   1. "my failed retry" — partial-upload marker matches this
+        //      user. Proceed (existing path, predates caveat b fix).
+        //   2. "all cloud docs are my own previous successful pushes"
+        //      — partial-upload marker is gone (cleared on prior
+        //      success), but every cloud deviceId stamp matches THIS
+        //      device. Caveat (b) fix: skip Stage D, proceed with
+        //      idempotent re-upload. Without this branch, the second+
+        //      Push from any device always lands in Stage D (caught
+        //      at 2026-05-17 two-tab validation; backlog #6 caveat b).
+        //   3. "genuine Stage D" — cloud carries at least one foreign
+        //      deviceId. Hand off to D-1's reconcile flow.
         const markerUid = _getPartialUploadUid();
         if (markerUid !== user.uid) {
-          // Genuine Stage D handoff. Flag is persistent so D-1 can
-          // detect "this device already saw cloud data on this
-          // account" and re-prompt for reconciliation.
-          setStageDHandoff();
-          const result = {
-            ok: false,
-            kind: 'stage-d-handoff',
-            counts: cloudProbe.counts,
-          };
-          emit('push-complete', result);
-          return result;
+          // Path 2 vs path 3 — inspect cloud deviceId set.
+          const thisDeviceId = (typeof History !== 'undefined' &&
+            typeof History.getDeviceId === 'function')
+            ? History.getDeviceId()
+            : null;
+          let foreignDeviceFound = false;
+          if (thisDeviceId) {
+            for (const id of cloudProbe.deviceIds) {
+              if (id !== thisDeviceId) { foreignDeviceFound = true; break; }
+            }
+          } else {
+            // Can't determine this device's id (defensive — History
+            // unavailable). Fall back to current behavior: any cloud
+            // deviceId at all is treated as foreign so we don't
+            // accidentally clobber another device's data.
+            foreignDeviceFound = cloudProbe.deviceIds.size > 0;
+          }
+          if (foreignDeviceFound) {
+            setStageDHandoff();
+            const result = {
+              ok: false,
+              kind: 'stage-d-handoff',
+              counts: cloudProbe.counts,
+            };
+            emit('push-complete', result);
+            return result;
+          }
+          // Else: all cloud stamps match this device (or cloud has no
+          // stamps at all — pre-F10 era, treated as neutral). Safe to
+          // re-upload via the idempotent setDoc path below.
         }
         // Else: this is our own retry — treat as cloud-empty and
         // re-upload from the start (setDoc is idempotent per record id).

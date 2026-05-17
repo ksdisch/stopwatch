@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v86-ui-rerender-on-merge';
+const CACHE_NAME = 'stopwatch-v87-push-skip-stage-d-self';
 const ASSETS = [
   './',
   './index.html',
