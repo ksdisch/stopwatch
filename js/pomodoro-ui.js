@@ -3,6 +3,14 @@ let pomodoroRafId = null;
 let autoAdvance = localStorage.getItem('pomo_auto_advance') === '1';
 let autoAdvanceTimer = null;
 
+// Backlog #3: ambient noise profile for Pomodoro work phases. Empty
+// string (or any unrecognized value) means "off". Persisted under its
+// own key so Flow can pick a different default without overriding.
+// Only fires during the 'work' phase — short / long breaks stay
+// quiet by design (the break is meant to disengage from focus mode).
+const POMO_AMBIENT_PROFILE_KEY = 'pomodoro_ambient_profile';
+let pomoAmbientProfile = localStorage.getItem(POMO_AMBIENT_PROFILE_KEY) || '';
+
 function initPomodoroUI() {
   const settingsToggle = document.getElementById('pomodoro-settings-toggle');
   const settingsPanel = document.getElementById('pomodoro-settings');
@@ -16,6 +24,11 @@ function initPomodoroUI() {
     document.getElementById('pomo-short-min').value = cfg.shortBreakMs / 60000;
     document.getElementById('pomo-long-min').value = cfg.longBreakMs / 60000;
     document.getElementById('pomo-cycles').value = cfg.totalCycles;
+    // Backlog #3: reflect current ambient profile in the dropdown so
+    // the user sees what's actually set (rather than always landing
+    // on "Off" until they re-pick).
+    const ambientSel = document.getElementById('pomo-ambient-profile');
+    if (ambientSel) ambientSel.value = pomoAmbientProfile;
     settingsPanel.removeAttribute('data-collapsed');
     settingsToggle.classList.add('hidden');
   });
@@ -39,6 +52,23 @@ function initPomodoroUI() {
     };
     Pomodoro.configure(config);
     localStorage.setItem('pomodoro_config', JSON.stringify(config));
+
+    // Backlog #3: persist the ambient profile alongside the work /
+    // break / cycles config so a single Save click commits the whole
+    // session intent. Apply mid-session too — if the user changes the
+    // profile while a work phase is running, swap the playing source.
+    const ambientSel = document.getElementById('pomo-ambient-profile');
+    if (ambientSel) {
+      pomoAmbientProfile = ambientSel.value || '';
+      localStorage.setItem(POMO_AMBIENT_PROFILE_KEY, pomoAmbientProfile);
+      const st = Pomodoro.getStatus();
+      const phase = Pomodoro.getPhase();
+      if ((st === 'running' || st === 'overflowing') && phase === 'work') {
+        if (pomoAmbientProfile) SFX.startAmbient(pomoAmbientProfile);
+        else SFX.stopAmbient();
+      }
+    }
+
     savePomodoroState();
     updatePomodoroUI();
     settingsPanel.setAttribute('data-collapsed', '');
@@ -47,6 +77,11 @@ function initPomodoroUI() {
 
   // Phase complete callback
   Pomodoro.onPhaseComplete((completedPhase) => {
+    // Backlog #3: stop ambient noise the moment a work phase ends.
+    // Breaks are meant for disengagement; the noise was an aid for
+    // focused work. If the user wants noise during breaks too, that's
+    // a follow-up (per-phase profiles).
+    if (completedPhase === 'work') SFX.stopAmbient();
     SFX.playAlarm();
     Platform.haptic([200, 100, 200, 100, 200]);
     const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
@@ -199,6 +234,10 @@ function onPomodoroLeft() {
       });
     }
     Pomodoro.reset();
+    // Backlog #3: defensive stop on explicit Reset gesture — covers
+    // any reset path where ambient might still be running (e.g.,
+    // resetting from work phase directly).
+    SFX.stopAmbient();
     BgNotify.cancel('pomodoro');
     savePomodoroState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
@@ -231,6 +270,8 @@ function onPomodoroRight() {
   if (status === 'running') {
     stopPomodoroRenderLoop();
     Pomodoro.pause();
+    // Backlog #3: pause ambient alongside the timer.
+    SFX.stopAmbient();
     BgNotify.cancel('pomodoro');
     savePomodoroState();
     SFX.playStop();
@@ -238,6 +279,12 @@ function onPomodoroRight() {
   } else if (status === 'idle' || status === 'paused') {
     Pomodoro.start();
     const phase = Pomodoro.getPhase();
+    // Backlog #3: auto-start ambient ONLY during the work phase —
+    // breaks stay quiet. Covers both fresh start (idle → work) and
+    // resume-from-pause (paused → running, phase preserved).
+    if (pomoAmbientProfile && phase === 'work') {
+      SFX.startAmbient(pomoAmbientProfile);
+    }
     const phaseLabel = phase === 'work' ? 'Work session complete!' : 'Break is over!';
     BgNotify.schedule('pomodoro', Pomodoro.getRemainingMs(), 'Pomodoro', phaseLabel);
     savePomodoroState();
@@ -266,6 +313,15 @@ function onPomodoroRight() {
       return;
     }
     Pomodoro.start();
+    // Backlog #3: now that the phase has advanced, kick the ambient
+    // path: start if entering work, ensure stopped if entering break.
+    // Covers both manual Skip (overflowing → next) and auto-advance.
+    const newPhase = Pomodoro.getPhase();
+    if (pomoAmbientProfile && newPhase === 'work') {
+      SFX.startAmbient(pomoAmbientProfile);
+    } else {
+      SFX.stopAmbient();
+    }
     savePomodoroState();
     SFX.playStart();
     startPomodoroRenderLoop();

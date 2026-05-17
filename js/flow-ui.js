@@ -21,6 +21,13 @@ let flowVibrateIntervalMs = parseInt(
 // `vibrateIntervalMs` elapsed, not relative to the previous session.
 let flowLastVibrateMs = 0;
 
+// Backlog #3: ambient noise profile for Flow focus blocks. Persisted
+// per mode so Stopwatch / Timer / Pomodoro can carry their own
+// preferences without one bleeding into the others. Empty string
+// (or any unrecognized value) means "off".
+const FLOW_AMBIENT_PROFILE_KEY = 'flow_ambient_profile';
+let flowAmbientProfile = localStorage.getItem(FLOW_AMBIENT_PROFILE_KEY) || '';
+
 // Fixed pre-block checklist items. Index order must be stable — local state
 // arrays are indexed by position.
 const FLOW_CHECKLIST_ITEMS = [
@@ -86,6 +93,11 @@ function setFlowChecklistSkipped(skipped) {
 function initFlowUI() {
   // Phase complete callback
   Flow.onPhaseComplete((completedPhase) => {
+    // Backlog #3: stop ambient noise the moment a focus phase ends.
+    // Recovery is meant to be quiet and reflective — the noise was an
+    // aid for the focus block itself. If the user wants noise during
+    // recovery too, that's a follow-up (per-phase profiles).
+    if (completedPhase === 'focus') SFX.stopAmbient();
     SFX.playAlarm();
     Platform.haptic([200, 100, 200, 100, 200]);
     const label = completedPhase === 'focus'
@@ -137,6 +149,24 @@ function initFlowUI() {
     vibrateSelect.addEventListener('change', () => {
       flowVibrateIntervalMs = parseInt(vibrateSelect.value, 10) || 0;
       localStorage.setItem(FLOW_VIBRATE_INTERVAL_KEY, String(flowVibrateIntervalMs));
+    });
+  }
+
+  // Ambient noise dropdown (backlog #3). Persists the chosen profile to
+  // localStorage. When changed mid-session, immediately swap the playing
+  // profile (or stop, for "Off") so the user gets feedback without
+  // needing to restart the block.
+  const ambientSelect = document.getElementById('flow-ambient-profile');
+  if (ambientSelect) {
+    ambientSelect.value = flowAmbientProfile;
+    ambientSelect.addEventListener('change', () => {
+      flowAmbientProfile = ambientSelect.value || '';
+      localStorage.setItem(FLOW_AMBIENT_PROFILE_KEY, flowAmbientProfile);
+      const st = Flow.getStatus();
+      if (st === 'running' || st === 'overflowing') {
+        if (flowAmbientProfile) SFX.startAmbient(flowAmbientProfile);
+        else SFX.stopAmbient();
+      }
     });
   }
   // Resume guard: if loadState restored a 'running' / 'overflowing'
@@ -260,6 +290,11 @@ function onFlowLeft() {
     // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
     const sessionIdToClear = Flow.getSessionStartedAt();
     stopFlowRenderLoop();
+    // Backlog #3: defensive stop in case the user resets from a state
+    // where ambient might still be running (e.g. paused mid-focus and
+    // then reset — Flow.pause's stop path already fires, but covering
+    // the explicit Reset gesture too keeps the intent obvious).
+    SFX.stopAmbient();
     BgNotify.cancel('flow');
     Flow.reset();
     resetFlowChecklistState();
@@ -292,6 +327,8 @@ function onFlowRight() {
     // at vibrateIntervalMs elapsed in THIS focus block (not relative
     // to a previous session's leftover state).
     flowLastVibrateMs = 0;
+    // Backlog #3: auto-start ambient noise for THIS focus block.
+    if (flowAmbientProfile) SFX.startAmbient(flowAmbientProfile);
     BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', 'Focus block complete! Time for recovery.');
     saveFlowState();
     SFX.playStart();
@@ -300,12 +337,15 @@ function onFlowRight() {
   } else if (status === 'running') {
     stopFlowRenderLoop();
     Flow.pause();
+    SFX.stopAmbient();
     BgNotify.cancel('flow');
     saveFlowState();
     SFX.playStop();
     updateFlowUI();
   } else if (status === 'paused') {
     Flow.resume();
+    // Backlog #3: resume ambient noise alongside the timer.
+    if (flowAmbientProfile) SFX.startAmbient(flowAmbientProfile);
     BgNotify.schedule('flow', Flow.getRemainingMs(), 'Flow Block', 'Focus block complete! Time for recovery.');
     saveFlowState();
     SFX.playStart();
