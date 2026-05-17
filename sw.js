@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v89-ambient-noise-procedural';
+const CACHE_NAME = 'stopwatch-v90-rhythm-pillar';
 const ASSETS = [
   './',
   './index.html',
@@ -62,6 +62,8 @@ const ASSETS = [
   './js/mindful-ui.js',
   './js/wellness-cooking-ui.js',
   './js/recovery-ui.js',
+  './js/rhythm-engine.js',
+  './js/rhythm-ui.js',
   './js/bfrb-events.js',
   './js/distractions.js',
   './js/global-bfrb.js',

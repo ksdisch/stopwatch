@@ -5062,3 +5062,110 @@ body.focus-mode .global-bfrb-fab {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* ── Rhythm pillar — daily timeline ── */
+.rhythm-root {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px 16px 80px;
+}
+.rhythm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.rhythm-nav-btn {
+  background: var(--surface, #2c2c2e);
+  color: var(--text-primary, #f5f5f7);
+  border: 0.5px solid var(--separator, #38383a);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.rhythm-nav-btn:active {
+  transform: scale(0.92);
+}
+.rhythm-day-label {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary, #f5f5f7);
+  letter-spacing: 0.01em;
+}
+.rhythm-status {
+  font-size: 13px;
+  color: var(--text-secondary, #8e8e93);
+  text-align: center;
+  margin-bottom: 16px;
+  min-height: 18px;
+}
+.rhythm-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 0.5px solid var(--separator, #38383a);
+  padding-top: 12px;
+}
+.rhythm-empty {
+  font-size: 14px;
+  color: var(--text-secondary, #8e8e93);
+  text-align: center;
+  padding: 32px 0;
+}
+.rhythm-entry {
+  display: grid;
+  grid-template-columns: 64px 20px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: background 0.1s ease;
+}
+.rhythm-entry:hover {
+  background: var(--surface, rgba(255, 255, 255, 0.03));
+}
+.rhythm-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-secondary, #8e8e93);
+}
+.rhythm-dot {
+  font-size: 14px;
+  text-align: center;
+  line-height: 1;
+}
+.rhythm-summary {
+  color: var(--text-primary, #f5f5f7);
+}
+.rhythm-entry--productivity .rhythm-dot { color: #007aff; }
+.rhythm-entry--wellness .rhythm-dot { color: #30d158; }
+.rhythm-entry--session-end .rhythm-dot { opacity: 0.55; }
+.rhythm-now-line {
+  position: relative;
+  height: 1px;
+  background: var(--accent, #ff453a);
+  margin: 12px 0;
+}
+.rhythm-now-label {
+  position: absolute;
+  top: -10px;
+  left: 0;
+  background: var(--bg, #1c1c1e);
+  color: var(--accent, #ff453a);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (prefers-color-scheme: light) {
+  .rhythm-nav-btn { background: #fff; }
+  .rhythm-now-label { background: var(--bg, #f5f5f7); }
+}
