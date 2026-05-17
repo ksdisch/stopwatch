@@ -1089,3 +1089,134 @@ describe('D-1 ManualDedupe.scan — absent-bucket sessions are treated as "synce
     }
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// Group G: SyncEngine.reconcileImportedBucket — auto-arm steady-state
+// listeners on success (covers the post-Reconcile-without-reload seam
+// caught in two-tab validation 2026-05-17).
+// ────────────────────────────────────────────────────────────────────────
+
+describe('D-1 reconcileImportedBucket — fires _maybeAutoStartSteady after Step 9 success so listeners arm without a page reload', () => {
+  it('startSteadyState runs (setInterval armed) after reconcile-complete', async () => {
+    const markers = _d1_snapshotMarkers();
+    const medsSnap = _d1_snapshotMedsKeys();
+    _d1_clearMarkers();
+    _d1_clearMedsKeys();
+    const orig = _d1_saveModuleMethods();
+
+    // Save the pieces startSteadyState mutates that aren't covered by
+    // _d1_saveModuleMethods (timer, listeners, network shim, subscribe,
+    // visibilityState override).
+    const prevSetInterval = window.setInterval;
+    const prevClearInterval = window.clearInterval;
+    const prevAddEventListener = document.addEventListener;
+    const prevRemoveEventListener = document.removeEventListener;
+    const prevPlatform = window.Platform;
+    const prevSubscribe = (typeof SyncFirestore !== 'undefined') ? SyncFirestore.subscribe : undefined;
+    const prevVisibilityHasOwn = Object.prototype.hasOwnProperty.call(document, 'visibilityState');
+    const prevVisibilityOwnDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+    // kapture-headless leaves the tab at visibilityState: 'hidden', which
+    // makes startSteadyState() skip the setInterval call. Force 'visible'
+    // on the document INSTANCE only — mirrors _e1b_saveSteadyEnv's pattern
+    // at tests/sync-engine.test.js:842-854.
+    try {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        configurable: true,
+        writable: false,
+      });
+    } catch (_) { /* defensive */ }
+
+    // Tear down any leftover steady-state from a prior test so
+    // startSteadyState's _steadyTimer != null short-circuit doesn't
+    // suppress our hook's call.
+    try { SyncEngine.stopSteadyState(); } catch (_) {}
+
+    // Pre-condition the localStorage to mirror the post-Reconcile flow:
+    // handoff flag set so reconcile clears it, sync flag on.
+    localStorage.setItem('tempo_sync_stage_d_handoff', '1');
+    localStorage.setItem('tempo_sync_enabled', '1');
+
+    try {
+      _d1_install({
+        history: {
+          getDeviceId: () => 'local-device-G',
+          getSessions: async () => [],
+          _reconcileWriteRaw: async () => ({ written: 0, skipped: 0 }),
+        },
+        medsAll: () => [],
+        medsReconcileRaw: () => ({ written: 0, skipped: 0 }),
+      });
+
+      // Spy on setInterval so the test can observe startSteadyState's
+      // timer-arm call without actually firing a real periodic timer.
+      const spyInterval = function (cb, interval) {
+        spyInterval.calls.push({ cb, interval });
+        return { _d1_g_fake_id: spyInterval.calls.length };
+      };
+      spyInterval.calls = [];
+      window.setInterval = spyInterval;
+      window.clearInterval = function () {};
+
+      // No-op Platform.network so the network onChange wire-up in
+      // startSteadyState is skipped cleanly. Some test environments
+      // already define this — restore in finally.
+      window.Platform = window.Platform || {};
+      window.Platform.network = { onChange: () => function () {}, isOnline: () => true };
+
+      // Stub SyncFirestore.subscribe so _subscribeAllStores succeeds
+      // without contacting Firestore. Returns a fake unsubscribe fn so
+      // the listener-connected registry path executes.
+      if (typeof SyncFirestore !== 'undefined') {
+        SyncFirestore.subscribe = function (/* path, cb */) {
+          return function () {};
+        };
+      }
+
+      // First call: should arm the timer + register listeners via the
+      // new auto-arm hook at the end of reconcileImportedBucket.
+      const result = await SyncEngine.reconcileImportedBucket();
+      assertEqual(result.ok, true, 'reconcile ok: ' + JSON.stringify(result));
+
+      assert(spyInterval.calls.length >= 1,
+        'setInterval armed at least once via post-reconcile auto-start (got ' +
+        spyInterval.calls.length + ')');
+
+      // Verify Stage D handoff cleared and hydrate markers set (covered
+      // by existing tests too, but assert here to confirm the
+      // pre-conditions for the 4-condition gate are satisfied at the
+      // moment auto-start runs).
+      assertEqual(localStorage.getItem('tempo_sync_stage_d_handoff'), null,
+        'handoff flag cleared before auto-start fires');
+      assertEqual(localStorage.getItem('tempo_sync_hydrated_all'), '1',
+        '_all hydrate marker set before auto-start fires');
+    } finally {
+      // Restore real timer fns FIRST so any leftover setInterval from
+      // a botched test path gets cleared via the real clearInterval.
+      window.setInterval = prevSetInterval;
+      window.clearInterval = prevClearInterval;
+      document.addEventListener = prevAddEventListener;
+      document.removeEventListener = prevRemoveEventListener;
+      try { SyncEngine.stopSteadyState(); } catch (_) {}
+      if (prevPlatform === undefined) delete window.Platform;
+      else window.Platform = prevPlatform;
+      if (typeof SyncFirestore !== 'undefined') {
+        if (prevSubscribe === undefined) delete SyncFirestore.subscribe;
+        else SyncFirestore.subscribe = prevSubscribe;
+      }
+      // Restore visibilityState own-property exactly.
+      try {
+        if (prevVisibilityHasOwn) {
+          Object.defineProperty(document, 'visibilityState', prevVisibilityOwnDescriptor);
+        } else {
+          delete document.visibilityState;
+        }
+      } catch (_) { /* defensive */ }
+      _d1_restoreModuleMethods(orig);
+      _d1_restoreMedsKeys(medsSnap);
+      _d1_restoreMarkers(markers);
+    }
+  });
+
+});

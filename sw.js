@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v82-e3-listeners';
+const CACHE_NAME = 'stopwatch-v83-listener-cold-boot-rearm';
 const ASSETS = [
   './',
   './index.html',
