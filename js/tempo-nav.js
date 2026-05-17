@@ -957,8 +957,21 @@ const TempoNav = (() => {
     // Subscribe to ongoing auth changes (covers cold-boot rehydrate
     // landing after the drawer is already populated, plus system-level
     // account changes on native).
+    //
+    // Self-heal contract: when a user signs in late (e.g. after the
+    // SyncAuth signIn timeout fired but Platform.auth.signIn eventually
+    // succeeded on its own), the status row may still be showing the
+    // stale "Sign-in error: Sign-in timed out…" message painted by the
+    // click handler's catch branch. Clear it so the drawer transitions
+    // cleanly to the signed-in state instead of leaving the error
+    // visible alongside the user identity row.
     if (typeof SyncAuth !== 'undefined' && typeof SyncAuth.onAuthChange === 'function') {
-      SyncAuth.onAuthChange(() => renderCloudSyncUI());
+      SyncAuth.onAuthChange((user) => {
+        if (user) {
+          try { setStatus('', false); } catch (_) {}
+        }
+        renderCloudSyncUI();
+      });
     }
 
     // Re-render on every drawer open so toggle state always reflects

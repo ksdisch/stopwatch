@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v83-listener-cold-boot-rearm';
+const CACHE_NAME = 'stopwatch-v85-signin-timeout';
 const ASSETS = [
   './',
   './index.html',

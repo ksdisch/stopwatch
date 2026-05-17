@@ -276,6 +276,102 @@ describe('SyncAuth.signIn — success path', () => {
   });
 });
 
+// ── Test #3b: signIn() timeout — JS-side defense for PR #74 follow-up ──
+//
+// Reproduces the iOS race PR #74 fixed at the Podfile layer: native
+// signIn promise never resolves. Before this defense the UI hung
+// permanently on "Signing in…"; now SyncAuth.signIn rejects after
+// SIGN_IN_TIMEOUT_MS with a structured `auth/timeout` error so the
+// settings drawer's existing error path can paint a recoverable
+// message + re-enable the button.
+//
+// Tests fake `setTimeout` to fire its callback synchronously so the
+// real 60s wall-clock never actually elapses.
+
+describe('SyncAuth.signIn — timeout race (PR #74 follow-up)', () => {
+  it('rejects with code "auth/timeout" when Platform.auth.signIn never resolves', async () => {
+    await _b2_resetSyncAuthUser();
+    assertEqual(SyncAuth.getCurrentUser(), null, 'precondition: signed out');
+
+    const prevSetTimeout = window.setTimeout;
+    const prevClearTimeout = window.clearTimeout;
+    // Fire setTimeout callbacks synchronously so the timeout branch of
+    // Promise.race wins without waiting the real SIGN_IN_TIMEOUT_MS.
+    // Return a sentinel id so clearTimeout (called in the finally
+    // block inside signIn) has something to "clear".
+    window.setTimeout = function (cb) {
+      try { cb(); } catch (_) {}
+      return 0;
+    };
+    window.clearTimeout = function () { /* no-op */ };
+
+    let threw = null;
+    try {
+      await _b2_withStubbedPlatformAuth(
+        // Stub returns a promise that NEVER resolves — mirrors the iOS
+        // race where signInWithGoogle compiled to an empty function.
+        { signIn: () => new Promise(() => { /* never */ }) },
+        async () => {
+          try { await SyncAuth.signIn(); }
+          catch (e) { threw = e; }
+        }
+      );
+    } finally {
+      window.setTimeout = prevSetTimeout;
+      window.clearTimeout = prevClearTimeout;
+    }
+
+    assert(threw !== null, 'signIn must throw when the native promise never resolves');
+    assertEqual(threw.code, 'auth/timeout',
+      'thrown error carries code=auth/timeout (got ' + threw.code + ')');
+    assert(
+      typeof threw.message === 'string' && threw.message.indexOf('timed out') !== -1,
+      'error message mentions "timed out": ' + threw.message
+    );
+    // Cache stays clean — getCurrentUser() must still be null.
+    assertEqual(SyncAuth.getCurrentUser(), null,
+      'currentUser stays null after timeout (no half-signed-in state)');
+  });
+
+  it('returns the user on the happy path when Platform.auth.signIn resolves before the timeout', async () => {
+    // Regression guard for the timeout race: a fast-resolving signIn
+    // MUST still return the user (race winner is Platform.auth.signIn).
+    const fakeUser = { uid: 'u-fast', email: 'fast@example.com', displayName: 'F', photoURL: null };
+    await _b2_resetSyncAuthUser();
+
+    let timeoutFired = 0;
+    const prevSetTimeout = window.setTimeout;
+    const prevClearTimeout = window.clearTimeout;
+    // Real setTimeout — but at a delay (1ms) the signIn promise will
+    // resolve well before. Track whether the timeout callback runs.
+    window.setTimeout = function (cb, ms) {
+      return prevSetTimeout(function () { timeoutFired++; try { cb(); } catch (_) {} }, ms);
+    };
+    window.clearTimeout = prevClearTimeout;
+
+    try {
+      await _b2_withStubbedPlatformAuth(
+        { signIn: () => Promise.resolve(fakeUser) },
+        async () => {
+          const result = await SyncAuth.signIn();
+          assert(result !== null && result.uid === 'u-fast',
+            'happy path returns the user');
+        }
+      );
+    } finally {
+      window.setTimeout = prevSetTimeout;
+      window.clearTimeout = prevClearTimeout;
+    }
+
+    // Cleared by the finally inside signIn — timeout callback should
+    // NOT have run (race was won by Platform.auth.signIn).
+    assertEqual(timeoutFired, 0,
+      'timeout callback never fires when signIn resolves first (got ' + timeoutFired + ')');
+
+    await _b2_resetSyncAuthUser();
+  });
+});
+
 // ── Test #4: signOut() clears state + emits ────────────────────────────
 
 describe('SyncAuth.signOut — clears local state and emits null', () => {

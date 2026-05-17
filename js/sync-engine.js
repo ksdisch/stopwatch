@@ -1170,9 +1170,11 @@ const SyncEngine = (() => {
   // "Merge" section. Pure functions; the orchestrator wires them in
   // step 5.
 
-  // History: prefer cloud on `sessionId` collision; emit a console.warn
-  // per collision so post-merge debugging surfaces the (rare) cases
-  // where device-prefixed IDs happened to alias.
+  // History: prefer cloud on `sessionId` collision. Collisions surface
+  // via a single summary console.warn at the end of the merge so debug
+  // logs stay readable when the burst is large. Caught at two-tab
+  // validation 2026-05-17: 13 per-collision warnings fired in a 1ms
+  // burst during a Reconcile, drowning out other reconcile output.
   function _mergeHistory(localRecords, cloudRecords) {
     const cloudById = new Map();
     for (const rec of cloudRecords) {
@@ -1190,16 +1192,33 @@ const SyncEngine = (() => {
       }
     }
     // Tagged-local records appended where the id isn't in cloud.
+    // Collect colliding IDs for the single end-of-merge summary log.
+    const collisionIds = [];
     for (const rec of localRecords) {
       if (!rec || typeof rec.id !== 'string' || !rec.id) continue;
       if (seen.has(rec.id)) {
-        try {
-          console.warn('[SyncEngine] reconcile history sessionId collision (cloud wins): ' + rec.id);
-        } catch (_) {}
+        collisionIds.push(rec.id);
         continue;
       }
       out.push(rec);
       seen.add(rec.id);
+    }
+    // Summary log replaces the previous per-collision console.warn.
+    // First 10 IDs are inlined so debugging a specific Firestore doc
+    // is still possible; longer bursts surface as "+N more".
+    if (collisionIds.length > 0) {
+      try {
+        const PREVIEW_LIMIT = 10;
+        const head = collisionIds.slice(0, PREVIEW_LIMIT);
+        const more = collisionIds.length > PREVIEW_LIMIT
+          ? ' (+' + (collisionIds.length - PREVIEW_LIMIT) + ' more)'
+          : '';
+        console.warn(
+          '[SyncEngine] reconcile history: ' + collisionIds.length +
+          ' sessionId collision(s) resolved cloud-wins; ids=[' +
+          head.join(', ') + ']' + more
+        );
+      } catch (_) {}
     }
     return out;
   }
