@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v87-push-skip-stage-d-self';
+const CACHE_NAME = 'stopwatch-v88-flow-vibrate-intervals';
 const ASSETS = [
   './',
   './index.html',
