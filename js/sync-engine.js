@@ -203,7 +203,19 @@ const SyncEngine = (() => {
     try {
       if (!user) return;                                                  // signed out — nothing to do
       if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
-      if (isAllHydrated()) return;                                        // already done — short-circuit
+      if (isAllHydrated()) {
+        // Already hydrated from a prior session. The cold-boot probe in
+        // init() (line ~186) only fires _maybeAutoStartSteady when
+        // SyncAuth.getCurrentUser() is non-null at init time — but the
+        // Firebase Auth SDK's session rehydrate is async, so on cold
+        // boot init() typically sees a null user and the auth-change
+        // event is the first reliable signal that the user is signed
+        // in. Without this call, post-Reconcile reloads + any cold boot
+        // where the SDK rehydrates after init() leave listeners unarmed
+        // (caught in two-tab validation 2026-05-17).
+        _maybeAutoStartSteady(user);
+        return;
+      }
       if (getStageDHandoff()) return;                                     // D-1 owns reconciliation
       // Fire-and-forget; hydrateFromCloud handles its own state + UI events.
       hydrateFromCloud()
@@ -1653,6 +1665,20 @@ const SyncEngine = (() => {
           skippedFutureRecords,
         };
         emit('reconcile-complete', success);
+
+        // E-3 listener arm — once the 4-condition gate is satisfied
+        // (hydrate markers set in step 7, Stage D cleared in step 8),
+        // auto-start steady-state so listeners come up without
+        // requiring a page reload. Idempotent via startSteadyState's
+        // existing _steadyTimer guard. Defensive try/catch keeps the
+        // return value unaffected by any wire-up failure.
+        try {
+          const currentUser = (typeof SyncAuth !== 'undefined' && typeof SyncAuth.getCurrentUser === 'function')
+            ? SyncAuth.getCurrentUser()
+            : null;
+          if (currentUser) _maybeAutoStartSteady(currentUser);
+        } catch (_) {}
+
         return success;
       } catch (err) {
         // Defensive catch — anything unexpected (throw inside a merge
