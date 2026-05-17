@@ -21,6 +21,24 @@ const PresetsUI = (() => {
     });
 
     renderQuickPicks();
+
+    // Backlog #6 caveat (c): re-render when the sync engine reports a
+    // presets-store merge so cross-device changes propagate without
+    // close+reopen. Quick picks (always-visible) re-render
+    // unconditionally; grid only when the drawer is open. Defensive
+    // typeof guard keeps the engine usable in test harnesses that
+    // don't load sync-engine.js.
+    if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.on === 'function') {
+      try {
+        SyncEngine.on('merge-complete', (payload) => {
+          if (!payload || payload.store !== 'presets') return;
+          try { renderQuickPicks(); } catch (_) {}
+          if (drawer && !drawer.classList.contains('hidden')) {
+            try { renderGrid(); } catch (_) {}
+          }
+        });
+      } catch (_) {}
+    }
   }
 
   // ── Quick Picks (main screen, top 3) ──

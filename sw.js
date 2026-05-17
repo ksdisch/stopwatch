@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v85-signin-timeout';
+const CACHE_NAME = 'stopwatch-v86-ui-rerender-on-merge';
 const ASSETS = [
   './',
   './index.html',
