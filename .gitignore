@@ -1,5 +1,8 @@
 .DS_Store
 
+# Untracked planning doc kept locally; not part of the project
+PROJECT_GUIDE.md
+
 # Claude Code — track orchestrator/agents/templates; ignore personal state
 .claude/settings.local.json
 .claude/worktrees/
