@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v90-rhythm-pillar';
+const CACHE_NAME = 'stopwatch-v91-native-sync-parity';
 const ASSETS = [
   './',
   './index.html',

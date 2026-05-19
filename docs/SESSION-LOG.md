@@ -1784,6 +1784,90 @@ a9e9486 chore(claude): generalize orchestrator system for non-sync PRs  (direct 
 
 ---
 
+## 2026-05-19 — native-sync-parity: `addCollectionSnapshotListener` wrapper for iOS (closes listener half of backlog #2)
+
+### What We Built
+
+Replaces the `subscribe native parity pending` throw in
+`js/sync-firestore.js` with a real native implementation wrapping
+`@capacitor-firebase/firestore`'s `addCollectionSnapshotListener` +
+`removeSnapshotListener`. The native branch mirrors the web branch's
+deferred-unsubscribe closure pattern line-for-line — `_callbackId` +
+`_cancelled` captured in a closure, synchronously-returned unsubscribe
+fn either calls `removeSnapshotListener({ callbackId })` or sets
+`_cancelled = true` if the listener registration hasn't resolved yet.
+Plugin event shape `{ snapshots: DocumentSnapshot[] }` is converted to
+the web contract `{ docs: [{id, data}], count }` so downstream
+`js/sync-engine.js` doesn't have to branch on platform. Both branches
+of the plugin callback (`event != null` and `error != null`) wrap the
+caller's callback in try/catch matching the web branch's contract
+("must not break the listener"). `removeSnapshotListener` tear-down is
+wrapped in `try {} catch (_) {}` to mirror web's `_realUnsub` failure
+handling.
+
+**iOS latency floor drops ~5min → ~1s.** Steady-state polling (the
+5-min `setInterval` defensive fallback E-3 left in place) keeps
+running as before, but the primary path is now sub-second via the
+listener — same as web has been since E-3 (PR #75).
+
+`runTransaction()` native CAS parity remains intentionally deferred —
+plugin v6.3.1 exposes `writeBatch` (atomic but not read-conditional)
+but no `runTransaction`. F19a refuse-writeback on iOS continues to
+enforce via cloud-side gates in each `js/sync-merge-*.js` module
+(dispatcher snapshot pre-filter + per-merge-fn schemaVersion check
+before `setDoc`) — status quo since E-1b shipped 2026-05-13. CLAUDE.md
+backlog row #2 recast to reflect "listener half shipped, CAS half
+deferred" framing.
+
+9 new engine tests in `tests/sync-firestore.test.js` (8 native-branch
+cases per the audit + 1 harness-setup smoke verifying the inline
+`window.Capacitor` pre-script in `tests/index.html` wired up so
+`isNative=true` at module load). Test count: 628 → 637 passing.
+`sw.js` CACHE_NAME bumped v90 → v91. No new persistence keys, no
+schema bump, no `package.json` dep change, no UI surface touched
+(Phase 4 ui-wirer skipped per the orchestrator's "no UI in audit"
+auto-skip rule).
+
+### Verification result
+
+637 / 637 tests passing via kapture-driven browser run on the test
+harness (port 8765, server stopped before commit). The native-branch
+tests exercise the wrapper against a mocked
+`window.Capacitor.Plugins.FirebaseFirestore` plugin — they cannot
+catch real plugin-shape regressions (e.g. a v6.3.1 → v6.x.y plugin
+diff in `DocumentSnapshot.data` accessor), so iOS manual smoke is
+required before merging — see "Suggested Next Steps" below.
+
+### Suggested Next Steps
+
+- **iOS manual smoke (REQUIRED before merge).** Per the audit's 7-step
+  "Manual setup steps" section: install the Capacitor build to
+  iPhone, sign in with the test Google account on both web (laptop)
+  + iOS (phone) using the same UID, log a dose on the laptop and
+  verify ~1–2s propagation to the iPhone foreground, reverse
+  direction (phone → laptop), background/foreground re-arm check
+  (kill the app, reopen, confirm listener re-arms), Xcode console
+  scan for `removeSnapshotListener` errors. Smoke must be marked ✓
+  in this SESSION-LOG entry before the PR merges.
+- **CLAUDE.md backlog row #2 stays open.** Listener half shipped here;
+  CAS half remains deferred indefinitely (plugin v6.3.1 limitation).
+  Still a tracked carry-forward in the backlog table — not closed.
+- **Top of backlog post-this-PR.** With native listener parity
+  closed, the next two ROI-ranked features are split-screen timer
+  comparison (#3) and voice control (#4) per CLAUDE.md's Feature
+  Backlog table.
+
+**Non-blocking open questions surfaced this session:**
+- None. All engine-implementer + engine-tester reports were clean.
+
+### Commits
+```
+<SHA>   feat(sync): native onSnapshot listener parity for @capacitor-firebase/firestore
+<SHA>   docs(sync-impl): move native-sync-parity to shipped, mark PR #<N>
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

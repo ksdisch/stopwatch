@@ -66,6 +66,29 @@
        D-1 ManualDedupe helper is loaded alongside sync-engine so the
        D-1 tests can exercise it directly. -->
   <script src="../js/sync-flag.js"></script>
+  <!-- native-sync-parity: pre-script that flips js/sync-firestore.js's
+       module-load `isNative` const to true so tests/sync-firestore.test.js
+       can exercise the native branch. The closure-captured `plugins`
+       reference is the SAME OBJECT as window.Capacitor.Plugins, so tests
+       mutate window.Capacitor.Plugins.FirebaseFirestore per-case to swap
+       plugin stubs. This does NOT affect other tests because:
+         (a) js/platform.js is not loaded in tests/index.html — no haptic /
+             notification routing reads window.Capacitor here.
+         (b) All other sync tests stub SyncFirestore.* methods directly.
+         (c) js/sync-engine.js / js/sync-buffer.js / js/sync-auth.js do not
+             capture isNative at module load. -->
+  <script>
+    (function () {
+      if (typeof window === 'undefined') return;
+      // Preserve any pre-existing Capacitor (none in test harness today).
+      if (!window.Capacitor) {
+        window.Capacitor = {
+          isNativePlatform: function () { return true; },
+          Plugins: {},
+        };
+      }
+    })();
+  </script>
   <script src="../js/sync-firestore.js"></script>
   <script src="../js/sync-buffer.js"></script>
   <script src="../js/sync-engine.js"></script>
@@ -107,6 +130,7 @@
   <script src="sync-merge-presets.test.js"></script>
   <script src="sync-buffer.test.js"></script>
   <script src="sync-listeners.test.js"></script>
+  <script src="sync-firestore.test.js"></script>
   <script src="sync-toast.test.js"></script>
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>

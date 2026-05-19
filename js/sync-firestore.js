@@ -404,13 +404,28 @@ const SyncFirestore = (() => {
   // `firebase-firestore.js` CDN module (the cached `_sdk` object now
   // carries `onSnapshot` after E-3's `_loadWebSdk` extension above).
   //
-  // Native branch: throws `kind: 'unknown'` with "subscribe native parity
-  // pending" mirroring the existing `runTransaction` native branch
-  // (carry-forward filed alongside the long-deferred native CAS parity).
-  // The engine's `_subscribeAllStores` outer try/catch catches this
-  // throw so listener wire-up fails silently on native — iOS users fall
-  // back to the 5-min defensive poll until a separate native-parity
-  // follow-up bundles `addSnapshotListener` + `runTransaction`.
+  // Native branch: wraps `@capacitor-firebase/firestore`'s
+  // `addCollectionSnapshotListener` so iOS gets sub-second cross-device
+  // propagation instead of falling back to the 5-min defensive poll.
+  // Mirrors the web branch's deferred-unsubscribe closure shape
+  // line-for-line — the plugin returns `Promise<{ callbackId }>` rather
+  // than a sync unsubscribe fn, so the same `_cancelled`-flag pattern
+  // applies: the closure captures `_callbackId` + `_cancelled`, and the
+  // synchronously-returned unsubscribe fn either calls
+  // `removeSnapshotListener({ callbackId })` (if registration finished)
+  // or sets `_cancelled = true` (if it hasn't — the async resolution
+  // callback then tears the listener down immediately).
+  //
+  // Plugin event shape `{ snapshots: DocumentSnapshot[] }` is converted
+  // to the web-branch contract `{ docs: [{ id, data }], count }`. Note
+  // that the plugin's `DocumentSnapshot.data` is a property (not a
+  // method like the web SDK's `snap.data()`).
+  //
+  // `runTransaction` native CAS parity is intentionally NOT bundled with
+  // this listener wire-up — plugin v6.3.1 has no `runTransaction` API,
+  // and `writeBatch` is not read-conditional. F19a refuse-writeback on
+  // iOS continues to enforce via cloud-side gates in each
+  // `js/sync-merge-*.js` module (status quo since E-1b).
   //
   // SYNC_DISABLED fast-path matches the other public methods: throw
   // synchronously when the master flag is off.
@@ -422,16 +437,74 @@ const SyncFirestore = (() => {
     const norm = _normPath(path);
 
     if (isNative) {
-      // E-3 sub-decision per Pick A on TODO #7 (RESOLUTIONS in
-      // docs/sync-impl/prompts/E-3-PROMPT.md): native subscribe parity
-      // is a documented follow-up. Filed as a tracked carry-forward
-      // alongside the long-deferred native CAS parity from E-1b.
-      throw _wrap(
-        'unknown',
-        'subscribe native parity pending — web-only in E-3; see follow-up issue',
-        false,
-        null
-      );
+      // Native branch — `addCollectionSnapshotListener` resolves with
+      // `{ callbackId }`. Mirror the web branch's deferred-unsubscribe
+      // pattern: return a sync closure that either calls
+      // `removeSnapshotListener({ callbackId })` (registration done) or
+      // sets `_cancelled = true` (registration in flight — the async
+      // resolution then tears down immediately).
+      let _callbackId = null;
+      let _cancelled = false;
+      (async () => {
+        try {
+          const fs = _nativePlugin();
+          if (!fs) {
+            throw _wrap('unknown', 'FirebaseFirestore plugin unavailable', false, null);
+          }
+          const result = await fs.addCollectionSnapshotListener(
+            { reference: norm },
+            function _onEvent(event, error) {
+              if (error) {
+                try {
+                  callback({ ok: false, error: _normalizeError(error) });
+                } catch (_e) {
+                  // Caller's callback threw — must not break the listener.
+                }
+                return;
+              }
+              if (event) {
+                try {
+                  const docs = [];
+                  // Plugin's GetCollectionResult shape: { snapshots: DocumentSnapshot[] }.
+                  // DocumentSnapshot.data is a PROPERTY (not a method like web SDK's
+                  // snap.data()) — see definitions.d.ts:477.
+                  const snaps = (event && event.snapshots) || [];
+                  snaps.forEach(s => docs.push({ id: s.id, data: s.data }));
+                  callback({ docs, count: docs.length });
+                } catch (_e) {
+                  // Caller's callback threw — must not break the listener.
+                }
+              }
+            }
+          );
+          _callbackId = (result && result.callbackId) || null;
+          if (_cancelled && _callbackId) {
+            // Caller invoked unsubscribe before registration completed;
+            // tear down immediately to avoid leaking a listener.
+            try { await fs.removeSnapshotListener({ callbackId: _callbackId }); } catch (_) {}
+            _callbackId = null;
+          }
+        } catch (err) {
+          // Setup failed — surface the normalized error via the callback
+          // so the engine can emit `'listener-disconnected'`. The caller
+          // already has the deferred-unsubscribe closure; calling it is a
+          // no-op since we never registered.
+          try {
+            callback({ ok: false, error: _normalizeError(err) });
+          } catch (_e) {}
+        }
+      })();
+
+      return function unsubscribe() {
+        _cancelled = true;
+        if (_callbackId) {
+          const fs = _nativePlugin();
+          if (fs) {
+            try { fs.removeSnapshotListener({ callbackId: _callbackId }); } catch (_) {}
+          }
+          _callbackId = null;
+        }
+      };
     }
 
     // Web branch — lazy-load the SDK + db handle, resolve the path as a
