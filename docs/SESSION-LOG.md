@@ -1722,6 +1722,68 @@ dbb9b91 docs(sync-impl): E-3 RESOLUTIONS codified (Kyle, all 8 TODOs)
 
 ---
 
+## 2026-05-17 — Post-Stage-E burndown: four cloud-sync caveats + three top-of-backlog features (PRs #76–#83)
+
+### What We Built
+
+Stage E's 2026-05-15 two-device validation surfaced four reliability caveats (a/b/c/d) plus an iOS "Signing in…" label reset bug deferred from PR #74. All five shipped over the night of 2026-05-17, followed by the next three top-of-backlog features the same morning + afternoon. Eight PRs total, all merged to main.
+
+**Cloud-sync caveat burndown (PRs #76–#79, 02:54–03:25):**
+
+- **PR #76 — cold-boot listener rearm (commit `a010abb`).** E-3 onSnapshot listeners depend on `_maybeAutoStartSteady` running once the 4-condition gate (signed-in + flag-on + all-hydrated + no-Stage-D) is satisfied. Two seams left the gate unwatched after that moment had passed: (1) cold boot with pre-existing hydrate markers — `init()` probes `SyncAuth.getCurrentUser()` at line 186 and only fires `_maybeAutoStartSteady` if non-null; SDK rehydrates async, so currentUser is usually null at init time; the later `onAuthChange` callback called `_maybeAutoHydrate` which bailed early on `isAllHydrated()` and never reached the `.then(() => _maybeAutoStartSteady(user))` line; (2) in-session Reconcile without reload — `reconcileImportedBucket` step 7 set hydrate markers and step 8 cleared Stage D (gate satisfied) but no one re-fired `_maybeAutoStartSteady` at that moment. **Fix:** `_maybeAutoHydrate` now calls `_maybeAutoStartSteady(user)` when bailing on `isAllHydrated()` with a non-null user (Stage D bail untouched per D-1 contract); `reconcileImportedBucket` step 9 now reads `SyncAuth.getCurrentUser()` inside a defensive try/catch and fires `_maybeAutoStartSteady(currentUser)`. Idempotent via existing `_steadyTimer != null` guard. Discovered via two-tab kapture validation 2026-05-17. Adds Group G in `tests/sync-imported-bucket.test.js` (1 case). Total 606/606. `sw.js` → `v83-listener-cold-boot-rearm`.
+- **PR #77 — collision-log coalesce + SyncAuth timeout race (commits `64623e3` + `40df03d`).** Two unrelated fixes in one PR. **(d)** `_mergeHistory` was emitting one `console.warn` per sessionId collision during Stage D Reconcile (13 warnings in a 1ms burst captured 2026-05-17). Replaced with a single summary log at the end of the merge: `[SyncEngine] reconcile history: N sessionId collision(s) resolved cloud-wins; ids=[...]`. Preview cap at 10 IDs + "+M more" suffix. Per-record debug fidelity preserved for the first 10. Two tests updated/added (1 existing case asserting exactly one summary warning, 1 new 13-collision-burst case asserting count + preview + "+3 more" + 11th+ IDs absent). **iOS sign-in fix** — `SyncAuth.signIn` now races `Platform.auth.signIn` against `SIGN_IN_TIMEOUT_MS = 60000` setTimeout that rejects with `{ code: 'auth/timeout', message: 'Sign-in timed out. Try again.' }`. 60s comfortably covers interactive OAuth (account picker + password + 2FA). `tempo-nav.js` auth-change subscriber now clears the status row when transitioning to a non-null user — self-heal contract for "Platform.auth.signIn eventually succeeds AFTER the timeout race already lost on slow networks". Two new tests in `tests/sync-auth.test.js` (timeout case uses sync setTimeout stub so test never actually waits 60s; happy-path regression guard). Total 609/609 across the two commits. `sw.js` → `v84-reconcile-log-coalesce` → `v85-signin-timeout`. **Closes the deferred follow-up flagged in PR #74's description** + closes backlog caveat (d).
+- **PR #78 — per-surface UI re-render on merge-complete (commit `552ae76`, caveat c).** Each affected UI module now subscribes to `SyncEngine.on('merge-complete', ...)` so cross-device data arrivals reflect in the rendered surface without a close+reopen. Consistent pattern across 5 modules: typeof-guard `SyncEngine` for test-harness friendliness; filter on `payload.store === <store>`; visibility gate (drawer/panel currently rendered) avoids burning cycles on hidden surfaces; defensive try/catch around the re-render call. Subscribers: `presets-ui` (presets → `renderQuickPicks` always + `renderGrid` if drawer open), `history-ui` (history → `renderHistory` if panel visible), `recovery-ui` (rest_log + history → `render(surface)` if visible; hooks BOTH because the dashboard derives "Last focus block" from `History.getSessions`), `exercise-ui` + `wellness-cooking-ui` (history → `renderRecent` if surface visible). **Meds UI intentionally NOT hooked** — already has a render loop keeping the live countdown fresh; cross-device dose log changes pick up on next tick. **Distractions log in Flow/Pomo UI intentionally NOT hooked** — session-scoped, UI only displays during in-progress sessions, cross-device same-session editing is an edge case not worth the wire-up. Total 609/609 (no UI tests in this repo; emitter behavior tested at engine layer). `sw.js` → `v86-ui-rerender-on-merge`.
+- **PR #79 — Push skips Stage D when cloud has only this-device writes (commit `f2eed1e`, caveat b).** F9 read-cloud-first guard in `pushSnapshot()` used "cloud non-empty + partial-upload marker absent" as the Stage D trigger. After the FIRST successful push from any device, the marker is cleared on success — so every subsequent Push landed in Stage D handoff even when cloud only contained this device's own previous pushes. Caught at 2026-05-17 two-tab kapture validation. **Fix:** inspect cloud `deviceId` stamps. Three sub-paths: (1) "my failed retry" — partial-upload marker matches this user, proceed (existing); (2) "all cloud docs are my own previous pushes" — marker gone but every deviceId stamp matches THIS device, NEW — skip Stage D, re-upload via idempotent setDoc; (3) "genuine Stage D" — cloud carries at least one FOREIGN deviceId, hand off to D-1 (existing). `_pullCloudSnapshot` now returns `deviceIds` (Set<string>) alongside the existing `isEmpty` + counts; reaches into nested structures via a recursive walker because some stores (rest_log day records) stamp deviceId on inner array entries (`naps[]`) rather than the top-level doc. Uses `History.getDeviceId()` as this-device's id (canonical F10 source). Pre-F10 cloud docs (no deviceId at all) treated as neutral. Three tests in `tests/sync-uploader.test.js` (1 existing renamed + updated to use realistic F10-stamped cloud doc; 1 new for path 2; 1 new for nested-array regression guard). Total 611/611. `sw.js` → `v87-push-skip-stage-d-self`.
+
+**Top-of-backlog feature burndown (PRs #81–#83, 04:24–13:44):**
+
+- **PR #81 — Flow vibration intervals (commit `05d7a5f`, backlog #2).** See Phase 10 in CLAUDE.md for details. `sw.js` → `v88-flow-vibrate-intervals`. Total 611/611 (no engine modules changed; existing convention is to not unit-test vibration logic).
+- **PR #82 — Ambient procedural noise on Flow + Pomodoro session start (commit `9c6de75`, backlog #3).** See Phase 10 in CLAUDE.md for details. First-pass scope is procedural Web Audio noise only; bundled MP3 loops + YouTube IFrame Player API deferred to follow-ups. `sw.js` → `v89-ambient-noise-procedural`. Total 611/611 (no engine modules changed; `js/audio.js` has no existing test coverage in this repo).
+- **PR #83 — Rhythm pillar daily timeline (commit `5be4bfb`, backlog #4).** See Phase 10 in CLAUDE.md for details. Pure read-side aggregation, no new persistence. **17 new engine tests** in `tests/rhythm.test.js`. `sw.js` → `v90-rhythm-pillar`. **Total 628/628.**
+
+**Doc + chore ride-alongs:**
+- PR #85 (`3d524f3`) — marked "Lap data visualization" as already-shipped (was delivered in commit `313b78e` on 2026-04-06 but never moved off the backlog).
+- PR #84 (`257429d`) — ignore local `PROJECT_GUIDE.md`.
+- Direct-to-main `a9e9486` — generalize orchestrator system prompt for non-sync PRs (the orchestrator was sync-PR-specific; this opened it up for non-sync feature work like the three backlog features above).
+
+### Verification result
+
+All eight feature/fix PRs verified via two-tab kapture validation on 2026-05-17 (no formal Phase 4 ui-wirer pass — these were direct PRs, not orchestrator runs). Test counts progressed 605 → 606 (#76) → 607 (#77a) → 609 (#77b) → 611 (#79) → 628 (#83). `sw.js` cache bumped on every PR per project rule (`v82-e3-listeners` → `v83` → `v84` → `v85` → `v86` → `v87` → `v88` → `v89` → `v90-rhythm-pillar`).
+
+### Suggested Next Steps
+
+**Cloud sync — last unshipped piece:**
+- **Native CAS + listener parity for `@capacitor-firebase/firestore`.** Pair `addSnapshotListener` + `runTransaction` for the Capacitor branch in one follow-up PR. iOS sync currently works through the 5-min defensive polling path + per-record `setDoc` fallback — fully functional but degraded vs web. Requires Xcode + device for verification.
+
+**Top-of-backlog features (per CLAUDE.md table after this grooming pass):**
+- **Split-screen timer comparison (#6 in old numbering, #3 now).** Side-by-side two timers. Significant layout rework — would need responsive grid + per-pane controls + a "compare these two instances" picker UI.
+- **Voice control (#7 in old numbering, #4 now).** Web Speech API SpeechRecognition. Commands: start/stop/lap/reset.
+
+**Carry-forward tech debt:**
+- Legacy-key cleanup PRs (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` + `tempo_bfrb_events_migration_v1` marker; pre-migration flat-array distractions + `tempo_distractions_migration_v1` marker). No fixed schedule.
+- Backlog GC for preset tombstones (when accumulated `deletedAt < (now - 90 days)` records become observable, e.g., a user with 200+ deleted presets — add a periodic purge).
+- `SyncEngine._resetForTests()` helper (mirror `Toast._resetForTests()` so sync-engine extension tests can drop the `setTimeout(100)` workaround for flushing leaked microtasks from prior E-2 tests).
+- Phase 9's `js/history.js` per-field stamping deferral (TODO #2 from E-1d) — sessions currently LWW the whole record; per-field stamping for `note` vs `tags` once cross-device edit-collision pattern observed in practice.
+
+### Commits
+```
+a010abb fix(sync): arm listeners after cold-boot async-rehydrate + Reconcile  (PR #76)
+64623e3 refactor(sync): coalesce reconcile history collision warnings into one summary log  (PR #77)
+40df03d fix(sync): SyncAuth.signIn timeout race + self-heal of stale error status  (PR #77)
+552ae76 feat(sync): per-surface UI re-render on merge-complete  (PR #78)
+f2eed1e fix(sync): Push skips Stage D when cloud has only this-device writes  (PR #79)
+05d7a5f feat(flow): vibration intervals during focus blocks (backlog #2)  (PR #81)
+9c6de75 feat(audio): ambient procedural noise on Flow + Pomodoro session start  (PR #82)
+5be4bfb feat(rhythm): daily timeline pillar (backlog #4)  (PR #83)
+3d524f3 docs(backlog): mark lap data visualization as already shipped  (PR #85)
+257429d chore: ignore local PROJECT_GUIDE.md  (PR #84)
+a9e9486 chore(claude): generalize orchestrator system for non-sync PRs  (direct to main)
+```
+
+*Note: this entry was backfilled in a 2026-05-19 doc grooming pass — the eight feature/fix PRs above all shipped directly without a per-PR SESSION-LOG entry at the time. Detail is reconstructed from commit messages.*
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
