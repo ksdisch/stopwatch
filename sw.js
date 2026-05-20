@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v93-ambient-profile-persist';
+const CACHE_NAME = 'stopwatch-v94-ambient-auto-resume';
 const ASSETS = [
   './',
   './index.html',

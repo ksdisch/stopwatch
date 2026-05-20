@@ -450,6 +450,28 @@ function initAmbientControls() {
   });
 
   if (toggle) toggle.addEventListener('click', refreshFromEngine);
+
+  // Auto-resume the persisted profile on the first user gesture after a
+  // cold boot. Web Audio suspends the AudioContext until the page has
+  // received a real user interaction, so we attach a one-shot listener
+  // and claim that gesture as the trigger. Skipped if nothing was
+  // persisted or if something is already playing (Flow / Pomodoro start
+  // handlers fire synchronously during the same click and would have
+  // already set _ambientProfile by the time this bubble-phase listener
+  // runs — checked here so we don't double-start).
+  if (readPersistedProfile()) {
+    const onFirstGesture = () => {
+      document.removeEventListener('click', onFirstGesture);
+      document.removeEventListener('keydown', onFirstGesture);
+      const persisted = readPersistedProfile();
+      if (persisted && !SFX.getAmbientProfile()) {
+        SFX.startAmbient(persisted);
+        refreshFromEngine();
+      }
+    };
+    document.addEventListener('click', onFirstGesture);
+    document.addEventListener('keydown', onFirstGesture);
+  }
 }
 
 // ── Theme Picker ──
