@@ -1784,6 +1784,44 @@ a9e9486 chore(claude): generalize orchestrator system for non-sync PRs  (direct 
 
 ---
 
+## 2026-05-20 — Ambient noise palette expansion (PR #88, follow-up to PR #82)
+
+### What We Built
+
+Follow-up extension of PR #82's procedural ambient noise (backlog #3). The original PR shipped white / brown / pink — this PR expands the palette to 7 colors by adding four more profiles to `js/audio.js`'s `AMBIENT_PROFILES`:
+
+- **green** — RBJ biquad bandpass on white noise, center 500 Hz, Q=1.0, x4 amplitude compensation. Mid-band "forest" / "Otto-style" feel; qualitatively distinct from pink (broadband) and brown (LF-emphasized).
+- **blue** — single-difference differentiator on white (`data[i] = white[i] - white[i-1]`), x0.5 amp comp. +3 dB/oct HF emphasis; masks low-pitched distractions.
+- **violet** — double-difference (differentiator applied twice), x0.25 amp comp. +6 dB/oct extreme HF; distinct tinnitus-masking profile.
+- **gray** — Paul Kellet pink generator post-processed through a 2 kHz Q=0.7 biquad notch. Perceptually flatter U-shape spectrum (LF + HF emphasized, mid-band notched) — psychoacoustic approximation of A-weighting inverse.
+
+Pure additive change: the play path (`startAmbient` / `stopAmbient` / `_stopAmbientNode`) is byte-equivalent, public API unchanged, no new persistence keys, no schema bump, no sync-store touch, no native code, no new dependencies. Existing `flow_ambient_profile` / `pomodoro_ambient_profile` localStorage values continue to resolve unchanged.
+
+UI: both `<select>` blocks (`#flow-ambient-profile` + `#pomo-ambient-profile`) gained four new `<option>` entries; the existing 3 entries had " noise" suffix stripped from their text content for consistency ("Brown noise" → "Brown", etc.). The parent label "Ambient sound" already conveys context. `value` attributes unchanged, so persisted profile ids continue to resolve correctly.
+
+`sw.js` CACHE_NAME bumped from `v90-rhythm-pillar` → `v91-ambient-colors`.
+
+### Verification result
+
+- 2 new engine tests in `tests/audio.test.js` (profile registration order + capitalized name labels). Total: 628 → 630, all passing locally via `tests/index.html`.
+- Both Flow + Pomodoro routes verified via kapture browser: 8 options each in correct order; zero console errors; `#/wellness/meds` neighbor route regression-check passes.
+- Manual smoke (post-merge): pick each new color in Flow + Pomodoro and confirm each plays a distinct sound at default `ambient_volume = 0.05`. See `docs/audits/ambient-colors-expand-AUDIT.md` § Manual setup steps for the 10-step plan.
+
+### Suggested Next Steps
+
+- **Bundled royalty-free MP3 loops** (rain, café, ocean) — still deferred from backlog #3's option b. Would need a storage/streaming strategy and a license-source decision.
+- **YouTube IFrame Player API** for lo-fi / focus-music streams — still deferred (option c); carries ToS review.
+- **Per-phase ambient profiles** (e.g., one color for focus, a different one for break / recovery) — currently Flow stops ambient at focus→recovery, Pomodoro stops at work→break; no `pomodoro_break_ambient_profile` key. Deferred.
+- **PR #86 follow-through** (native-sync-listener-parity) — still awaiting Kyle's iOS smoke; this PR ships in parallel.
+- Carry-forward tech debt unchanged from 2026-05-17 entry.
+
+### Commits
+```
+<SHA>   feat(audio): expand ambient noise colors (green/blue/violet/gray)  (PR #88)
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD

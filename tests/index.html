@@ -61,6 +61,11 @@
   <script src="../js/rhythm-engine.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
+  <!-- Audio engine: ambient profile registration test. The IIFE does NOT
+       instantiate AudioContext at load time (getCtx() is lazy + only fired
+       by playback paths). getAmbientProfiles() is a pure map over a static
+       array, so loading audio.js here is harmless even in headless contexts. -->
+  <script src="../js/audio.js"></script>
   <!-- Sync flag + engine for B-1 SyncEngine tests. History / RecoveryUI are
        stubbed per-case (matches analytics.test / export.test pattern). The
        D-1 ManualDedupe helper is loaded alongside sync-engine so the
@@ -113,6 +118,7 @@
   <script src="rhythm.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
+  <script src="audio.test.js"></script>
 
   <!-- Report -->
   <script>reportResults();</script>
