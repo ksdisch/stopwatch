@@ -106,6 +106,28 @@
           </label>
           <input id="bfrb-volume-slider" type="range" min="0" max="100" step="5" value="55">
         </div>
+        <div class="tempo-settings-item tempo-settings-slider" role="group"
+             aria-label="Ambient sound — live controls">
+          <label for="ambient-profile-select" class="tempo-settings-item-label">
+            Ambient sound
+            <span class="tempo-settings-item-meta">live</span>
+          </label>
+          <select id="ambient-profile-select" aria-label="Ambient noise profile (live, this session only)">
+            <option value="">Off</option>
+            <option value="brown">Brown</option>
+            <option value="pink">Pink</option>
+            <option value="white">White</option>
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+            <option value="violet">Violet</option>
+            <option value="gray">Gray</option>
+          </select>
+          <label for="ambient-volume-slider" class="tempo-settings-item-label">
+            Ambient volume
+            <span id="ambient-volume-value" class="tempo-settings-item-meta">5%</span>
+          </label>
+          <input id="ambient-volume-slider" type="range" min="0" max="100" step="5" value="5">
+        </div>
         <!-- Cloud Sync section (B-2). Surfaces the developer toggle for
              tempo_sync_enabled, plus Google sign-in / current-user / sign-out
              once the flag is on. Wired by tempo-nav.js. -->

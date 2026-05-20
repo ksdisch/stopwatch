@@ -70,6 +70,7 @@ initCookingUI();
 initAlertUI();
 initSoundToggle();
 initThemePicker();
+initAmbientControls();
 initSequenceUI();
 initHistoryPanel();
 initAnalyticsPanel();
@@ -406,6 +407,36 @@ function initSoundToggle() {
       });
     });
   }
+}
+
+// ── Ambient Controls (settings drawer — live mid-session profile + volume) ──
+function initAmbientControls() {
+  const select = document.getElementById('ambient-profile-select');
+  const slider = document.getElementById('ambient-volume-slider');
+  const valueEl = document.getElementById('ambient-volume-value');
+  const toggle = document.getElementById('tempo-settings-toggle');
+  if (!select || !slider || typeof SFX === 'undefined') return;
+
+  function refreshFromEngine() {
+    select.value = SFX.getAmbientProfile() || '';
+    const pct = Math.round((SFX.getAmbientVolume?.() ?? 0.05) * 100);
+    slider.value = String(pct);
+    if (valueEl) valueEl.textContent = `${pct}%`;
+  }
+  refreshFromEngine();
+
+  select.addEventListener('change', () => {
+    const profile = select.value;
+    if (profile) SFX.startAmbient(profile);
+    else SFX.stopAmbient();
+  });
+  slider.addEventListener('input', () => {
+    const pct = parseInt(slider.value, 10);
+    SFX.setAmbientVolume(pct / 100);
+    if (valueEl) valueEl.textContent = `${pct}%`;
+  });
+
+  if (toggle) toggle.addEventListener('click', refreshFromEngine);
 }
 
 // ── Theme Picker ──
