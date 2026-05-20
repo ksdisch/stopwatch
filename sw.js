@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v92-ambient-drawer-controls';
+const CACHE_NAME = 'stopwatch-v93-ambient-profile-persist';
 const ASSETS = [
   './',
   './index.html',

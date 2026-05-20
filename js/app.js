@@ -411,14 +411,26 @@ function initSoundToggle() {
 
 // ── Ambient Controls (settings drawer — live mid-session profile + volume) ──
 function initAmbientControls() {
+  const AMBIENT_LAST_KEY = 'ambient_profile_last';
+  const VALID_PROFILES = ['', 'white', 'brown', 'pink', 'green', 'blue', 'violet', 'gray'];
   const select = document.getElementById('ambient-profile-select');
   const slider = document.getElementById('ambient-volume-slider');
   const valueEl = document.getElementById('ambient-volume-value');
   const toggle = document.getElementById('tempo-settings-toggle');
   if (!select || !slider || typeof SFX === 'undefined') return;
 
+  function readPersistedProfile() {
+    const raw = localStorage.getItem(AMBIENT_LAST_KEY) || '';
+    return VALID_PROFILES.includes(raw) ? raw : '';
+  }
+
+  // Prefer live engine state (something is playing right now) over the
+  // persisted last-pick. If nothing is playing, fall back to whatever the
+  // user last chose in this drawer so the dropdown matches the volume
+  // slider's "remember my pick across refreshes" behavior.
   function refreshFromEngine() {
-    select.value = SFX.getAmbientProfile() || '';
+    const live = SFX.getAmbientProfile();
+    select.value = live || readPersistedProfile();
     const pct = Math.round((SFX.getAmbientVolume?.() ?? 0.05) * 100);
     slider.value = String(pct);
     if (valueEl) valueEl.textContent = `${pct}%`;
@@ -427,6 +439,7 @@ function initAmbientControls() {
 
   select.addEventListener('change', () => {
     const profile = select.value;
+    localStorage.setItem(AMBIENT_LAST_KEY, profile);
     if (profile) SFX.startAmbient(profile);
     else SFX.stopAmbient();
   });
