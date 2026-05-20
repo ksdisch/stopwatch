@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v90-rhythm-pillar';
+const CACHE_NAME = 'stopwatch-v91-ambient-colors';
 const ASSETS = [
   './',
   './index.html',

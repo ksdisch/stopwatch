@@ -128,11 +128,13 @@ const SFX = (() => {
 
   // ── Backlog #3: Ambient noise (procedural) ──────────────────────────
   //
-  // Generates continuous white / brown / pink noise via a single 5-second
-  // AudioBuffer per profile, played through a looped AudioBufferSourceNode.
-  // Buffer is generated lazily on first start of each profile and cached
-  // for the lifetime of the AudioContext — cheap (~880 KB per profile at
-  // 44.1 kHz mono) and avoids the ScriptProcessorNode deprecation path.
+  // Generates continuous white / brown / pink / green / blue / violet /
+  // gray noise via a single 5-second AudioBuffer per profile, played
+  // through a looped AudioBufferSourceNode. Buffer is generated lazily on
+  // first start of each profile and cached for the lifetime of the
+  // AudioContext — cheap (~880 KB per profile at 44.1 kHz mono, ~6 MB
+  // peak if all 7 colors get played in one session) and avoids the
+  // ScriptProcessorNode deprecation path.
   //
   // Honors the global `muted` flag: if the user toggles sound off via the
   // existing settings toggle, ambient stops mid-session too. (Future split
@@ -144,7 +146,7 @@ const SFX = (() => {
   const AMBIENT_VOLUME_KEY = 'ambient_volume';
   const AMBIENT_VOLUME_DEFAULT = 0.05;
   const AMBIENT_BUFFER_SECONDS = 5;
-  const AMBIENT_PROFILES = ['white', 'brown', 'pink'];
+  const AMBIENT_PROFILES = ['white', 'brown', 'pink', 'green', 'blue', 'violet', 'gray'];
 
   let ambientVolume = (() => {
     const raw = parseFloat(localStorage.getItem(AMBIENT_VOLUME_KEY));
@@ -153,7 +155,7 @@ const SFX = (() => {
   const _ambientBuffers = Object.create(null); // profile → AudioBuffer
   let _ambientSource = null;                   // AudioBufferSourceNode
   let _ambientGain = null;                     // GainNode (volume control)
-  let _ambientProfile = null;                  // 'white' | 'brown' | 'pink' | null
+  let _ambientProfile = null;                  // 'white' | 'brown' | 'pink' | 'green' | 'blue' | 'violet' | 'gray' | null
 
   function _generateAmbientBuffer(c, profile) {
     const sampleRate = c.sampleRate;
@@ -184,6 +186,84 @@ const SFX = (() => {
         const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
         b6 = white * 0.115926;
         data[i] = pink * 0.11; // amplitude compensation
+      }
+    } else if (profile === 'green') {
+      // 2-pole resonant bandpass at ~500 Hz, Q=1.0 — mid-frequency emphasis,
+      // "Otto-style" forest/nature feel. Biquad coefficients from the RBJ
+      // audio EQ cookbook (constant-skirt-gain BPF form). Hard-coded for the
+      // current AudioContext sampleRate; center drifts ~10 Hz across the
+      // 44.1/48 kHz range — inaudible.
+      const w0 = 2 * Math.PI * 500 / sampleRate;
+      const alpha = Math.sin(w0) / (2 * 1.0); // Q = 1.0
+      const cosW0 = Math.cos(w0);
+      const b0 =  alpha;
+      const b1 =  0;
+      const b2 = -alpha;
+      const a0 =  1 + alpha;
+      const a1 = -2 * cosW0;
+      const a2 =  1 - alpha;
+      const nb0 = b0 / a0, nb1 = b1 / a0, nb2 = b2 / a0;
+      const na1 = a1 / a0, na2 = a2 / a0;
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (let i = 0; i < length; i++) {
+        const x0 = Math.random() * 2 - 1;
+        const y0 = nb0 * x0 + nb1 * x1 + nb2 * x2 - na1 * y1 - na2 * y2;
+        x2 = x1; x1 = x0;
+        y2 = y1; y1 = y0;
+        data[i] = y0 * 4.0; // amplitude compensation — bandpass output is dim
+      }
+    } else if (profile === 'blue') {
+      // Single-difference differentiator: y[n] = x[n] - x[n-1]. Yields a
+      // rising spectrum (+6 dB/oct in the simple form, conventionally
+      // labeled "blue" in procedural-audio implementations). Brighter
+      // than white; amplitude scaled to match pink/white loudness.
+      let prev = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        data[i] = (white - prev) * 0.5; // amplitude compensation
+        prev = white;
+      }
+    } else if (profile === 'violet') {
+      // Second-difference: y[n] = x[n] - 2*x[n-1] + x[n-2]. Steeper
+      // high-frequency emphasis than blue (differentiator applied twice).
+      // Sounds airier/hissier — "purple" noise.
+      let prev1 = 0, prev2 = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        data[i] = (white - 2 * prev1 + prev2) * 0.25; // amplitude compensation
+        prev2 = prev1;
+        prev1 = white;
+      }
+    } else if (profile === 'gray') {
+      // Approximation: pink noise (Kellet 7-tap) with a mid-band notch
+      // at ~2 kHz (Q=0.7) to compensate for the ear's most-sensitive
+      // band. Net effect is a "U-shape" spectrum that sounds perceptually
+      // flatter than pink — qualitative gray-noise behavior without
+      // building a full A-weighting filter chain.
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      const w0n = 2 * Math.PI * 2000 / sampleRate;
+      const alphaN = Math.sin(w0n) / (2 * 0.7); // Q = 0.7
+      const cosW0n = Math.cos(w0n);
+      const nb0n = 1, nb1n = -2 * cosW0n, nb2n = 1;
+      const na0n = 1 + alphaN, na1n = -2 * cosW0n, na2n = 1 - alphaN;
+      const c0 = nb0n / na0n, c1 = nb1n / na0n, c2 = nb2n / na0n;
+      const d1 = na1n / na0n, d2 = na2n / na0n;
+      let nx1 = 0, nx2 = 0, ny1 = 0, ny2 = 0;
+      for (let i = 0; i < length; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        b6 = white * 0.115926;
+        const xPink = pink * 0.11; // match the pink-branch loudness baseline
+        const y0 = c0 * xPink + c1 * nx1 + c2 * nx2 - d1 * ny1 - d2 * ny2;
+        nx2 = nx1; nx1 = xPink;
+        ny2 = ny1; ny1 = y0;
+        data[i] = y0;
       }
     }
     return buf;
