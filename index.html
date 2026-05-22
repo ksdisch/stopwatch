@@ -167,6 +167,26 @@
           <div id="cloud-sync-status" class="tempo-cloud-sync-status"
                aria-live="polite" hidden></div>
         </div>
+        <!-- Live Activities section (iOS-only). Reveals only when
+             Platform.isNative === true AND Platform.liveActivity.isSupported()
+             returns { supported: true }. Web and pre-iOS-16.1 devices keep
+             this section hidden. Wired by tempo-nav.js → wireLiveActivities. -->
+        <div id="live-activities-section" class="tempo-settings-item tempo-live-activities-section"
+             role="group" aria-label="Live Activities" hidden>
+          <div class="tempo-live-activities-heading">Live Activities</div>
+          <div class="tempo-live-activities-row">
+            <span class="tempo-settings-item-label">Show on lock screen</span>
+            <button id="live-activities-toggle" type="button"
+                    class="tempo-cloud-sync-toggle"
+                    role="switch" aria-checked="true"
+                    aria-label="Toggle Live Activities"
+                    data-keep-drawer-open>
+              <span class="tempo-cloud-sync-toggle-track">
+                <span class="tempo-cloud-sync-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 

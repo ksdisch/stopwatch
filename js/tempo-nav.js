@@ -70,6 +70,7 @@ const TempoNav = (() => {
     wireSettingsDrawer();
     wireWellnessPlaceholderCTA();
     wireAnalyticsPillarOpener();
+    wireAppUrlOpen();
 
     // Resolve initial route from URL hash. If none, honour the persisted
     // app_mode that app.js already restored — otherwise a fresh load with
@@ -307,6 +308,7 @@ const TempoNav = (() => {
     });
 
     wireCloudSync(drawer, syncExpanded);
+    wireLiveActivities(drawer);
   }
 
   // ── Cloud Sync section (B-2) ────────────────────────────────────────
@@ -1023,6 +1025,70 @@ const TempoNav = (() => {
       if (activePillar === 'analytics') {
         applyRoute(resumeTimersRoute());
       }
+    });
+  }
+
+  // ── Live Activities (iOS) — settings drawer section ──────────────────
+  // Reveals the Live Activities toggle only when Platform.isNative === true
+  // AND Platform.liveActivity.isSupported() resolves with { supported: true }.
+  // On web (or non-iOS-16.1+ devices) the section stays hidden — no dead UI.
+  //
+  // Toggle persists synchronously to localStorage on every click. When
+  // toggling OFF, fires Platform.liveActivity.endAll() so any in-flight
+  // activity disappears immediately instead of waiting for the next timer
+  // event. The .catch is critical — the call may resolve to a fail shape
+  // (or throw) if the native plugin isn't wired yet (pre-cap-sync).
+  async function wireLiveActivities(drawer) {
+    const section = drawer.querySelector('#live-activities-section');
+    const toggle  = drawer.querySelector('#live-activities-toggle');
+    if (!section || !toggle) return;
+
+    const isNative = !!(typeof Platform !== 'undefined' && Platform.isNative);
+    if (!isNative) return;
+    if (!Platform.liveActivity) return;
+
+    const sup = await Platform.liveActivity
+      .isSupported()
+      .catch(() => ({ supported: false }));
+    if (!sup || !sup.supported) return;
+
+    // Initial state from localStorage. Default '1' (ON) when key absent.
+    const enabled = localStorage.getItem('live_activities_enabled') !== '0';
+    toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+    section.hidden = false;
+
+    toggle.addEventListener('click', () => {
+      const next = toggle.getAttribute('aria-checked') !== 'true';
+      toggle.setAttribute('aria-checked', next ? 'true' : 'false');
+      localStorage.setItem('live_activities_enabled', next ? '1' : '0');
+      if (!next && Platform.liveActivity) {
+        Platform.liveActivity.endAll().catch(() => {});
+      }
+    });
+  }
+
+  // ── tempo:// deep-link listener (registered once at init) ────────────
+  // Subscribes to Capacitor @capacitor/app's appUrlOpen event so that
+  // tapping a Live Activity on the iOS lock screen (which carries
+  // .widgetURL("tempo://timers/timer")) routes the WebView to the matching
+  // hash route. On web the App plugin is undefined and the whole block
+  // no-ops gracefully.
+  //
+  // Mapping: tempo://<host>/<path> → #/<host>/<path>
+  //   tempo://timers/timer → host="timers", pathname="/timer" → "#/timers/timer"
+  function wireAppUrlOpen() {
+    const cap = (typeof window !== 'undefined') ? window.Capacitor : null;
+    const App = (cap && cap.Plugins) ? cap.Plugins.App : null;
+    if (!App || typeof App.addListener !== 'function') return;
+    App.addListener('appUrlOpen', (event) => {
+      try {
+        if (!event || !event.url) return;
+        const url = new URL(event.url);
+        const path = (url.host || '') + (url.pathname || '');
+        if (path) {
+          window.location.hash = '#/' + path.replace(/^\/+/, '');
+        }
+      } catch (_e) { /* malformed URL — ignore */ }
     });
   }
 
