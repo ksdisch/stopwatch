@@ -1822,6 +1822,54 @@ UI: both `<select>` blocks (`#flow-ambient-profile` + `#pomo-ambient-profile`) g
 
 ---
 
+## 2026-05-22 — iOS Live Activities — Timer MVP (PR `live-activities-timer-mvp`, foundational PR for backlog #3/#9)
+
+### What We Built
+
+Foundational PR for iOS Live Activities (CLAUDE.md backlog priority #3 / chronological #9). Scaffolds the entire JS↔ActivityKit pipeline end-to-end for the `Timer` engine, so subsequent PRs can extend to Stopwatch / Pomodoro / Flow / Interval / Cooking without re-litigating the bridge or the Widget Extension setup. Six surfaces of change: (1) **new in-tree custom Capacitor plugin** (first non-Firebase / non-Capacitor-official plugin in the repo) at `ios/App/App/Plugins/LiveActivity/{LiveActivityPlugin.swift,LiveActivityPlugin.m,TempoTimerAttributes.swift}` — Swift plugin class with `isSupported` / `startTimer` / `updateTimer` / `endTimer` / `endAll`, internal `[String: Activity<TempoTimerAttributes>]` dict for resume-from-pause routing, Obj-C `CAP_PLUGIN(LiveActivityPlugin, "LiveActivity", ...)` registration bridge, shared `TempoTimerAttributes` struct with target-membership in BOTH App + Widget targets; (2) **new `TempoLiveActivityWidget` Xcode target** at `ios/App/TempoLiveActivityWidget/` — deployment-target-isolated at iOS 16.1 (main App stays at 13.0), SwiftUI lock-screen layout (Option B: name + PAUSED badge top, large `Text(timerInterval:)` countdown center, `ProgressView(timerInterval:)` bottom — all OS-rendered, no per-tick push), Dynamic Island compact / expanded / minimal layouts with `.widgetURL(URL(string: "tempo://timers/timer"))` deep-link on the expanded view; (3) **`js/platform.js` extension** — new `Platform.liveActivity` namespace mirroring the established `Platform.auth` / `Platform.network` module-pattern with web-side `{ supported: false }` / `{ ok: false, reason: 'web' }` no-op shapes and `_liveActivityNativeUnavailableLogged` one-time-warn on plugin-missing; (4) **`js/timer.js` engine wiring** — 4 fire-and-forget emit points inside `createTimer()` (`start` / `pause` / `reset` / `checkFinished`-alarm), each gated on `localStorage.getItem('live_activities_enabled') !== '0'` and ending with `.catch(() => {})` so engine state mutations are never blocked on the bridge; (5) **`ios/App/App/Info.plist` additions** — `NSSupportsLiveActivities = true` AND a second `<dict>` sibling inside `CFBundleURLTypes` registering `tempo://` URL scheme (existing Google OAuth callback untouched); (6) **settings drawer toggle + deep-link listener** — new `#live-activities-section` block in `#tempo-settings-drawer` after Cloud Sync, `wireLiveActivities(drawer)` reveals the section only when `Platform.isNative && (await Platform.liveActivity.isSupported()).supported`, `wireAppUrlOpen()` subscribes to `appUrlOpen` and maps `tempo://<host>/<path>` → `window.location.hash = '#/<host>/<path>'`. Web-side is byte-equivalent: section stays `hidden`, listener no-ops, Timer engine emits resolve to silent `{ ok: false, reason: 'web' }`. **Verification:** xcodebuild on both targets (Xcode 26.5 / Swift 6.3.2) → `** BUILD SUCCEEDED **` zero errors / warnings; full engine test suite 630 / 630 (no regressions); kapture web smoke confirms Live Activities section correctly hidden on web with zero console errors. New persistence key: `live_activities_enabled` (per-device toggle; default `'1'` ON; NOT synced — like `bfrb_volume` / `ambient_volume`). `sw.js` → `v92-live-activities-timer`.
+
+### Verification result
+
+- xcodebuild on Xcode 26.5 / Swift 6.3.2: `** BUILD SUCCEEDED **` for both `App` target and the new `TempoLiveActivityWidget` target. Zero errors / zero warnings.
+- Engine tests: 630 / 630 passing locally via `tests/index.html` (no regressions from the Timer engine's 4 new emit points — they're fire-and-forget `.catch(() => {})` and never block engine state).
+- Web kapture smoke: Live Activities section is `hidden` on web (correct gate via `Platform.isNative && isSupported`); no console errors; neighbor route `#/timers/countdown` regression-check passes.
+- Manual iOS device smoke: NOT YET — pending Kyle's device for first post-merge `npm run ios:sync && npx cap sync ios`. 16-step smoke plan documented in the audit: `docs/audits/live-activities-timer-mvp-AUDIT.md` § Manual setup steps.
+
+### Suggested Next Steps
+
+**Live Activities feature follow-ups (the rest of backlog #3):**
+- **PR 2 — Stopwatch count-up Live Activity.** Add `TempoStopwatchAttributes` struct + corresponding SwiftUI view (count-up layout, no progress bar — just elapsed time). Reuses the existing `Platform.liveActivity` namespace + plugin + Widget Extension target.
+- **PR 3+ — Pomodoro / Flow / Interval / Cooking integration.** Each engine adds its own attributes struct + view; bridge surface stays the same.
+- **iOS device smoke this PR.** Run the 16-step manual smoke plan from the audit on Kyle's iPhone post-merge. Critical checks: (smoke 13) force-quit-persists-activity validates ActivityKit's 8-hour OS-managed lifetime; (smoke 15) `tempo://` deep-link lands on `#/timers/timer`. If smoke 13 fails (activity vanishes within seconds), add `Background Modes` entitlement to `App.entitlements` — deferred from audit Risk #10.
+
+**Backlog #1 revisit — Apple Developer Program enrollment closed first item on "Remaining for App Store distribution" list:**
+- The brief's locked Q4 decision confirms Kyle's $99/yr Dev Program enrollment is now active. This closes the first remaining bullet on backlog row #1's "Remaining for App Store distribution" list (the $99/yr enrollment line). **This PR did NOT edit backlog #1** (out of scope — backlog edits stay their own doc PR per project convention). **Next session:** open a tiny `docs/backlog-#1-grooming` PR that (a) removes the $99/yr Apple Developer Program enrollment bullet from backlog row #1's "Remaining for App Store distribution" list, and (b) re-evaluates the remaining items (App Store Connect record, TestFlight or App Store submission, privacy nutrition labels for meds + BFRB health data, App Review screenshots, age rating, 1024×1024 app icon polish) for status updates. The TestFlight / App Store submission flow is the natural next step after the Dev Program activates.
+
+**Tech debt surfaced this PR — sync test harness pollution blocks future Platform.X unit tests:**
+- The 18 sync tests (`tests/sync-engine.test.js`, `tests/sync-listeners.test.js`, `tests/sync-auth.test.js`) stub `window.Platform = {...}` wholesale and rely on `Platform` being undefined globally in the harness. This means `js/platform.js` cannot currently be loaded by `tests/index.html` — which blocks unit-testing any future additions to the `Platform.X` namespaces. Surfaced concretely during this PR's Phase 3: engine-tester wrote `tests/platform.test.js` (6 cases for `Platform.liveActivity` web-branch contract) that passed in isolation but had to be dropped to keep the 18 sync tests green. **Recommended fix (single doc PR, a few hours of test refactoring):** refactor the 18 sync tests to stub `Platform.auth.X` / `Platform.network.X` properties directly via `Object.defineProperty` or simple assignment, instead of replacing `window.Platform` wholesale. Unblocks unit tests for `Platform.liveActivity` AND any future `Platform.X` additions (e.g., next custom Capacitor plugin).
+
+**Cloud sync — last unshipped piece (carry-forward from prior sessions):**
+- **Native CAS + listener parity for `@capacitor-firebase/firestore`.** `SyncFirestore.runTransaction` (queued from E-1b) and `SyncFirestore.subscribe` (queued from E-3) are both web-only — the native branches throw an explicit "native parity pending" normalized error. Pair `addSnapshotListener` + `runTransaction` for the Capacitor branch in one follow-up PR. Requires Xcode + device for verification.
+
+**Carry-forward tech debt (unchanged from prior sessions):**
+- iOS sign-out bug (PR #86 smoke surfaced; `js/platform.js:297-302` race against Firebase iOS SDK Keychain cache).
+- Legacy-key cleanup PRs (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` + migration markers; pre-migration flat-array distractions).
+- Backlog GC for preset tombstones.
+- `SyncEngine._resetForTests()` helper.
+- Phase 9's `js/history.js` per-field stamping deferral.
+
+### Commits
+```
+<SHA>   docs(briefs/audits): live-activities-timer-mvp brief + audit  (PR live-activities-timer-mvp)
+<SHA>   feat(ios): Live Activity custom Capacitor plugin + shared attributes  (PR live-activities-timer-mvp)
+<SHA>   feat(ios): Live Activity Widget Extension target + SwiftUI views  (PR live-activities-timer-mvp)
+<SHA>   feat(timer): emit Live Activity events on start/pause/reset/finish (web no-op)  (PR live-activities-timer-mvp)
+<SHA>   feat(ui): settings drawer Live Activities toggle + tempo:// deep-link listener  (PR live-activities-timer-mvp)
+<SHA>   docs(backlog): mark Live Activities Timer MVP shipped; flag paid-Dev-Program + sync-harness tech debt  (PR live-activities-timer-mvp)
+```
+
+---
+
 *To add a new session: copy the template below and fill it in at the end of a session.*
 
 ## Session N — YYYY-MM-DD
