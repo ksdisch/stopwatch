@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v94-meds-supply-optin';
+const CACHE_NAME = 'stopwatch-v95-pomo-timeline-fix';
 const ASSETS = [
   './',
   './index.html',

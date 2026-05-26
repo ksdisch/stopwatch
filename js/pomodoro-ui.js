@@ -1062,30 +1062,38 @@ function renderPomodoroTimeline() {
   const endTime = new Date(now.getTime() + totalMs - (status === 'idle' ? 0 : getElapsedTotalMs(cfg, cycleIdx, phase)));
 
   function getElapsedTotalMs(cfg, ci, ph) {
-    let ms = 0;
-    for (let i = 0; i < ci; i++) {
-      ms += cfg.workMs;
-      if (i < cfg.totalCycles - 1) ms += cfg.shortBreakMs;
+    // The engine increments cycleIndex at the START of a break (nextPhase),
+    // so during a break `ci` already points at the NEXT work block, not the
+    // one that just finished. Count fully-elapsed phases accordingly:
+    //   work        → ci work blocks + ci short breaks done before it
+    //   shortBreak  → ci work blocks done, (ci - 1) short breaks done
+    //   longBreak   → all work blocks + all (cycles - 1) short breaks done
+    let ms;
+    if (ph === 'work') {
+      ms = ci * cfg.workMs + ci * cfg.shortBreakMs;
+    } else if (ph === 'shortBreak') {
+      ms = ci * cfg.workMs + (ci - 1) * cfg.shortBreakMs;
+    } else { // longBreak
+      ms = cfg.totalCycles * cfg.workMs + (cfg.totalCycles - 1) * cfg.shortBreakMs;
     }
-    if (ph === 'shortBreak' || ph === 'longBreak') ms += cfg.workMs;
     ms += Pomodoro.getElapsedMs();
     return ms;
   }
 
-  // Determine current phase index in the sequence
+  // Determine current phase index in the sequence. cycleIndex is incremented
+  // at the START of a break (engine nextPhase), so during a short break it
+  // already points at the NEXT work block — the active break is the one that
+  // FOLLOWS work block (cycleIdx - 1). Match against the prebuilt `phases`
+  // array (whose .cycle is the 0-based work-block index each segment belongs
+  // to) so the highlight stays in lockstep with the engine.
   let activeIdx = -1;
   if (status !== 'idle' && status !== 'done') {
-    let idx = 0;
-    for (let i = 0; i < cycles; i++) {
-      if (i === cycleIdx && phase === 'work') { activeIdx = idx; break; }
-      idx++;
-      if (i < cycles - 1) {
-        if (i === cycleIdx && phase === 'shortBreak') { activeIdx = idx; break; }
-        idx++;
-      } else {
-        if (phase === 'longBreak') { activeIdx = idx; break; }
-        idx++;
-      }
+    if (phase === 'work') {
+      activeIdx = phases.findIndex(p => p.type === 'work' && p.cycle === cycleIdx);
+    } else if (phase === 'shortBreak') {
+      activeIdx = phases.findIndex(p => p.type === 'shortBreak' && p.cycle === cycleIdx - 1);
+    } else { // longBreak
+      activeIdx = phases.findIndex(p => p.type === 'longBreak');
     }
   }
 
