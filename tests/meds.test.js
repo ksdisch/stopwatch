@@ -1203,3 +1203,120 @@ describe('Meds — reconcileDoseLog (D-2)', () => {
       'warning contains "future-schema"');
   });
 });
+
+describe('Meds — prescription supply tracking', () => {
+  it('is not tracked by default (getSupplyRemaining null)', () => {
+    const m = createMed('sup1');
+    assertEqual(m.getSupplyStartCount(), null);
+    assertEqual(m.getSupplyResetAt(), null);
+    assertEqual(m.getSupplyRemaining(), null);
+  });
+
+  it('setSupply seeds the full count and stamps a reset time', () => {
+    const m = createMed('sup2');
+    const before = Date.now();
+    m.setSupply(30);
+    const after = Date.now();
+    assertEqual(m.getSupplyStartCount(), 30);
+    assertEqual(m.getSupplyRemaining(), 30);
+    const r = m.getSupplyResetAt();
+    assert(r >= before && r <= after, 'supplyResetAt should be ~now');
+  });
+
+  it('each logged dose decrements the remaining count', () => {
+    const m = createMed('sup3');
+    m.setSupply(30);
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 29);
+    m.logDose();
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 27);
+  });
+
+  it('clamps remaining at 0 — never goes negative', () => {
+    const m = createMed('sup4');
+    m.setSupply(2);
+    m.logDose();
+    m.logDose();
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 0);
+  });
+
+  it('undoing a dose restores the count (self-correcting)', () => {
+    const m = createMed('sup5');
+    m.setSupply(10);
+    m.logDose();
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 8);
+    m.undoLastDose();
+    assertEqual(m.getSupplyRemaining(), 9);
+  });
+
+  it('doses logged before the refill do not count against the new supply', () => {
+    const m = createMed('sup6');
+    m.setSupply(30);
+    const resetAt = m.getSupplyResetAt();
+    m.logDose(resetAt - 3600000); // an hour before the refill — old bottle
+    assertEqual(m.getSupplyRemaining(), 30);
+    m.logDose(resetAt + 1000);    // after the refill — counts
+    assertEqual(m.getSupplyRemaining(), 29);
+  });
+
+  it('a new prescription resets remaining to full even with prior doses', () => {
+    // Stub the clock so the refill lands strictly after the prior doses
+    // (in real life a month apart; here we advance a controlled cursor).
+    const realNow = Date.now;
+    try {
+      let t = 1700000000000;
+      Date.now = () => t;
+      const m = createMed('sup7');
+      m.setSupply(30);            // prescription 1
+      t += 1000; m.logDose();     // two doses from the old bottle
+      t += 1000; m.logDose();
+      assertEqual(m.getSupplyRemaining(), 28);
+      t += 1000;
+      m.setSupply(30);            // new month — refill after both doses
+      assertEqual(m.getSupplyRemaining(), 30);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it('setSupply sanitizes invalid / out-of-range input', () => {
+    const m = createMed('sup8');
+    m.setSupply(0);     assertEqual(m.getSupplyStartCount(), 30);
+    m.setSupply(-5);    assertEqual(m.getSupplyStartCount(), 30);
+    m.setSupply('abc'); assertEqual(m.getSupplyStartCount(), 30);
+    m.setSupply(2000);  assertEqual(m.getSupplyStartCount(), 1000);
+    m.setSupply(45.7);  assertEqual(m.getSupplyStartCount(), 45);
+  });
+
+  it('supports a custom prescription size (not just 30)', () => {
+    const m = createMed('sup9');
+    m.setSupply(90);
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 89);
+  });
+
+  it('roundtrips through getState / loadState', () => {
+    const m = createMed('sup10');
+    m.setSupply(30);
+    m.logDose();
+    const state = m.getState();
+    assertEqual(state.supplyStartCount, 30);
+    assert(typeof state.supplyResetAt === 'number', 'supplyResetAt serialized');
+
+    const m2 = createMed('sup10');
+    m2.loadState(state);
+    assertEqual(m2.getSupplyStartCount(), 30);
+    assertEqual(m2.getSupplyRemaining(), 29);
+  });
+
+  it('loadState with absent supply fields leaves tracking off', () => {
+    const m = createMed('sup11');
+    m.loadState({ id: 'sup11', name: 'X', frequency: 'as-needed', doseLog: [] });
+    assertEqual(m.getSupplyStartCount(), null);
+    assertEqual(m.getSupplyResetAt(), null);
+    assertEqual(m.getSupplyRemaining(), null);
+  });
+});
