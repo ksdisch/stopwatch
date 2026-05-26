@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v91-ambient-colors';
+const CACHE_NAME = 'stopwatch-v94-meds-supply-optin';
 const ASSETS = [
   './',
   './index.html',

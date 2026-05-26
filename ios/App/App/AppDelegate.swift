@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import FirebaseCore
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -12,6 +13,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Required by @capacitor-firebase/authentication — the plugin does
         // not auto-configure Firebase. See https://firebase.google.com/docs/ios/setup
         FirebaseApp.configure()
+
+        // Keep the ambient focus noise (Flow / Pomodoro) playing when Tempo is
+        // backgrounded or the screen is locked. The noise is Web Audio rendered
+        // through the WKWebView; by default iOS suspends WebView audio the moment
+        // the app leaves the foreground, so the noise cut out whenever the user
+        // switched apps. Setting the shared audio session to `.playback` makes
+        // that audio background-capable — paired with `UIBackgroundModes` = audio
+        // in Info.plist, a looping ambient source keeps rendering in the
+        // background. No `.mixWithOthers` option, so when the noise starts it
+        // takes over the now-playing session and pauses other apps' audio.
+        //
+        // Category only (no setActive): the WebView activates the session itself
+        // when playback begins, so merely opening Tempo doesn't grab audio focus
+        // until noise actually plays.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+        } catch {
+            print("[Tempo] Failed to set AVAudioSession category for background audio: \(error)")
+        }
+
         return true
     }
 
