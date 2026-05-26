@@ -37,6 +37,11 @@ const KNOWN_MED_KEYS = new Set([
   // V2 schema (current)
   'id', 'name', 'dose', 'frequency',
   'lastTakenAt', 'doseLog',
+  // Supply tracking (additive, nullable — no SCHEMA_VERSION bump, same as
+  // the deletedAt tombstone precedent). supplyStartCount = pills at the last
+  // refill; supplyResetAt = when "New prescription" was pressed. Remaining is
+  // derived from doseLog, never stored.
+  'supplyStartCount', 'supplyResetAt',
   // F17 (D-1): immutable provenance marker set once at reconcile time.
   // Distinct from `deviceId` (F10) which updates on every write — this is
   // the device that authored the record pre-sync. Distinguishes "this
@@ -75,6 +80,12 @@ function createMed(id) {
   let frequency = 'once-daily';
   let lastTakenAt = null;          // ms timestamp, convenience mirror of doseLog tail
   let doseLog = [];                 // [{ takenAt: ms, deviceId }], append-only, sorted ascending
+  // Supply tracking. Off by default (null). setSupply() (the "New
+  // prescription" action) sets the starting count + reset timestamp; the
+  // remaining count is DERIVED from doses logged on/after supplyResetAt so
+  // it self-corrects when a mis-logged dose is undone.
+  let supplyStartCount = null;     // pills at last refill (e.g. 30), or null = not tracked
+  let supplyResetAt = null;        // ms timestamp of last "New prescription", or null
   // F10: record-level LWW stamps. `touch()` bumps both on any mutation so
   // sync's per-field LWW for name/dose/frequency has a stable comparator.
   let updatedAt = Date.now();
@@ -120,6 +131,8 @@ function createMed(id) {
   function getUpdatedAt() { return updatedAt; }
   function getDeviceId() { return deviceId; }
   function isFromFutureSchema() { return _fromFutureSchema; }
+  function getSupplyStartCount() { return supplyStartCount; }
+  function getSupplyResetAt() { return supplyResetAt; }
 
   function setName(n) {
     name = (n == null ? '' : String(n)).trim().slice(0, 60) || 'Medication';
@@ -141,6 +154,29 @@ function createMed(id) {
     // setFrequency. Without preservation a backup from a newer schema would
     // get silently downcast to 'once-daily' on first import.
     frequency = (typeof f === 'string' && f.length > 0) ? f : 'once-daily';
+    touch();
+  }
+
+  // ── Supply tracking ─────────────────────────────────────────────────
+
+  // "New prescription" — set the starting pill count and stamp now as the
+  // refill moment. Doses logged on/after this moment count against the new
+  // supply. Sanitizes to an integer in [1, 1000]; invalid input defaults to 30.
+  function setSupply(count) {
+    let n = Math.floor(Number(count));
+    if (!isFinite(n) || n < 1) n = 30;
+    if (n > 1000) n = 1000;
+    supplyStartCount = n;
+    supplyResetAt = Date.now();
+    touch();
+  }
+
+  // Stop tracking supply for this med — wipes the count + refill timestamp so
+  // getSupplyRemaining() returns null again. Used when the user unchecks
+  // "Track prescription supply" in the edit form.
+  function clearSupply() {
+    supplyStartCount = null;
+    supplyResetAt = null;
     touch();
   }
 
@@ -205,6 +241,23 @@ function createMed(id) {
     return count;
   }
 
+  // Derived doses-remaining for the current prescription. null when supply
+  // isn't being tracked. Counts doses logged on/after supplyResetAt (the
+  // doseLog is sorted ascending, so we walk from the tail and stop at the
+  // first dose older than the refill). Clamped at 0 — "out" rather than
+  // negative. Doses logged with an offset that lands before the refill (i.e.
+  // taken from the previous bottle) correctly don't count against the new one.
+  function getSupplyRemaining() {
+    if (supplyStartCount === null || supplyResetAt === null) return null;
+    let consumed = 0;
+    for (let i = doseLog.length - 1; i >= 0; i--) {
+      if (doseLog[i].takenAt >= supplyResetAt) consumed++;
+      else break;
+    }
+    const remaining = supplyStartCount - consumed;
+    return remaining < 0 ? 0 : remaining;
+  }
+
   function getExpectedDosesToday() {
     if (frequency === 'once-daily') return 1;
     if (frequency === 'twice-daily') return 2;
@@ -237,6 +290,7 @@ function createMed(id) {
       lastTakenAt,
       updatedAt, deviceId,
       originDeviceId,
+      supplyStartCount, supplyResetAt,
       doseLog: doseLog.slice(),
     };
     // F19b: merge __forward back into the wire format. The loader's
@@ -340,6 +394,14 @@ function createMed(id) {
     // `!= null` so a re-load of a record that lacks the field (e.g. a
     // pre-reconcile snapshot) doesn't blow away the in-memory value.
     if (state.originDeviceId != null) originDeviceId = state.originDeviceId;
+
+    // Supply tracking. Absent / malformed → null (not tracked).
+    supplyStartCount = (typeof state.supplyStartCount === 'number' && isFinite(state.supplyStartCount))
+      ? state.supplyStartCount
+      : null;
+    supplyResetAt = (typeof state.supplyResetAt === 'number' && isFinite(state.supplyResetAt))
+      ? state.supplyResetAt
+      : null;
   }
 
   return {
@@ -348,6 +410,7 @@ function createMed(id) {
     getLastTakenAt, getDoseLog,
     getUpdatedAt, getDeviceId,
     isFromFutureSchema,
+    getSupplyStartCount, getSupplyResetAt, getSupplyRemaining, setSupply, clearSupply,
     logDose, undoLastDose,
     recomputeLastTakenAt,
     getTimeSinceLastDoseMs,

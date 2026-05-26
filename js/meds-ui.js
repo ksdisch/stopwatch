@@ -60,6 +60,27 @@ const MedsUI = (() => {
     const dose = med.getDose();
     const freq = FREQ_LABEL[med.getFrequency()] || 'Once daily';
     const subtitle = dose ? `${escapeHtml(dose)} · ${freq}` : freq;
+    // The supply section (badge + "New prescription" refill) only renders for
+    // meds the user has opted into tracking via the form checkbox. Tracking is
+    // flagged by supplyStartCount !== null (enabling seeds it; disabling clears it).
+    const tracked = med.getSupplyStartCount() !== null;
+    const supplyBadge = tracked ? `
+        <div class="med-supply" data-supply hidden>
+          <div class="med-supply-count" data-supply-count></div>
+          <div class="med-supply-meta" data-supply-meta></div>
+        </div>` : '';
+    const supplyControls = tracked ? `
+        <button class="med-supply-reset" data-action="new-prescription" type="button">New prescription</button>
+        <div class="med-supply-input" data-supply-input hidden>
+          <label class="med-supply-input-label">
+            <span>Pills in this prescription</span>
+            <input type="number" min="1" max="1000" value="30" data-supply-qty inputmode="numeric">
+          </label>
+          <div class="med-supply-input-actions">
+            <button class="med-btn med-btn-primary" data-action="apply-supply">Save count</button>
+            <button class="med-btn med-btn-ghost" data-action="cancel-supply">Cancel</button>
+          </div>
+        </div>` : '';
     return `
       <article class="med-card" data-med-id="${id}">
         <header class="med-card-header">
@@ -71,13 +92,13 @@ const MedsUI = (() => {
             <button class="med-icon-btn" data-action="edit" aria-label="Edit ${name}" title="Edit">✎</button>
             <button class="med-icon-btn" data-action="delete" aria-label="Delete ${name}" title="Delete">×</button>
           </div>
-        </header>
+        </header>${supplyBadge}
         <div class="med-card-status" data-status>—</div>
         <div class="med-card-last" data-last></div>
         <div class="med-card-buttons">
           <button class="med-btn med-btn-primary" data-action="log-now">Took it now</button>
           <button class="med-btn med-btn-secondary" data-action="log-offset">Took it ~</button>
-        </div>
+        </div>${supplyControls}
         <div class="med-offset" data-offset hidden>
           <div class="med-offset-row">
             <label>
@@ -139,6 +160,32 @@ const MedsUI = (() => {
     } else {
       lastEl.textContent = formatLastDose(last);
     }
+
+    refreshCardSupply(med, card);
+  }
+
+  // Prominent "doses remaining" badge. Hidden until the user starts tracking
+  // a prescription via the "New prescription" button. Color shifts amber when
+  // low (≤5) and red at 0 to flag getting ahead of the script.
+  function refreshCardSupply(med, card) {
+    const wrap = card.querySelector('[data-supply]');
+    if (!wrap) return;
+    const remaining = med.getSupplyRemaining();
+    if (remaining === null) {
+      wrap.hidden = true;
+      wrap.classList.remove('med-supply-low', 'med-supply-empty');
+      return;
+    }
+    const total = med.getSupplyStartCount();
+    const resetAt = med.getSupplyResetAt();
+    wrap.hidden = false;
+    card.querySelector('[data-supply-count]').innerHTML =
+      `<strong>${remaining}</strong> left`;
+    const meta = [`of ${total}`];
+    if (resetAt) meta.push(`since ${formatSupplyDate(resetAt)}`);
+    card.querySelector('[data-supply-meta]').textContent = meta.join(' · ');
+    wrap.classList.toggle('med-supply-low', remaining > 0 && remaining <= 5);
+    wrap.classList.toggle('med-supply-empty', remaining === 0);
   }
 
   function refreshAllCards() {
@@ -167,6 +214,7 @@ const MedsUI = (() => {
       } else if (action === 'log-offset') {
         // Prefill with 30 min (user can adjust). No schedule to derive
         // a smarter default from.
+        toggleSupplyInput(card, false);
         card.querySelector('[data-offset-h]').value = '0';
         card.querySelector('[data-offset-m]').value = '30';
         toggleOffset(card, true);
@@ -190,21 +238,52 @@ const MedsUI = (() => {
         }
         toggleOffset(card, false);
 
-      } else if (action === 'delete') {
-        if (confirm(`Delete "${med.getName()}"?`)) {
-          MedsManager.remove(med.getId());
-          MedsManager.saveAll();
-          render();
-        }
+      } else if (action === 'new-prescription') {
+        // Reveal the count input. Prefill with the last prescription size
+        // (or 30) so a routine monthly refill is one tap + Enter.
+        toggleOffset(card, false);
+        const qtyEl = card.querySelector('[data-supply-qty]');
+        qtyEl.value = med.getSupplyStartCount() || 30;
+        toggleSupplyInput(card, true);
+        qtyEl.focus();
+        qtyEl.select?.();
 
-      } else if (action === 'edit') {
-        openEditForm(med);
+      } else if (action === 'cancel-supply') {
+        toggleSupplyInput(card, false);
+
+      } else if (action === 'apply-supply') {
+        applySupply(med, card);
       }
     });
+
+    // Enter confirms / Escape cancels in the supply count field, matching
+    // the add/edit form's keyboard UX.
+    const qtyEl = card.querySelector('[data-supply-qty]');
+    if (qtyEl) {
+      qtyEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); applySupply(med, card); }
+        else if (e.key === 'Escape') { e.preventDefault(); toggleSupplyInput(card, false); }
+      });
+    }
+  }
+
+  function applySupply(med, card) {
+    const qty = parseInt(card.querySelector('[data-supply-qty]').value, 10);
+    med.setSupply(qty > 0 ? qty : 30);
+    MedsManager.saveAll();
+    toggleSupplyInput(card, false);
+    refreshCardStatus(med);
+    flash(card);
+    Platform.haptic(30);
   }
 
   function toggleOffset(card, show) {
     const panel = card.querySelector('[data-offset]');
+    if (panel) panel.hidden = !show;
+  }
+
+  function toggleSupplyInput(card, show) {
+    const panel = card.querySelector('[data-supply-input]');
     if (panel) panel.hidden = !show;
   }
 
@@ -225,6 +304,10 @@ const MedsUI = (() => {
     formEl.querySelector('[data-form-save]').addEventListener('click', saveForm);
     formEl.querySelector('[data-form-cancel]').addEventListener('click', closeForm);
 
+    // Reveal the "pills per prescription" input only when tracking is checked.
+    const trackEl = formEl.querySelector('[data-field-supply-track]');
+    if (trackEl) trackEl.addEventListener('change', syncSupplyQtyRow);
+
     formEl.querySelectorAll('input').forEach(inp => {
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); saveForm(); }
@@ -233,12 +316,22 @@ const MedsUI = (() => {
     });
   }
 
+  // Show/hide the pills-per-prescription row to match the checkbox state.
+  function syncSupplyQtyRow() {
+    const trackEl = formEl.querySelector('[data-field-supply-track]');
+    const qtyRow = formEl.querySelector('[data-field-supply-qty-row]');
+    if (qtyRow) qtyRow.hidden = !(trackEl && trackEl.checked);
+  }
+
   function openAddForm() {
     editingId = null;
     formEl.querySelector('[data-form-title]').textContent = 'Add medication';
     formEl.querySelector('[data-field-name]').value = '';
     formEl.querySelector('[data-field-dose]').value = '';
     formEl.querySelector('[data-field-frequency]').value = 'once-daily';
+    formEl.querySelector('[data-field-supply-track]').checked = false;
+    formEl.querySelector('[data-field-supply-qty]').value = 30;
+    syncSupplyQtyRow();
     formEl.hidden = false;
     if (addBtn) addBtn.hidden = true;
     formEl.querySelector('[data-field-name]').focus();
@@ -250,6 +343,10 @@ const MedsUI = (() => {
     formEl.querySelector('[data-field-name]').value = med.getName();
     formEl.querySelector('[data-field-dose]').value = med.getDose();
     formEl.querySelector('[data-field-frequency]').value = med.getFrequency();
+    const tracked = med.getSupplyStartCount() !== null;
+    formEl.querySelector('[data-field-supply-track]').checked = tracked;
+    formEl.querySelector('[data-field-supply-qty]').value = med.getSupplyStartCount() || 30;
+    syncSupplyQtyRow();
     formEl.hidden = false;
     if (addBtn) addBtn.hidden = true;
     formEl.querySelector('[data-field-name]').focus();
@@ -270,6 +367,8 @@ const MedsUI = (() => {
     const name = nameEl.value.trim();
     const dose = doseEl.value.trim();
     const frequency = freqEl.value;
+    const track = formEl.querySelector('[data-field-supply-track]').checked;
+    const qty = parseInt(formEl.querySelector('[data-field-supply-qty]').value, 10) || 30;
 
     if (!name) {
       nameEl.focus();
@@ -277,16 +376,31 @@ const MedsUI = (() => {
       return;
     }
 
+    let med;
     if (editingId) {
-      const med = MedsManager.get(editingId);
+      med = MedsManager.get(editingId);
       if (med) {
         med.setName(name);
         med.setDose(dose);
         med.setFrequency(frequency);
       }
     } else {
-      MedsManager.add({ name, dose, frequency });
+      med = MedsManager.add({ name, dose, frequency });
     }
+
+    // Apply the supply-tracking choice. Enabling (or changing the count)
+    // seeds a fresh prescription; disabling clears it. An unchanged count on
+    // an already-tracked med is left alone so editing the name doesn't reset
+    // the running tally.
+    if (med) {
+      const wasTracked = med.getSupplyStartCount() !== null;
+      if (track) {
+        if (!wasTracked || med.getSupplyStartCount() !== qty) med.setSupply(qty);
+      } else if (wasTracked) {
+        med.clearSupply();
+      }
+    }
+
     MedsManager.saveAll();
     closeForm();
     render();
@@ -339,6 +453,14 @@ const MedsUI = (() => {
     if (isYesterday) return `Last dose yesterday at ${time}`;
     const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
     return `Last dose ${dateStr} at ${time}`;
+  }
+
+  function formatSupplyDate(ts) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return 'today';
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   function escapeHtml(str) {

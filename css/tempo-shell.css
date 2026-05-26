@@ -556,6 +556,22 @@
   color: var(--text-secondary);
 }
 .meds-form-label > span { padding-left: 2px; }
+.meds-form-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  padding-left: 2px;
+}
+.meds-form-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--active-accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
 .meds-form-label input,
 .meds-form-label select {
   font-family: inherit;
@@ -777,6 +793,106 @@
   box-shadow: 0 0 0 3px var(--active-accent-glow);
 }
 .med-offset-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Prescription supply — prominent "doses remaining" badge. Sits near the top
+   of the card (above the today-status) so it reads as the headline number. */
+.med-supply {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--active-accent-tint);
+  border: 1px solid var(--active-accent-dim);
+  border-radius: 12px;
+}
+.med-supply[hidden] { display: none; }
+.med-supply-count {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--active-accent);
+  letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.med-supply-count strong {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-right: 2px;
+}
+.med-supply-meta {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+.med-supply-low {
+  background: rgba(255, 159, 10, 0.12);
+  border-color: rgba(255, 159, 10, 0.35);
+}
+.med-supply-low .med-supply-count { color: #ff9f0a; }
+.med-supply-empty {
+  background: rgba(255, 69, 58, 0.12);
+  border-color: rgba(255, 69, 58, 0.4);
+}
+.med-supply-empty .med-supply-count { color: #ff453a; }
+
+/* "New prescription" trigger — subtle dashed button below the log actions. */
+.med-supply-reset {
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--separator);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.med-supply-reset:hover {
+  color: var(--text);
+  border-color: var(--active-accent);
+}
+
+.med-supply-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+}
+.med-supply-input[hidden] { display: none; }
+.med-supply-input-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.med-supply-input-label input {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 8px 10px;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  outline: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  box-sizing: border-box;
+}
+.med-supply-input-label input:focus {
+  border-color: var(--active-accent);
+  box-shadow: 0 0 0 3px var(--active-accent-glow);
+}
+.med-supply-input-actions {
   display: flex;
   gap: 8px;
 }

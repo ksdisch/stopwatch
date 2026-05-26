@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tempo — Manual Smoke Tests</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#555; --rule:#ccc; --accent:#007aff; --green:#1f8f3a; --amber:#b8860b; --red:#c0392b; --box:#f4f4f6; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink); line-height: 1.5; max-width: 720px; margin: 32px auto; padding: 0 24px;
+    font-size: 15px;
+  }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; padding-top: 10px; border-top: 2px solid var(--ink); }
+  h3 { font-size: 15px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  p { margin: 6px 0; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+  pre { background: var(--box); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; }
+  code { background: var(--box); padding: 1px 5px; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  ol { margin: 8px 0; padding-left: 0; counter-reset: step; list-style: none; }
+  ol li { position: relative; margin: 7px 0 7px 0; padding-left: 56px; min-height: 22px; }
+  ol li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 26px; top: 1px; font-weight: 700; color: var(--accent);
+  }
+  ol li::after {
+    content: ""; position: absolute; left: 0; top: 0;
+    width: 18px; height: 18px; border: 1.5px solid #999; border-radius: 4px; background: #fff;
+  }
+  .expect, .fail, .note { border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
+  .expect { background: #eaf7ee; border-left: 4px solid var(--green); }
+  .fail   { background: #fdecea; border-left: 4px solid var(--red); }
+  .note   { background: #fff8e6; border-left: 4px solid var(--amber); }
+  .expect b { color: var(--green); }
+  .fail b   { color: var(--red); }
+  .priority { display: inline-block; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; text-transform: uppercase; }
+  .done { display: inline-block; background: var(--green); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; text-transform: uppercase; }
+  .test { page-break-inside: avoid; }
+  .why { font-size: 14px; color: var(--muted); margin: 2px 0 10px; }
+  .printbtn { position: fixed; top: 16px; right: 16px; background: var(--accent); color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.2); }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 24px 0; }
+  @media print {
+    body { margin: 0; max-width: none; font-size: 12pt; }
+    .no-print { display: none !important; }
+    h2 { page-break-after: avoid; }
+    a[href]::after { content: ""; }
+    pre { white-space: pre-wrap; }
+  }
+</style>
+</head>
+<body>
+
+<button class="printbtn no-print" onclick="window.print()">🖨 Print this page</button>
+
+<h1>Tempo — Manual Smoke Tests</h1>
+<p class="sub">Things to check by hand after this round of changes. Tick the box on each step as you go.</p>
+<p class="meta">Generated 2026-05-26 · Branch <code>claude/timer-actions-dropdown-visible-eBi1u</code></p>
+
+<div class="note">
+<b>What changed this round (so you know what you're checking):</b><br>
+1. iOS: ambient noise should now keep playing when Tempo is in the background <em>(new — not yet verified on a device)</em>.<br>
+2. Pomodoro: the <b>Actions</b> menu now shows while the timer is idle, not only while running.<br>
+3. Meds: prescription <b>supply tracking</b> is now opt-in per medication (badge + “New prescription” button).
+</div>
+
+<p><b>Quick read:</b> Test&nbsp;2 is the one that genuinely needs you — it couldn’t be tested without a real iPhone. Tests&nbsp;1, 3, and 4 were already verified in a browser; the device steps are just a fast confirmation. Do them in any order.</p>
+
+<!-- ============================================================ -->
+<h2>Step 0 · Prerequisites</h2>
+
+<h3>0a · Put the latest build on your iPhone (needed for Tests 2–4)</h3>
+<p class="why">The iOS audio fix is native code, and the Pomodoro/Meds changes are web code bundled into the app — both only reach your phone after a rebuild.</p>
+<pre><code>cd /Users/kyledisch/Projects/stopwatch
+npm run ios:open</code></pre>
+<p>Then in Xcode: pick your iPhone as the run destination (top bar) and press the <b>▶ Run</b> button (or <code>⌘R</code>). Wait for it to build and launch on the phone.</p>
+<div class="note">
+• Your running Pomodoro session will survive the rebuild (its state lives in the app’s storage and the timer catches up to the real clock on relaunch). Just <b>don’t delete the app</b> first — Build &amp; Run over it.<br>
+• On a free Apple developer cert the app expires every 7 days; rebuilding re-signs it.<br>
+• If Xcode complains about “pods”, run <code>cd ios/App &amp;&amp; pod install</code> then try again.<br>
+• Sanity check you’re on the right code: <code>git status</code> should show branch <code>claude/timer-actions-dropdown-visible-eBi1u</code>. If not: <code>git checkout claude/timer-actions-dropdown-visible-eBi1u</code> first.
+</div>
+
+<h3>0b · Start the local web server (only needed for Test 1)</h3>
+<pre><code>cd /Users/kyledisch/Projects/stopwatch
+python3 -m http.server 8765</code></pre>
+<p>Leave that running, then open <code>http://localhost:8765/tests/index.html</code> in any browser. When finished, stop the server with <code>Ctrl&nbsp;C</code> in that Terminal window.</p>
+
+<!-- ============================================================ -->
+<h2 class="test">Test 1 · Engine test suite <span class="done">already passing</span></h2>
+<p class="why">Automated unit tests for the timing/medication/sync engines. I already ran these (642/642). This is an optional re-confirm.</p>
+<ol>
+  <li>Do Step 0b, then open <code>http://localhost:8765/tests/index.html</code>.</li>
+  <li>Wait a few seconds for the tests to finish (the browser tab title updates).</li>
+  <li>Read the summary line at the very bottom of the page.</li>
+</ol>
+<div class="expect"><b>Expected:</b> the tab title reads <b>“PASS (642)”</b> and the bottom line reads <b>“642 tests: 642 passed, 0 failed.”</b></div>
+<div class="note"><b>Known flake:</b> if you instead see “641 passed, 1 failed” and the failing test mentions <code>_runMergeCycleForStore</code> / merge dispatch, just reload the page once. That one test is timing-sensitive and passes on a second run — it’s unrelated to these changes.</div>
+
+<!-- ============================================================ -->
+<h2 class="test">Test 2 · iOS background ambient noise <span class="priority">please verify</span></h2>
+<p class="why">The brown/ambient noise used to stop the instant you switched away from Tempo, because iOS suspends the web view’s audio. The fix tells iOS this audio is allowed to keep playing in the background. <b>This is the one I couldn’t test myself.</b></p>
+<ol>
+  <li>Make sure you did Step 0a (new build is on the phone).</li>
+  <li>Make sure the app is <b>not muted</b> (the sound/speaker toggle is on) and your phone’s ringer/volume is up.</li>
+  <li>Go to <b>Timers → Pomodoro</b>. Tap <b>Settings</b> (in the row of links under the timer).</li>
+  <li>Find <b>“Ambient sound”</b>, choose <b>Brown</b>, then tap <b>Save</b>.</li>
+  <li>Press the big <b>Start</b> button to begin a work session. Confirm you can hear the brown noise.</li>
+  <li>Now <b>swipe up to the Home screen</b> (or open another app, or lock the screen).</li>
+  <li>Listen.</li>
+  <li>Return to Tempo and confirm the session is still running normally.</li>
+</ol>
+<div class="expect"><b>Expected:</b> the brown noise <b>keeps playing</b> after you leave Tempo and while the screen is locked. (Bonus: if you had music or a podcast playing, starting the noise should have paused it — that’s the intended “take over” behavior.)</div>
+<div class="fail"><b>If it fails</b> (noise goes silent the moment Tempo is backgrounded): note that down and tell me. The next step would be a small native plugin to explicitly grab the audio session when the noise starts.</div>
+<div class="note">You can also try this from <b>Timers → Flow</b> — the Flow setup screen has its own “Ambient sound” dropdown. The noise plays during the focus block.</div>
+
+<!-- ============================================================ -->
+<h2 class="test">Test 3 · Pomodoro “Actions” menu shows while idle <span class="done">verified in browser</span></h2>
+<p class="why">Previously the “Actions” link only appeared while a Pomodoro was running. It now appears in the idle (not-started) state too.</p>
+<ol>
+  <li>Go to <b>Timers → Pomodoro</b> with the timer <b>idle</b> (showing the green <b>Start</b> button, not a running countdown). If one is running, that’s fine too — but the point of this test is the idle state.</li>
+  <li>Look at the row of links near the bottom: <b>Stats · Settings · Actions · Auto: Off · Saved Tasks</b>.</li>
+  <li>Confirm <b>“Actions”</b> is present even though nothing is running.</li>
+  <li>Confirm all five links sit on one line and are <b>not hidden behind</b> the bottom tab bar (Timers / Wellness / Rhythm / Analytics).</li>
+  <li>Tap <b>Actions</b>. A panel should open with: Clear Focus Goals, Clear Break Tasks, Restart Phase, Finish &amp; Reset, Clear All Tasks — and stay open while idle.</li>
+</ol>
+<div class="expect"><b>Expected:</b> “Actions” is visible and tappable while idle; the link row is fully readable above the tab bar; the Actions panel opens and stays open.</div>
+<div class="note">The “Auto-advance: Off” label was shortened to <b>“Auto: Off”</b> so all five links fit on one line — that’s intentional.</div>
+
+<!-- ============================================================ -->
+<h2 class="test">Test 4 · Meds prescription supply counter (opt-in) <span class="done">verified in browser</span></h2>
+<p class="why">You can now track how many pills are left in a prescription. It’s opt-in per medication, so only meds you switch it on for show the counter.</p>
+<ol>
+  <li>Go to <b>Wellness → Meds</b>.</li>
+  <li>Tap <b>+ Add</b>. Enter a name (e.g. “Test Med”). Check the box <b>“Track prescription supply”</b>.</li>
+  <li>Confirm a <b>“Pills per prescription”</b> field appears (defaults to 30). Leave it at 30 and tap <b>Save</b>.</li>
+  <li>On that med’s card, confirm a green badge reads <b>“30 left · of 30 · since today”</b> and there’s a <b>“New prescription”</b> button.</li>
+  <li>Confirm your <b>other</b> meds (where you didn’t check the box) show <b>no</b> badge and no “New prescription” button.</li>
+  <li>Tap <b>“Took it now”</b> on the test med. The badge should drop to <b>“29 left.”</b></li>
+  <li>Tap <b>“New prescription,”</b> change the number to <b>3</b>, tap <b>Save count</b>. The badge should read “3 left” and turn <b>amber/orange</b> (low warning).</li>
+  <li>Tap <b>“Took it now”</b> three more times until it reads <b>“0 left”</b> — it should turn <b>red</b> (empty).</li>
+  <li>Tap the pencil (edit) on the test med, <b>uncheck</b> “Track prescription supply,” and Save. The badge and “New prescription” button should disappear.</li>
+  <li>Optional cleanup: delete the test med (the × on its card).</li>
+</ol>
+<div class="expect"><b>Expected:</b> only the opted-in med shows the supply UI; the count decrements on each dose; amber at ≤5 left, red at 0; unchecking the box removes the supply UI.</div>
+
+<hr>
+
+<h2>Known issue — no action needed</h2>
+<p><b>iOS “Sign out” doesn’t fully sign out.</b> In Settings (gear icon) → Cloud Sync, tapping “Sign out” may still leave you signed in on iPhone (it works fine on the web). This is a <em>previously known</em> bug, already tracked — not something these changes touched. If it ever gets in your way, the workaround is to toggle <b>“Enable cloud sync” off</b> in that same panel. No need to test it.</p>
+
+<hr>
+<p class="meta"><b>When you’re done:</b> the only result I really need back is Test&nbsp;2 (does the noise keep playing in the background — yes/no). Anything that looks off on Tests 1, 3, or 4 is worth a note too, but those were already green in the browser.</p>
+
+</body>
+</html>

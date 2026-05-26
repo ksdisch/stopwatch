@@ -108,7 +108,7 @@ function initPomodoroUI() {
 
   function updateAutoAdvanceLabel() {
     if (autoAdvBtn) {
-      autoAdvBtn.textContent = autoAdvance ? 'Auto-advance: On' : 'Auto-advance: Off';
+      autoAdvBtn.textContent = autoAdvance ? 'Auto: On' : 'Auto: Off';
       autoAdvBtn.classList.toggle('offset-link-active', autoAdvance);
     }
   }
@@ -423,14 +423,8 @@ function updatePomodoroUI() {
   timerDisplay.classList.toggle('is-running', status === 'running');
   appEl.classList.toggle('is-running', status === 'running');
 
-  // Settings visibility
+  // Settings visibility (settings are idle-only — durations shouldn't change mid-session)
   settingsToggle.classList.toggle('hidden', status !== 'idle');
-
-  // Actions visibility (show when not idle)
-  document.getElementById('pomodoro-actions-toggle').classList.toggle('hidden', status === 'idle');
-  if (status === 'idle') {
-    document.getElementById('pomodoro-actions').setAttribute('data-collapsed', '');
-  }
 
   // Buttons
   switch (status) {

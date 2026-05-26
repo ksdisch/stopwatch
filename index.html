@@ -499,8 +499,8 @@
       <div class="pomo-action-links">
         <button id="pomodoro-stats-toggle" class="offset-link">Stats</button>
         <button id="pomodoro-settings-toggle" class="offset-link">Settings</button>
-        <button id="pomodoro-actions-toggle" class="offset-link hidden">Actions</button>
-        <button id="pomo-auto-advance-toggle" class="offset-link">Auto-advance: Off</button>
+        <button id="pomodoro-actions-toggle" class="offset-link">Actions</button>
+        <button id="pomo-auto-advance-toggle" class="offset-link">Auto: Off</button>
         <button id="pomo-saved-tasks-toggle" class="offset-link">Saved Tasks</button>
       </div>
       <div id="pomodoro-actions" class="offset-input" data-collapsed>
@@ -680,6 +680,18 @@
                 <option value="twice-daily">Twice daily</option>
                 <option value="as-needed">As-needed</option>
               </select>
+            </label>
+          </div>
+          <div class="meds-form-row">
+            <label class="meds-form-check">
+              <input type="checkbox" data-field-supply-track>
+              <span>Track prescription supply</span>
+            </label>
+          </div>
+          <div class="meds-form-row" data-field-supply-qty-row hidden>
+            <label class="meds-form-label">
+              <span>Pills per prescription</span>
+              <input type="number" min="1" max="1000" value="30" data-field-supply-qty inputmode="numeric">
             </label>
           </div>
           <div class="meds-form-actions">
