@@ -1708,9 +1708,24 @@ input:focus:not(:focus-visible) {
 /* Pomodoro Action Links */
 .pomo-action-links {
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
   justify-content: center;
+}
+/* Five links (Stats / Settings / Actions / Auto / Tasks) must share one
+   phone-width row without wrapping into the fixed bottom tab bar. Keep each
+   on a single line and trim the footprint; overflow-x scrolls as a safety on
+   very narrow screens rather than wrapping to a second (clipped) row. */
+.pomo-action-links {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pomo-action-links::-webkit-scrollbar { display: none; }
+.pomo-action-links .offset-link {
+  white-space: nowrap;
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  padding: 8px 9px;
 }
 
 /* Pomodoro Stats Panel */

@@ -171,6 +171,15 @@ function createMed(id) {
     touch();
   }
 
+  // Stop tracking supply for this med — wipes the count + refill timestamp so
+  // getSupplyRemaining() returns null again. Used when the user unchecks
+  // "Track prescription supply" in the edit form.
+  function clearSupply() {
+    supplyStartCount = null;
+    supplyResetAt = null;
+    touch();
+  }
+
   // ── Dose logging ────────────────────────────────────────────────────
 
   function logDose(takenAt) {
@@ -401,7 +410,7 @@ function createMed(id) {
     getLastTakenAt, getDoseLog,
     getUpdatedAt, getDeviceId,
     isFromFutureSchema,
-    getSupplyStartCount, getSupplyResetAt, getSupplyRemaining, setSupply,
+    getSupplyStartCount, getSupplyResetAt, getSupplyRemaining, setSupply, clearSupply,
     logDose, undoLastDose,
     recomputeLastTakenAt,
     getTimeSinceLastDoseMs,

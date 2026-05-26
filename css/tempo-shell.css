@@ -556,6 +556,22 @@
   color: var(--text-secondary);
 }
 .meds-form-label > span { padding-left: 2px; }
+.meds-form-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  padding-left: 2px;
+}
+.meds-form-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--active-accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
 .meds-form-label input,
 .meds-form-label select {
   font-family: inherit;

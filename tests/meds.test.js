@@ -746,6 +746,7 @@ describe('Meds — F19b __forward passthrough', () => {
     const expectedKeys = new Set([
       'schemaVersion', 'id', 'name', 'dose', 'frequency',
       'lastTakenAt', 'updatedAt', 'deviceId', 'originDeviceId', 'doseLog',
+      'supplyStartCount', 'supplyResetAt',
     ]);
     for (const k of Object.keys(state)) {
       assert(expectedKeys.has(k), `Unexpected key "${k}" on fresh med state`);
@@ -1315,6 +1316,17 @@ describe('Meds — prescription supply tracking', () => {
   it('loadState with absent supply fields leaves tracking off', () => {
     const m = createMed('sup11');
     m.loadState({ id: 'sup11', name: 'X', frequency: 'as-needed', doseLog: [] });
+    assertEqual(m.getSupplyStartCount(), null);
+    assertEqual(m.getSupplyResetAt(), null);
+    assertEqual(m.getSupplyRemaining(), null);
+  });
+
+  it('clearSupply turns tracking back off', () => {
+    const m = createMed('sup12');
+    m.setSupply(30);
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 29);
+    m.clearSupply();
     assertEqual(m.getSupplyStartCount(), null);
     assertEqual(m.getSupplyResetAt(), null);
     assertEqual(m.getSupplyRemaining(), null);

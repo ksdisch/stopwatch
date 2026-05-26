@@ -108,7 +108,7 @@ function initPomodoroUI() {
 
   function updateAutoAdvanceLabel() {
     if (autoAdvBtn) {
-      autoAdvBtn.textContent = autoAdvance ? 'Auto-advance: On' : 'Auto-advance: Off';
+      autoAdvBtn.textContent = autoAdvance ? 'Auto: On' : 'Auto: Off';
       autoAdvBtn.classList.toggle('offset-link-active', autoAdvance);
     }
   }
