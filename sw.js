@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v91-ambient-colors';
+const CACHE_NAME = 'stopwatch-v92-pomodoro-actions-always';
 const ASSETS = [
   './',
   './index.html',

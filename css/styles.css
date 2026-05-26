@@ -1708,6 +1708,7 @@ input:focus:not(:focus-visible) {
 /* Pomodoro Action Links */
 .pomo-action-links {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   justify-content: center;
 }
