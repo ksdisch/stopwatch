@@ -1441,4 +1441,13 @@ describe('Meds — prescription supply tracking', () => {
     assertEqual(m.getSupplyAdjustment(), 0);
     assertEqual(m.getSupplyRemaining(), 30);
   });
+
+  it('getSupplyRemaining clamps a corrupt out-of-range adjustment to the cap', () => {
+    // A hostile / corrupt synced record can carry any supplyAdjustment —
+    // loadState truncs but does not clamp it. The derived display must still
+    // be bounded so the badge never shows an absurd "N left".
+    const m = createMed('adj12');
+    m.loadState({ id: 'adj12', supplyStartCount: 30, supplyResetAt: Date.now(), supplyAdjustment: 5000, doseLog: [] });
+    assertEqual(m.getSupplyRemaining(), 1000);
+  });
 });
