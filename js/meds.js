@@ -77,6 +77,12 @@ function _medsGetDeviceId() {
   return id;
 }
 
+// Upper bound on a tracked prescription's pill count. setSupply and
+// adjustSupply clamp to this, and getSupplyRemaining clamps its derived
+// output to [0, MAX_SUPPLY] so a corrupt/hostile synced `supplyAdjustment`
+// can't render an absurd "N left" before the user touches the steppers.
+const MAX_SUPPLY = 1000;
+
 function createMed(id) {
   let name = 'Medication';
   let dose = '';
@@ -174,7 +180,7 @@ function createMed(id) {
   function setSupply(count) {
     let n = Math.floor(Number(count));
     if (!isFinite(n) || n < 1) n = 30;
-    if (n > 1000) n = 1000;
+    if (n > MAX_SUPPLY) n = MAX_SUPPLY;
     supplyStartCount = n;
     supplyResetAt = Date.now();
     // A fresh prescription starts exactly full — drop any prior manual
@@ -210,7 +216,7 @@ function createMed(id) {
     const displayed = getSupplyRemaining();   // already clamped to >= 0
     let target = displayed + d;
     if (target < 0) target = 0;
-    if (target > 1000) target = 1000;
+    if (target > MAX_SUPPLY) target = MAX_SUPPLY;
     if (target === displayed) return;         // clamped no-op
     // remaining = startCount - consumed + adjustment, so the adjustment that
     // yields `target` is target - startCount + consumed.
@@ -297,7 +303,9 @@ function createMed(id) {
     // before the refill (i.e. taken from the previous bottle) correctly
     // don't count against the new one.
     const remaining = supplyStartCount - consumedSinceReset() + supplyAdjustment;
-    return remaining < 0 ? 0 : remaining;
+    if (remaining < 0) return 0;
+    if (remaining > MAX_SUPPLY) return MAX_SUPPLY;
+    return remaining;
   }
 
   function getExpectedDosesToday() {
