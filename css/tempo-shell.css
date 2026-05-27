@@ -801,7 +801,7 @@
    of the card (above the today-status) so it reads as the headline number. */
 .med-supply {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 14px;
@@ -810,6 +810,47 @@
   border-radius: 12px;
 }
 .med-supply[hidden] { display: none; }
+/* count + meta keep their baseline relationship; the stepper centers beside. */
+.med-supply-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+/* Vertical -1 / +1 steppers for manually correcting the remaining count. */
+.med-supply-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.med-supply-step {
+  font-family: inherit;
+  font-size: 0.62rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: 1px solid var(--separator);
+  border-radius: 7px;
+  width: 34px;
+  height: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.08s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.med-supply-step:hover {
+  color: var(--active-accent);
+  border-color: var(--active-accent);
+}
+.med-supply-step:active { transform: scale(0.88); }
+.med-supply-step:disabled { opacity: 0.3; cursor: default; }
+.med-supply-step:disabled:active { transform: none; }
 .med-supply-count {
   font-size: 1.05rem;
   font-weight: 500;

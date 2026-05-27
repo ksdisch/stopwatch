@@ -66,8 +66,14 @@ const MedsUI = (() => {
     const tracked = med.getSupplyStartCount() !== null;
     const supplyBadge = tracked ? `
         <div class="med-supply" data-supply hidden>
-          <div class="med-supply-count" data-supply-count></div>
-          <div class="med-supply-meta" data-supply-meta></div>
+          <div class="med-supply-main">
+            <div class="med-supply-count" data-supply-count></div>
+            <div class="med-supply-meta" data-supply-meta></div>
+          </div>
+          <div class="med-supply-stepper">
+            <button class="med-supply-step" data-action="supply-inc" type="button" aria-label="Add one to remaining count" title="Add one">▲</button>
+            <button class="med-supply-step" data-action="supply-dec" type="button" aria-label="Remove one from remaining count" title="Remove one">▼</button>
+          </div>
         </div>` : '';
     const supplyControls = tracked ? `
         <button class="med-supply-reset" data-action="new-prescription" type="button">New prescription</button>
@@ -186,6 +192,9 @@ const MedsUI = (() => {
     card.querySelector('[data-supply-meta]').textContent = meta.join(' · ');
     wrap.classList.toggle('med-supply-low', remaining > 0 && remaining <= 5);
     wrap.classList.toggle('med-supply-empty', remaining === 0);
+    // Down arrow is a no-op at 0 — disable it so that's visually obvious.
+    const decBtn = wrap.querySelector('[data-action="supply-dec"]');
+    if (decBtn) decBtn.disabled = remaining <= 0;
   }
 
   function refreshAllCards() {
@@ -253,6 +262,15 @@ const MedsUI = (() => {
 
       } else if (action === 'apply-supply') {
         applySupply(med, card);
+
+      } else if (action === 'supply-inc' || action === 'supply-dec') {
+        // Manual ±1 nudge on the remaining count — corrects a miscount or a
+        // lost/extra pill without logging a phantom dose. Lighter haptic
+        // than dose logging (15 vs 30 ms) to signal the smaller action.
+        med.adjustSupply(action === 'supply-inc' ? 1 : -1);
+        MedsManager.saveAll();
+        refreshCardSupply(med, card);
+        Platform.haptic(15);
       }
     });
 
