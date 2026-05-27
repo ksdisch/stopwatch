@@ -271,6 +271,24 @@ const MedsUI = (() => {
         MedsManager.saveAll();
         refreshCardSupply(med, card);
         Platform.haptic(15);
+
+      } else if (action === 'edit') {
+        openEditForm(med);
+
+      } else if (action === 'delete') {
+        // Destructive — also drops the dose history. Match the app's
+        // native-confirm convention (see history-ui restore/clear).
+        const ok = confirm(
+          `Delete "${med.getName()}"?\n\n` +
+          `This removes the medication and its dose history. This can't be undone.`
+        );
+        // MedsManager.remove returns false for future-schema records (F19a
+        // refuse-writeback) — leave those in place rather than silently no-op
+        // re-render. Only refresh + buzz on an actual removal.
+        if (ok && MedsManager.remove(med.getId())) {
+          Platform.haptic(30);
+          render();
+        }
       }
     });
 

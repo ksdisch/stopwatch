@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v96-meds-supply-stepper';
+const CACHE_NAME = 'stopwatch-v97-meds-edit-delete-fix';
 const ASSETS = [
   './',
   './index.html',
