@@ -40,8 +40,11 @@ const KNOWN_MED_KEYS = new Set([
   // Supply tracking (additive, nullable — no SCHEMA_VERSION bump, same as
   // the deletedAt tombstone precedent). supplyStartCount = pills at the last
   // refill; supplyResetAt = when "New prescription" was pressed. Remaining is
-  // derived from doseLog, never stored.
-  'supplyStartCount', 'supplyResetAt',
+  // derived from doseLog, never stored. supplyAdjustment is a signed manual
+  // correction (default 0) added on top of the dose-log derivation so the
+  // user can nudge the count up/down without logging a dose or starting a
+  // new prescription (e.g. a pharmacy miscount, a lost pill).
+  'supplyStartCount', 'supplyResetAt', 'supplyAdjustment',
   // F17 (D-1): immutable provenance marker set once at reconcile time.
   // Distinct from `deviceId` (F10) which updates on every write — this is
   // the device that authored the record pre-sync. Distinguishes "this
@@ -86,6 +89,11 @@ function createMed(id) {
   // it self-corrects when a mis-logged dose is undone.
   let supplyStartCount = null;     // pills at last refill (e.g. 30), or null = not tracked
   let supplyResetAt = null;        // ms timestamp of last "New prescription", or null
+  // Signed manual correction applied on top of the dose-log derivation. The
+  // "-1/+1" steppers on the supply badge nudge this so the user can fix a
+  // miscount or a lost/extra pill without logging a phantom dose. Reset to 0
+  // by setSupply (a fresh bottle starts exactly full) and clearSupply.
+  let supplyAdjustment = 0;
   // F10: record-level LWW stamps. `touch()` bumps both on any mutation so
   // sync's per-field LWW for name/dose/frequency has a stable comparator.
   let updatedAt = Date.now();
@@ -133,6 +141,7 @@ function createMed(id) {
   function isFromFutureSchema() { return _fromFutureSchema; }
   function getSupplyStartCount() { return supplyStartCount; }
   function getSupplyResetAt() { return supplyResetAt; }
+  function getSupplyAdjustment() { return supplyAdjustment; }
 
   function setName(n) {
     name = (n == null ? '' : String(n)).trim().slice(0, 60) || 'Medication';
@@ -168,6 +177,9 @@ function createMed(id) {
     if (n > 1000) n = 1000;
     supplyStartCount = n;
     supplyResetAt = Date.now();
+    // A fresh prescription starts exactly full — drop any prior manual
+    // correction so the badge reads "n left" not "n ± oldDelta".
+    supplyAdjustment = 0;
     touch();
   }
 
@@ -177,6 +189,32 @@ function createMed(id) {
   function clearSupply() {
     supplyStartCount = null;
     supplyResetAt = null;
+    supplyAdjustment = 0;
+    touch();
+  }
+
+  // Manually nudge the remaining count by `delta` (the -1 / +1 steppers).
+  // No-op when not tracking. Because remaining is DERIVED, we don't store
+  // it directly — instead we solve for the supplyAdjustment offset that
+  // makes getSupplyRemaining() land exactly on the new target, so the
+  // displayed number always moves by exactly `delta` (clamped at 0) and a
+  // down-press at 0 is a true no-op even when consumed > startCount. The
+  // correction then composes cleanly with future dose logging (it stays a
+  // fixed offset while `consumed` keeps growing). Allowed to exceed
+  // supplyStartCount (e.g. "31 left of 30") so the up arrow works from the
+  // just-refilled full state; capped at 1000 to match setSupply.
+  function adjustSupply(delta) {
+    if (supplyStartCount === null || supplyResetAt === null) return;
+    const d = Math.trunc(Number(delta));
+    if (!isFinite(d) || d === 0) return;
+    const displayed = getSupplyRemaining();   // already clamped to >= 0
+    let target = displayed + d;
+    if (target < 0) target = 0;
+    if (target > 1000) target = 1000;
+    if (target === displayed) return;         // clamped no-op
+    // remaining = startCount - consumed + adjustment, so the adjustment that
+    // yields `target` is target - startCount + consumed.
+    supplyAdjustment = target - supplyStartCount + consumedSinceReset();
     touch();
   }
 
@@ -241,20 +279,24 @@ function createMed(id) {
     return count;
   }
 
-  // Derived doses-remaining for the current prescription. null when supply
-  // isn't being tracked. Counts doses logged on/after supplyResetAt (the
-  // doseLog is sorted ascending, so we walk from the tail and stop at the
-  // first dose older than the refill). Clamped at 0 — "out" rather than
-  // negative. Doses logged with an offset that lands before the refill (i.e.
-  // taken from the previous bottle) correctly don't count against the new one.
-  function getSupplyRemaining() {
-    if (supplyStartCount === null || supplyResetAt === null) return null;
+  // Doses logged on/after supplyResetAt. The doseLog is sorted ascending, so
+  // walk from the tail and stop at the first dose older than the refill.
+  function consumedSinceReset() {
     let consumed = 0;
     for (let i = doseLog.length - 1; i >= 0; i--) {
       if (doseLog[i].takenAt >= supplyResetAt) consumed++;
       else break;
     }
-    const remaining = supplyStartCount - consumed;
+    return consumed;
+  }
+
+  function getSupplyRemaining() {
+    if (supplyStartCount === null || supplyResetAt === null) return null;
+    // startCount - doses-since-refill + manual correction. Clamped at 0 —
+    // "out" rather than negative. Doses logged with an offset that lands
+    // before the refill (i.e. taken from the previous bottle) correctly
+    // don't count against the new one.
+    const remaining = supplyStartCount - consumedSinceReset() + supplyAdjustment;
     return remaining < 0 ? 0 : remaining;
   }
 
@@ -290,7 +332,7 @@ function createMed(id) {
       lastTakenAt,
       updatedAt, deviceId,
       originDeviceId,
-      supplyStartCount, supplyResetAt,
+      supplyStartCount, supplyResetAt, supplyAdjustment,
       doseLog: doseLog.slice(),
     };
     // F19b: merge __forward back into the wire format. The loader's
@@ -402,6 +444,10 @@ function createMed(id) {
     supplyResetAt = (typeof state.supplyResetAt === 'number' && isFinite(state.supplyResetAt))
       ? state.supplyResetAt
       : null;
+    // Manual correction offset. Absent / malformed → 0 (no correction).
+    supplyAdjustment = (typeof state.supplyAdjustment === 'number' && isFinite(state.supplyAdjustment))
+      ? Math.trunc(state.supplyAdjustment)
+      : 0;
   }
 
   return {
@@ -410,7 +456,8 @@ function createMed(id) {
     getLastTakenAt, getDoseLog,
     getUpdatedAt, getDeviceId,
     isFromFutureSchema,
-    getSupplyStartCount, getSupplyResetAt, getSupplyRemaining, setSupply, clearSupply,
+    getSupplyStartCount, getSupplyResetAt, getSupplyAdjustment,
+    getSupplyRemaining, setSupply, clearSupply, adjustSupply,
     logDose, undoLastDose,
     recomputeLastTakenAt,
     getTimeSinceLastDoseMs,

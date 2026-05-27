@@ -746,7 +746,7 @@ describe('Meds — F19b __forward passthrough', () => {
     const expectedKeys = new Set([
       'schemaVersion', 'id', 'name', 'dose', 'frequency',
       'lastTakenAt', 'updatedAt', 'deviceId', 'originDeviceId', 'doseLog',
-      'supplyStartCount', 'supplyResetAt',
+      'supplyStartCount', 'supplyResetAt', 'supplyAdjustment',
     ]);
     for (const k of Object.keys(state)) {
       assert(expectedKeys.has(k), `Unexpected key "${k}" on fresh med state`);
@@ -1330,5 +1330,115 @@ describe('Meds — prescription supply tracking', () => {
     assertEqual(m.getSupplyStartCount(), null);
     assertEqual(m.getSupplyResetAt(), null);
     assertEqual(m.getSupplyRemaining(), null);
+  });
+
+  // ── Manual ±1 adjustment (supply steppers) ──────────────────────────
+  it('adjustSupply(+1) / (-1) nudge the remaining count by one', () => {
+    const m = createMed('adj1');
+    m.setSupply(30);
+    assertEqual(m.getSupplyRemaining(), 30);
+    m.adjustSupply(-1);
+    assertEqual(m.getSupplyRemaining(), 29);
+    m.adjustSupply(-1);
+    assertEqual(m.getSupplyRemaining(), 28);
+    m.adjustSupply(1);
+    assertEqual(m.getSupplyRemaining(), 29);
+  });
+
+  it('adjustSupply down-arrow is a no-op at 0 (clamped)', () => {
+    const m = createMed('adj2');
+    m.setSupply(2);
+    m.logDose();
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 0);
+    m.adjustSupply(-1);
+    assertEqual(m.getSupplyRemaining(), 0);
+    assertEqual(m.getSupplyAdjustment(), 0);
+  });
+
+  it('adjustSupply up-arrow may exceed the prescription size (31 of 30)', () => {
+    const m = createMed('adj3');
+    m.setSupply(30);
+    m.adjustSupply(1);
+    assertEqual(m.getSupplyRemaining(), 31);
+    assertEqual(m.getSupplyStartCount(), 30); // denominator stays put
+  });
+
+  it('manual correction composes with later dose logging', () => {
+    const m = createMed('adj4');
+    m.setSupply(30);
+    m.adjustSupply(2);                 // pharmacy gave 2 extra
+    assertEqual(m.getSupplyRemaining(), 32);
+    m.logDose();                       // take one
+    assertEqual(m.getSupplyRemaining(), 31);
+  });
+
+  it('up-arrow stays responsive even when doses exceed the supply', () => {
+    // consumed (3) > startCount (2) → remaining clamps to 0. The next up
+    // press must still land on exactly 1, not silently absorb into a
+    // negative raw value.
+    const m = createMed('adj5');
+    m.setSupply(2);
+    m.logDose();
+    m.logDose();
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 0);
+    m.adjustSupply(1);
+    assertEqual(m.getSupplyRemaining(), 1);
+  });
+
+  it('setSupply (new prescription) resets a prior manual correction', () => {
+    const m = createMed('adj6');
+    m.setSupply(30);
+    m.adjustSupply(-5);
+    assertEqual(m.getSupplyRemaining(), 25);
+    m.setSupply(30);                   // refill
+    assertEqual(m.getSupplyRemaining(), 30);
+    assertEqual(m.getSupplyAdjustment(), 0);
+  });
+
+  it('clearSupply resets the manual correction', () => {
+    const m = createMed('adj7');
+    m.setSupply(30);
+    m.adjustSupply(-3);
+    m.clearSupply();
+    assertEqual(m.getSupplyAdjustment(), 0);
+  });
+
+  it('adjustSupply is a no-op when supply is not tracked', () => {
+    const m = createMed('adj8');
+    m.adjustSupply(1);
+    assertEqual(m.getSupplyRemaining(), null);
+    assertEqual(m.getSupplyAdjustment(), 0);
+  });
+
+  it('manual correction survives getState / loadState', () => {
+    const m = createMed('adj9');
+    m.setSupply(30);
+    m.adjustSupply(-3);
+    const state = m.getState();
+    assertEqual(state.supplyAdjustment, -3);
+    const m2 = createMed('adj9');
+    m2.loadState(state);
+    assertEqual(m2.getSupplyAdjustment(), -3);
+    assertEqual(m2.getSupplyRemaining(), 27);
+  });
+
+  it('adjustSupply truncates / ignores fractional and zero deltas', () => {
+    const m = createMed('adj10');
+    m.setSupply(30);
+    m.adjustSupply(0);
+    assertEqual(m.getSupplyRemaining(), 30);
+    m.adjustSupply(0.5);               // trunc → 0 → no-op
+    assertEqual(m.getSupplyRemaining(), 30);
+    m.adjustSupply(2.9);               // trunc → 2
+    assertEqual(m.getSupplyRemaining(), 32);
+  });
+
+  it('loadState with absent supplyAdjustment defaults to 0', () => {
+    const m = createMed('adj11');
+    m.loadState({ id: 'adj11', supplyStartCount: 30, supplyResetAt: Date.now(), doseLog: [] });
+    assertEqual(m.getSupplyAdjustment(), 0);
+    assertEqual(m.getSupplyRemaining(), 30);
   });
 });
