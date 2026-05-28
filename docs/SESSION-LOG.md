@@ -1836,3 +1836,38 @@ UI: both `<select>` blocks (`#flow-ambient-profile` + `#pomo-ambient-profile`) g
 ```
 ...
 ```
+
+---
+
+## 2026-05-28 — Todoist Pomodoro V1 integration (PR #bl-2-todoist, backlog #2 V1)
+
+### What We Built
+
+Backlog row #2 V1: a two-way Todoist integration scoped to Pomodoro saved tasks. Tempo now talks to the Todoist REST v2 API through a new self-contained engine module `js/todoist.js` (~660 LoC): token mgmt, settings (default project + filter), `testConnection`, `getProjects`, `getTasks`, plus three V1 write methods `closeTask` / `reopenTask` / `createTask` (NOT `updateTask` — rename write-back is a deferred follow-up; NOT `deleteTask` either — delete in Tempo never deletes in Todoist as a hard guard). An offline queue (200-op FIFO cap, persisted to `todoist_pending_ops`) absorbs writes while offline + auto-drains on `online` + `visibilitychange:visible`; a `todoist:create-resolved` CustomEvent late-stamps Todoist ids onto local tasks after a queued create eventually drains successfully.
+
+UI surface: a "Todoist" section in the settings drawer (token input, "Test connection" with `✓ Connected` / `✗ <message>`, default-project dropdown, default-filter input, offline-queue count) and a shared picker modal (`TodoistUI.openPicker({ onImport })`) opened by an "Import from Todoist" button on the Pomodoro Saved Tasks panel. Pomodoro saved tasks gained a shape migration from `string[]` → `Array<{ text, todoistId? }>` via idempotent read-time coercion; check / uncheck propagate via `Todoist.closeTask` / `reopenTask`, the create handler on `pomo-checklist-input` (Enter) calls `Todoist.createTask`, and the delete handler intentionally does NOT call Todoist (the hard guard).
+
+Post-audit scope trim (auditor surfaced 3 brief-vs-code mismatches Kyle resolved by accepting the auditor's A recommendations): (i) Flow integration deferred because Flow's pre-block "checklist" is a hardcoded 5-item ritual, not a user-editable list; (ii) Pomo inline rename + `Todoist.updateTask` deferred because no inline-rename UI exists in Pomodoro today; (iii) script-load order corrected so `js/todoist.js` + `js/todoist-ui.js` insert between `js/distractions.js` and `js/pomodoro-ui.js` (not after `recovery-ui` as the brief originally suggested).
+
+Token is device-local by design: NOT in `SYNCED_STORES`, NOT in `EXPORT_SETTINGS_KEYS`, NOT stamped with `deviceId`/`updatedAt`/`schemaVersion`. Users re-paste on each device. Cross-device task reconciliation flows through Todoist itself as the source of truth.
+
+### Verification result
+
+`tests/todoist.test.js` — 33 new cases across 12 `describe(...)` blocks, all passing locally via `tests/index.html` (browser-verified via kapture MCP). Total suite: **704** (up from 671 pre-PR; pre-PR baseline drift accounted for by ~29 tests landed in unlogged PRs #94–#99). **4 pre-existing failures in `tests/recovery-feed.test.js` are unrelated to this PR** (NPE root, same `Cannot read properties of null` across all 4 cases — needs separate diagnosis). Settings drawer + Pomo Saved Tasks panel verified visually via kapture: Todoist section renders below Cloud Sync; "Import from Todoist" button renders in the panel; neighbor route `#/wellness/meds` regression-passes; no console errors. Caveat: kapture's click simulation hit a known DevTools-tab focus quirk; the Import-button handler was syntax-verified separately via Node `new Function()` parsing.
+
+`sw.js` CACHE_NAME bumped `v100-rhythm-per-day` → `v101-todoist-integration`.
+
+### Suggested Next Steps
+
+- **Todoist follow-up A — Flow user-task list integration.** Add new section in Flow setup view (`flow_user_tasks` localStorage key) + reuse `TodoistUI.openPicker`. No engine changes needed.
+- **Todoist follow-up B — Pomo inline rename + `Todoist.updateTask`.** Add click-to-edit on saved-task spans; engine gains `updateTask`. ~50 LoC.
+- **`tests/recovery-feed.test.js` NPE failures** — 4 pre-existing cases need diagnosis (`Cannot read properties of null` across all of them). Separate PR.
+- **iOS smoke** — repeat one Pomo create + one close on the Tempo iOS build after the next iOS sync (`npm run sync-www && npm run ios:open`). Confirm WKWebView's `fetch` against `api.todoist.com` works.
+- **SESSION-LOG backfill** — PRs #87, #90, #92–#99 have no session-log entries (last log entry was 2026-05-20 / PR #88). Carry-forward.
+
+### Commits
+```
+1995c83  feat(todoist): REST v2 client + offline queue
+f7ae9b0  feat(todoist): settings panel + picker modal + Pomodoro integration
+<this commit>  docs(backlog): mark Todoist Pomo V1 shipped + flag deferrals
+```
