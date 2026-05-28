@@ -55,6 +55,11 @@
   <!-- Analytics depends on History.getSessions() + localStorage. Tests
        stub window.History per-case; no history.js load required here. -->
   <script src="../js/analytics.js"></script>
+  <!-- Recovery feed: read-only consumer of mart_recovery_state from
+       personal-health-elt. Stubs SyncFlag/SyncAuth/SyncFirestore per-case
+       — no DOM deps. Loaded BEFORE rhythm-engine.js for consistency with
+       the runtime load order. -->
+  <script src="../js/recovery-feed.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -116,6 +121,7 @@
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="rhythm.test.js"></script>
+  <script src="recovery-feed.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

@@ -1052,6 +1052,11 @@
   <script src="js/mindful-ui.js"></script>
   <script src="js/wellness-cooking-ui.js"></script>
   <script src="js/recovery-ui.js"></script>
+  <!-- Recovery feed: read-only consumer of the personal-health-elt
+       pipeline's mart_recovery_state. Caches the latest day + last-14
+       history in localStorage; Rhythm renders a readiness band off
+       RecoveryFeed.getLatest(). MUST load before rhythm-ui.js. -->
+  <script src="js/recovery-feed.js"></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->

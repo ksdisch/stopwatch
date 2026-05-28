@@ -50,6 +50,7 @@ const RhythmUI = (() => {
             <div class="rhythm-day-label" data-rhythm-day-label></div>
             <button class="rhythm-nav-btn" data-rhythm-nav="next" aria-label="Next day">›</button>
           </div>
+          <div class="rhythm-readiness-band" data-rhythm-readiness hidden></div>
           <div class="rhythm-status" data-rhythm-status></div>
           <div class="rhythm-timeline" data-rhythm-timeline></div>
         </div>
@@ -69,12 +70,84 @@ const RhythmUI = (() => {
     const status = isToday(activeDate)
       ? await Rhythm.getCurrentDayStatus(Date.now(), timeline)
       : null;
+    paintReadiness(container);
     paintStatus(container, status);
     paintTimeline(container, timeline);
 
     stopTick();
     if (isToday(activeDate)) startTick();
     lastRenderedDayKey = Utils.localDateKey(activeDate);
+  }
+
+  // Readiness band — surfaces today's row from RecoveryFeed (one-way data
+  // feed from personal-health-elt's mart_recovery_state). Hidden when:
+  //   - viewing a non-today day (the band is a "right now" signal)
+  //   - RecoveryFeed isn't loaded / signed out / no cached row
+  //   - the cached row's `day` doesn't match the active date
+  // The cache survives offline reloads, so the band stays meaningful when
+  // the network is gone.
+  const READINESS_SIGNAL_EMOJI = {
+    well_recovered: '\u{1F7E2}',     // green circle
+    neutral: '\u{1F7E1}',            // yellow circle
+    strained: '\u{1F534}',           // red circle
+    insufficient_data: '⚪',     // white circle
+  };
+  const READINESS_SIGNAL_LABEL = {
+    well_recovered: 'Well-recovered',
+    neutral: 'Neutral',
+    strained: 'Strained',
+    insufficient_data: 'Insufficient data',
+  };
+
+  function paintReadiness(container) {
+    const el = container.querySelector('[data-rhythm-readiness]');
+    if (!el) return;
+    if (!isToday(activeDate) || typeof RecoveryFeed === 'undefined') {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    const row = RecoveryFeed.getLatest();
+    if (!row || !row.day) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    // Only render when the feed row matches today's local date. The feed
+    // serializes `day` as ISO 'YYYY-MM-DD'; compare against today's local
+    // key to avoid showing yesterday's signal after the calendar rolls.
+    if (row.day !== Utils.localDateKey(activeDate)) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+
+    const signal = typeof row.recovery_signal === 'string'
+      ? row.recovery_signal
+      : 'insufficient_data';
+    const emoji = READINESS_SIGNAL_EMOJI[signal] || READINESS_SIGNAL_EMOJI.insufficient_data;
+    const label = READINESS_SIGNAL_LABEL[signal] || READINESS_SIGNAL_LABEL.insufficient_data;
+
+    // Secondary readouts. Only include the ones present + numeric — a missing
+    // HRV reading shouldn't print "HRV — ms".
+    const parts = [];
+    if (typeof row.hrv_ms === 'number') {
+      parts.push('HRV ' + row.hrv_ms.toFixed(1) + ' ms');
+    }
+    if (typeof row.acwr === 'number') {
+      parts.push('ACWR ' + row.acwr.toFixed(2));
+    }
+    if (typeof row.rhr_bpm === 'number' && parts.length < 2) {
+      parts.push('RHR ' + Math.round(row.rhr_bpm) + ' bpm');
+    }
+    const detail = parts.length ? ' · ' + parts.join(' · ') : '';
+
+    el.hidden = false;
+    el.className = 'rhythm-readiness-band rhythm-readiness-band--' + signal;
+    el.innerHTML =
+      '<span class="rhythm-readiness-emoji" aria-hidden="true">' + emoji + '</span>' +
+      '<span class="rhythm-readiness-label">' + escapeHtml(label) + '</span>' +
+      '<span class="rhythm-readiness-detail">' + escapeHtml(detail) + '</span>';
   }
 
   function paintStatus(container, status) {

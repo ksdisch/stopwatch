@@ -1,6 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Recovery state feed: the personal-health-elt pipeline writes here
+    // with a Firebase Admin service-account credential (which bypasses
+    // these rules), and the signed-in Tempo client only ever READS. Deny
+    // client writes so a compromised client cannot poison its own feed.
+    // Declared BEFORE the general /users/{userId}/{document=**} match
+    // because Firestore evaluates rules cumulatively — the more specific
+    // path narrows write permission to read-only for clients.
+    match /users/{userId}/recovery_state/{docId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
