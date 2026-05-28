@@ -28,6 +28,10 @@ try {
 // ── Initialize modules ──
 SyncEngine.init();
 SyncAuth.init();
+// Recovery feed: read-only consumer of mart_recovery_state from
+// personal-health-elt. Init AFTER SyncAuth so it can hook the auth-change
+// event SyncAuth emits via the SyncEngine bus.
+if (typeof RecoveryFeed !== 'undefined') RecoveryFeed.init();
 
 // C-1: boot-trigger backstop for hydrate-from-cloud.
 //

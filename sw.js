@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v97-meds-edit-delete-fix';
+const CACHE_NAME = 'stopwatch-v100-rhythm-per-day';
 const ASSETS = [
   './',
   './index.html',
@@ -62,6 +62,7 @@ const ASSETS = [
   './js/mindful-ui.js',
   './js/wellness-cooking-ui.js',
   './js/recovery-ui.js',
+  './js/recovery-feed.js',
   './js/rhythm-engine.js',
   './js/rhythm-ui.js',
   './js/bfrb-events.js',
