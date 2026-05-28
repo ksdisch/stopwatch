@@ -89,6 +89,9 @@
   <script src="../js/sync-merge-distractions.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
+  <!-- bl-2-todoist: Todoist REST v2 client + offline write queue.
+       Pure data + network module (no DOM); tests mock window.fetch. -->
+  <script src="../js/todoist.js"></script>
 
   <!-- Test framework -->
   <script src="test-runner.js"></script>
@@ -125,6 +128,7 @@
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>
+  <script src="todoist.test.js"></script>
 
   <!-- Report -->
   <script>reportResults();</script>
