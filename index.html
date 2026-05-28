@@ -167,6 +167,13 @@
           <div id="cloud-sync-status" class="tempo-cloud-sync-status"
                aria-live="polite" hidden></div>
         </div>
+        <!-- bl-2-todoist: Todoist integration settings panel.
+             TodoistUI.renderSettingsSection() fills this placeholder
+             when the drawer wires up (see js/tempo-nav.js
+             initTodoistSection). Placement immediately below Cloud Sync
+             per brief decision #2. -->
+        <section id="settings-todoist" class="tempo-settings-item tempo-todoist-section"
+                 aria-label="Todoist"></section>
       </div>
     </header>
 
@@ -514,6 +521,13 @@
       </div>
       <div id="pomo-saved-tasks" class="pomo-checklist hidden">
         <div class="pomo-checklist-label">Saved Tasks</div>
+        <!-- bl-2-todoist: import from Todoist. Opens the shared picker
+             modal in TodoistUI; chosen tasks land in the saved-tasks list
+             with their Todoist ids attached for check/uncheck write-back. -->
+        <button id="pomo-import-todoist" class="tempo-todoist-secondary"
+                type="button" aria-label="Import tasks from Todoist">
+          Import from Todoist
+        </button>
         <div id="pomo-saved-tasks-items"></div>
         <div class="pomo-checklist-label" style="margin-top:8px">Task Templates</div>
         <div id="pomo-task-templates"></div>
@@ -1031,6 +1045,12 @@
        pomodoro_distractions stores + migration. MUST load BEFORE
        pomodoro-ui.js + flow-ui.js (which call Distractions.* synchronously). -->
   <script src="js/distractions.js"></script>
+  <!-- bl-2-todoist: Todoist engine + UI. MUST load BEFORE pomodoro-ui.js
+       (calls Todoist.* synchronously) and BEFORE tempo-nav.js (calls
+       TodoistUI.renderSettingsSection synchronously when the drawer
+       wires up). Pure REST/fetch client; no DOM in the engine. -->
+  <script src="js/todoist.js"></script>
+  <script src="js/todoist-ui.js"></script>
   <script src="js/pomodoro-ui.js"></script>
   <script src="js/flow-ui.js"></script>
   <script src="js/alert-ui.js"></script>

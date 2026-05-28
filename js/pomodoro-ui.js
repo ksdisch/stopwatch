@@ -608,6 +608,17 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
       const items = loadFn();
       if (items[idx]) {
         items[idx].done = cb.checked;
+        // bl-2-todoist: write-back to Todoist for items that carry a
+        // todoistId. Fire-and-forget — the engine auto-enqueues on
+        // network failure, and close/reopen are idempotent so retries
+        // are safe. The user's local action completes regardless.
+        if (items[idx].todoistId && typeof Todoist !== 'undefined') {
+          if (cb.checked) {
+            Todoist.closeTask(items[idx].todoistId).catch(() => {});
+          } else {
+            Todoist.reopenTask(items[idx].todoistId).catch(() => {});
+          }
+        }
         saveFn(items);
         renderChecklistInto(containerId, loadFn, saveFn);
       }
@@ -620,7 +631,12 @@ function renderChecklistInto(containerId, loadFn, saveFn) {
       const idx = parseInt(btn.dataset.saveIdx, 10);
       const items = loadFn();
       if (items[idx]) {
-        saveTaskForLater(items[idx].text);
+        // bl-2-todoist: forward todoistId / localTag so the saved-tasks
+        // row keeps its Todoist link after "pin for later".
+        const extras = {};
+        if (items[idx].todoistId) extras.todoistId = items[idx].todoistId;
+        if (items[idx].localTag) extras.localTag = items[idx].localTag;
+        saveTaskForLater(items[idx].text, extras);
         items.splice(idx, 1);
         saveFn(items);
         renderChecklistInto(containerId, loadFn, saveFn);
@@ -657,10 +673,78 @@ function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
       const text = input.value.trim();
       if (!text) return;
       const items = loadFn();
-      items.push({ text, done: false });
+      const newItem = { text, done: false };
+      // bl-2-todoist: when a token is configured, create a Todoist task
+      // alongside the local one and stamp the returned id on success.
+      // localTag correlates the late-stamp event (from the offline-queue
+      // drain) back to this specific local item even if the user adds
+      // more items before the queue drains.
+      if (typeof Todoist !== 'undefined' && Todoist.hasToken()) {
+        const localTag = 'pomo-' + Date.now() + '-' +
+          Math.random().toString(36).slice(2, 8);
+        newItem.localTag = localTag;
+        Todoist.createTask({ content: text, localTag }).then(result => {
+          if (result && result.ok && result.data &&
+              typeof result.data.id !== 'undefined') {
+            _stampTodoistIdByLocalTag(localTag, String(result.data.id));
+          }
+        }).catch(() => {});
+      }
+      items.push(newItem);
       saveFn(items);
       input.value = '';
       renderFn();
+    }
+  });
+}
+
+// bl-2-todoist: late-stamp helper. Walks all lists that can carry a
+// `localTag` (checklist + break-checklist + actual-work + saved-tasks)
+// and stamps the Todoist id on the matching entry. Persists + re-renders
+// any list that changed. Called from both:
+//   - the synchronous createTask success path (one local item)
+//   - the `todoist:create-resolved` window event (offline-queue drain)
+// Idempotent: only touches entries whose localTag matches AND that don't
+// already have a todoistId.
+function _stampTodoistIdByLocalTag(localTag, todoistId) {
+  if (!localTag || !todoistId) return;
+  let dirty = false;
+
+  function walk(loadList, saveList, renderList) {
+    const list = loadList();
+    let changed = false;
+    for (const item of list) {
+      if (item && item.localTag === localTag && !item.todoistId) {
+        item.todoistId = todoistId;
+        delete item.localTag;
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveList(list);
+      try { renderList(); } catch (_) {}
+      dirty = true;
+    }
+  }
+
+  walk(loadChecklist, saveChecklist, renderChecklist);
+  walk(loadBreakChecklist, saveBreakChecklist, renderBreakChecklist);
+  walk(loadSavedTasks, saveSavedTasks, renderSavedTasks);
+
+  return dirty;
+}
+
+// bl-2-todoist: subscribe once at module load to the offline-queue's
+// create-resolved event. The engine emits this when a queued createTask
+// finally lands successfully (after the device comes back online or the
+// tab regains visibility). The detail payload carries the localTag the
+// caller stamped at enqueue time + the new Todoist id.
+if (typeof window !== 'undefined') {
+  window.addEventListener('todoist:create-resolved', (e) => {
+    if (!e || !e.detail) return;
+    const { localTag, todoistId } = e.detail;
+    if (localTag && todoistId) {
+      _stampTodoistIdByLocalTag(String(localTag), String(todoistId));
     }
   });
 }
@@ -753,19 +837,35 @@ function initActualWorkInput() {
 // ── Saved Tasks (Save for Later) ──
 const SAVED_TASKS_KEY = 'pomodoro_saved_tasks';
 
+// bl-2-todoist: shape migration `pomodoro_saved_tasks`: `string[]` →
+// `Array<{ text, todoistId? }>`. Applied as read-time coercion so legacy
+// flat-string entries surface as `{ text }` objects without a one-shot
+// migration pass. Idempotent — object entries pass through unchanged.
+// No `SCHEMA_VERSION` bump (non-synced store; auditor verified).
 function loadSavedTasks() {
-  try { return JSON.parse(localStorage.getItem(SAVED_TASKS_KEY)) || []; }
-  catch (e) { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(SAVED_TASKS_KEY)) || [];
+    return raw.map(item =>
+      typeof item === 'string' ? { text: item } : item
+    );
+  } catch (e) { return []; }
 }
 
 function saveSavedTasks(items) {
   localStorage.setItem(SAVED_TASKS_KEY, JSON.stringify(items));
 }
 
-function saveTaskForLater(text) {
+// bl-2-todoist: saved tasks now persist as `{ text, todoistId? }` objects.
+// Includes-dedupe matches on `.text` only (todoistId is metadata; two
+// saved-tasks rows with the same text should still collapse to one).
+function saveTaskForLater(text, extras) {
   const items = loadSavedTasks();
-  if (!items.includes(text)) {
-    items.push(text);
+  const exists = items.some(it => it && it.text === text);
+  if (!exists) {
+    const entry = { text };
+    if (extras && extras.todoistId) entry.todoistId = extras.todoistId;
+    if (extras && extras.localTag) entry.localTag = extras.localTag;
+    items.push(entry);
     saveSavedTasks(items);
   }
 }
@@ -778,9 +878,12 @@ function renderSavedTasks() {
     container.innerHTML = '<div class="pomo-saved-empty">No saved tasks</div>';
     return;
   }
-  container.innerHTML = items.map((text, i) =>
+  // bl-2-todoist: items are now `{ text, todoistId? }` objects after the
+  // shape migration. Render via `.text`. NO visual marker on imported
+  // tasks per brief decision #1 — imported and local tasks look identical.
+  container.innerHTML = items.map((item, i) =>
     `<div class="pomo-saved-task-item">
-      <span class="pomo-checklist-item-text">${escapeChecklistHtml(text)}</span>
+      <span class="pomo-checklist-item-text">${escapeChecklistHtml(item.text)}</span>
       <button class="pomo-saved-task-add" data-saved-idx="${i}" title="Add to focus goals">+Focus</button>
       <button class="pomo-saved-task-add-break" data-saved-idx="${i}" title="Add to break tasks">+Break</button>
       <button class="pomo-checklist-item-delete" data-saved-del="${i}">&times;</button>
@@ -794,7 +897,11 @@ function renderSavedTasks() {
       const items = loadSavedTasks();
       if (items[idx]) {
         const checklist = loadChecklist();
-        checklist.push({ text: items[idx], done: false });
+        // bl-2-todoist: propagate todoistId from saved task to checklist
+        // item so check/uncheck writes through to Todoist.
+        const entry = { text: items[idx].text, done: false };
+        if (items[idx].todoistId) entry.todoistId = items[idx].todoistId;
+        checklist.push(entry);
         saveChecklist(checklist);
         renderChecklist();
       }
@@ -808,7 +915,10 @@ function renderSavedTasks() {
       const items = loadSavedTasks();
       if (items[idx]) {
         const checklist = loadBreakChecklist();
-        checklist.push({ text: items[idx], done: false });
+        // bl-2-todoist: propagate todoistId to break checklist as well.
+        const entry = { text: items[idx].text, done: false };
+        if (items[idx].todoistId) entry.todoistId = items[idx].todoistId;
+        checklist.push(entry);
         saveBreakChecklist(checklist);
         renderBreakChecklist();
       }
@@ -820,6 +930,9 @@ function renderSavedTasks() {
       e.stopPropagation();
       const idx = parseInt(btn.dataset.savedDel, 10);
       const items = loadSavedTasks();
+      // bl-2-todoist hard guard: delete in Tempo NEVER deletes in Todoist.
+      // We simply discard the array entry; the local todoistId goes with
+      // it. NO Todoist.* call here — by design.
       items.splice(idx, 1);
       saveSavedTasks(items);
       renderSavedTasks();
@@ -836,6 +949,34 @@ function initSavedTasksPanel() {
     const isHidden = panel.classList.toggle('hidden');
     if (!isHidden) renderSavedTasks();
   });
+
+  // bl-2-todoist: "Import from Todoist" button on the saved-tasks panel.
+  // Opens the shared picker modal; on selection, append the chosen tasks
+  // to the saved-tasks list with their Todoist ids attached. The picker
+  // surfaces its own error state if no token is configured.
+  const importBtn = document.getElementById('pomo-import-todoist');
+  if (importBtn && typeof TodoistUI !== 'undefined') {
+    importBtn.addEventListener('click', () => {
+      TodoistUI.openPicker({
+        onImport: (tasks) => {
+          if (!Array.isArray(tasks) || tasks.length === 0) return;
+          const items = loadSavedTasks();
+          for (const t of tasks) {
+            if (!t || typeof t.content !== 'string') continue;
+            // De-dupe by Todoist id to avoid re-importing the same task.
+            if (t.id && items.some(it => it && it.todoistId === String(t.id))) {
+              continue;
+            }
+            const entry = { text: t.content };
+            if (t.id) entry.todoistId = String(t.id);
+            items.push(entry);
+          }
+          saveSavedTasks(items);
+          renderSavedTasks();
+        },
+      });
+    });
+  }
 }
 
 // ── Task Templates ──

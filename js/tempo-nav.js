@@ -307,6 +307,19 @@ const TempoNav = (() => {
     });
 
     wireCloudSync(drawer, syncExpanded);
+    initTodoistSection(drawer);
+  }
+
+  // ── Todoist section (bl-2-todoist) ──────────────────────────────────
+  // Lives inside the settings drawer immediately below Cloud Sync. Wires
+  // the API token input, Test-connection button, default-project picker,
+  // and default-filter input via `TodoistUI.renderSettingsSection`. All
+  // engine calls go through `Todoist.*` / `TodoistUI.*`.
+  function initTodoistSection(drawer) {
+    if (typeof TodoistUI === 'undefined') return;
+    const container = drawer.querySelector('#settings-todoist');
+    if (!container) return;
+    TodoistUI.renderSettingsSection(container);
   }
 
   // ── Cloud Sync section (B-2) ────────────────────────────────────────

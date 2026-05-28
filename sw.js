@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v100-rhythm-per-day';
+const CACHE_NAME = 'stopwatch-v101-todoist-integration';
 const ASSETS = [
   './',
   './index.html',
