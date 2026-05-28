@@ -99,6 +99,27 @@ const RhythmUI = (() => {
     insufficient_data: 'Insufficient data',
   };
 
+  // Build a relative-date label for stale readiness rows. The mart's latest
+  // day often lags today's calendar date by 1–2 days (Apple Health export
+  // hasn't been loaded yet, or dbt build hasn't run today). Rather than hide
+  // the band entirely, show the most recent available signal with an "as of
+  // <date>" suffix so the user knows it isn't fresh.
+  function formatStaleDate(isoDay) {
+    if (typeof isoDay !== 'string') return '';
+    const parts = isoDay.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return isoDay;
+    const [y, m, d] = parts;
+    const rowDate = new Date(y, m - 1, d);
+    rowDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = Math.round((today.getTime() - rowDate.getTime()) / 86400000);
+    if (diff <= 0) return '';
+    if (diff === 1) return 'yesterday';
+    if (diff < 7) return diff + 'd ago';
+    return rowDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
   function paintReadiness(container) {
     const el = container.querySelector('[data-rhythm-readiness]');
     if (!el) return;
@@ -113,13 +134,23 @@ const RhythmUI = (() => {
       el.textContent = '';
       return;
     }
-    // Only render when the feed row matches today's local date. The feed
-    // serializes `day` as ISO 'YYYY-MM-DD'; compare against today's local
-    // key to avoid showing yesterday's signal after the calendar rolls.
-    if (row.day !== Utils.localDateKey(activeDate)) {
-      el.hidden = true;
-      el.textContent = '';
-      return;
+    // The mart's latest day often lags today's calendar date by 1–2 days
+    // (today's Apple Health CSV isn't loaded yet, or dbt build hasn't run).
+    // Show the latest available signal with an "as of …" suffix so the user
+    // knows the band reflects a past day's data. Drop the band entirely if
+    // the row is from the future (clock skew or test fixture) — that's a
+    // genuine "don't trust this" case.
+    const todayKey = Utils.localDateKey(activeDate);
+    let staleSuffix = '';
+    if (row.day !== todayKey) {
+      const label = formatStaleDate(row.day);
+      if (!label) {
+        // Future-dated row or unparseable date — bail rather than mislead.
+        el.hidden = true;
+        el.textContent = '';
+        return;
+      }
+      staleSuffix = ' · as of ' + label;
     }
 
     const signal = typeof row.recovery_signal === 'string'
@@ -140,7 +171,7 @@ const RhythmUI = (() => {
     if (typeof row.rhr_bpm === 'number' && parts.length < 2) {
       parts.push('RHR ' + Math.round(row.rhr_bpm) + ' bpm');
     }
-    const detail = parts.length ? ' · ' + parts.join(' · ') : '';
+    const detail = (parts.length ? ' · ' + parts.join(' · ') : '') + staleSuffix;
 
     el.hidden = false;
     el.className = 'rhythm-readiness-band rhythm-readiness-band--' + signal;

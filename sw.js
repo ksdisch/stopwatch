@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v98-recovery-feed';
+const CACHE_NAME = 'stopwatch-v99-recovery-band-stale';
 const ASSETS = [
   './',
   './index.html',
