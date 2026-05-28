@@ -123,34 +123,53 @@ const RhythmUI = (() => {
   function paintReadiness(container) {
     const el = container.querySelector('[data-rhythm-readiness]');
     if (!el) return;
-    if (!isToday(activeDate) || typeof RecoveryFeed === 'undefined') {
+    if (typeof RecoveryFeed === 'undefined') {
       el.hidden = true;
       el.textContent = '';
       return;
     }
-    const row = RecoveryFeed.getLatest();
+    const todayKey = Utils.localDateKey(new Date());
+    const activeKey = Utils.localDateKey(activeDate);
+    // Future days have no row to show — Rhythm allows forward navigation,
+    // but the mart only describes the past. ISO YYYY-MM-DD strings compare
+    // lexicographically the same as chronologically.
+    if (activeKey > todayKey) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+
+    let row;
+    let staleSuffix = '';
+    if (activeKey === todayKey) {
+      // Today: prefer the latest row (so we still surface a signal when the
+      // mart's max(day) lags today). When the latest row is older than
+      // today, label it with "as of …" so the user knows it's not fresh.
+      row = RecoveryFeed.getLatest();
+      if (row && row.day && row.day !== todayKey) {
+        const label = formatStaleDate(row.day);
+        if (!label) {
+          // Future-dated latest row (clock skew / test fixture) — bail.
+          el.hidden = true;
+          el.textContent = '';
+          return;
+        }
+        staleSuffix = ' · as of ' + label;
+      }
+    } else {
+      // Past day: pull the row for that specific date out of the cached
+      // history doc. No stale suffix — the row IS for the active date by
+      // construction. Falls through to the "no row" hide when the date is
+      // older than the 14-day history window or the cache is empty.
+      row = typeof RecoveryFeed.getDayRow === 'function'
+        ? RecoveryFeed.getDayRow(activeKey)
+        : null;
+    }
+
     if (!row || !row.day) {
       el.hidden = true;
       el.textContent = '';
       return;
-    }
-    // The mart's latest day often lags today's calendar date by 1–2 days
-    // (today's Apple Health CSV isn't loaded yet, or dbt build hasn't run).
-    // Show the latest available signal with an "as of …" suffix so the user
-    // knows the band reflects a past day's data. Drop the band entirely if
-    // the row is from the future (clock skew or test fixture) — that's a
-    // genuine "don't trust this" case.
-    const todayKey = Utils.localDateKey(activeDate);
-    let staleSuffix = '';
-    if (row.day !== todayKey) {
-      const label = formatStaleDate(row.day);
-      if (!label) {
-        // Future-dated row or unparseable date — bail rather than mislead.
-        el.hidden = true;
-        el.textContent = '';
-        return;
-      }
-      staleSuffix = ' · as of ' + label;
     }
 
     const signal = typeof row.recovery_signal === 'string'

@@ -72,6 +72,18 @@ const RecoveryFeed = (() => {
     return _readJSON(CACHE_KEY_HISTORY);
   }
 
+  // Synchronous lookup of a single day's row from the cached history doc.
+  // Used by RhythmUI to render past-day readiness bands when navigating
+  // backward via the day-picker. Returns null when the cache is empty,
+  // when the date isn't in the window, or when the input is malformed —
+  // the caller hides the band on null.
+  function getDayRow(dateKey) {
+    if (typeof dateKey !== 'string') return null;
+    const history = getHistory();
+    if (!history || !Array.isArray(history.rows)) return null;
+    return history.rows.find(r => r && r.day === dateKey) || null;
+  }
+
   // ── Refresh ───────────────────────────────────────────────────────
 
   // Pull both docs from Firestore and write through to cache. Returns the
@@ -147,6 +159,7 @@ const RecoveryFeed = (() => {
     refresh,
     getLatest,
     getHistory,
+    getDayRow,
     // Exposed for tests; not part of the public surface for app code.
     _internals: { CACHE_KEY_LATEST, CACHE_KEY_HISTORY, _canFetch, _clearCache },
   };

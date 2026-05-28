@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v99-recovery-band-stale';
+const CACHE_NAME = 'stopwatch-v100-rhythm-per-day';
 const ASSETS = [
   './',
   './index.html',

@@ -71,6 +71,57 @@ describe('RecoveryFeed.getHistory — cache reads', () => {
   });
 });
 
+describe('RecoveryFeed.getDayRow — history lookup', () => {
+  it('returns null when no history is cached', () => {
+    rfClearCache();
+    assertEqual(RecoveryFeed.getDayRow('2026-05-28'), null);
+  });
+
+  it('returns null when cached history has empty rows', () => {
+    rfClearCache();
+    localStorage.setItem('tempo_recovery_state_history', JSON.stringify({ rows: [] }));
+    assertEqual(RecoveryFeed.getDayRow('2026-05-28'), null);
+  });
+
+  it('returns the matching row by ISO date', () => {
+    rfClearCache();
+    const history = {
+      rows: [
+        { day: '2026-05-26', recovery_signal: 'neutral', acwr: 0.9 },
+        { day: '2026-05-27', recovery_signal: 'well_recovered', acwr: 1.05 },
+        { day: '2026-05-28', recovery_signal: 'strained', acwr: 1.6 },
+      ],
+    };
+    localStorage.setItem('tempo_recovery_state_history', JSON.stringify(history));
+    const out = RecoveryFeed.getDayRow('2026-05-27');
+    assertEqual(out.day, '2026-05-27');
+    assertEqual(out.recovery_signal, 'well_recovered');
+    assertEqual(out.acwr, 1.05);
+  });
+
+  it('returns null for an absent date', () => {
+    rfClearCache();
+    const history = { rows: [{ day: '2026-05-27', recovery_signal: 'neutral' }] };
+    localStorage.setItem('tempo_recovery_state_history', JSON.stringify(history));
+    assertEqual(RecoveryFeed.getDayRow('2026-04-01'), null);
+  });
+
+  it('returns null for malformed input', () => {
+    rfClearCache();
+    const history = { rows: [{ day: '2026-05-27', recovery_signal: 'neutral' }] };
+    localStorage.setItem('tempo_recovery_state_history', JSON.stringify(history));
+    assertEqual(RecoveryFeed.getDayRow(null), null);
+    assertEqual(RecoveryFeed.getDayRow(undefined), null);
+    assertEqual(RecoveryFeed.getDayRow(42), null);
+  });
+
+  it('does not throw on malformed cache', () => {
+    rfClearCache();
+    localStorage.setItem('tempo_recovery_state_history', '{{not json');
+    assertEqual(RecoveryFeed.getDayRow('2026-05-28'), null);
+  });
+});
+
 describe('RecoveryFeed.refresh — gate', () => {
   it('no-ops and returns null when SyncFlag is off', async () => {
     rfClearCache();

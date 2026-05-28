@@ -5200,9 +5200,12 @@ body.focus-mode .global-bfrb-fab {
 .rhythm-readiness-emoji {
   font-size: 16px;
   line-height: 1;
+  flex-shrink: 0;
 }
 .rhythm-readiness-label {
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .rhythm-readiness-detail {
   color: var(--text-secondary, #8e8e93);
