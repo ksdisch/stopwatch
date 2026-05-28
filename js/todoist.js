@@ -384,10 +384,18 @@ const Todoist = (() => {
   // ── Offline queue ─────────────────────────────────────────────────────
 
   function _isOffline() {
-    // navigator.onLine is a hint, not a guarantee. Code paths still
-    // catch fetch network errors and enqueue from there. But when this
-    // flag IS false we skip the doomed fetch entirely.
+    // Prefer Platform.network.isOnline() when available — it's the
+    // canonical Tempo abstraction (used by sync-engine.js) and on iOS
+    // Capacitor it routes to @capacitor/network for reliable status
+    // updates that navigator.onLine misses in WKWebView. Falls back to
+    // navigator.onLine on web builds without the shim. Code paths still
+    // catch fetch network errors and enqueue from there; this gate just
+    // skips the doomed fetch when we already know we're offline.
     try {
+      if (typeof Platform !== 'undefined' && Platform && Platform.network
+          && typeof Platform.network.isOnline === 'function') {
+        return Platform.network.isOnline() === false;
+      }
       return typeof navigator !== 'undefined' && navigator.onLine === false;
     } catch (_) {
       return false;
@@ -584,14 +592,29 @@ const Todoist = (() => {
 
   function _bindListeners() {
     if (_listenersBound) return;
-    _listenersBound = true;
     if (typeof window === 'undefined') return;
+    // Prefer Platform.network.onChange when available so iOS WKWebView
+    // reconnects (which navigator.onLine misses) still drain the queue.
+    let onlineSourceBound = false;
     try {
-      window.addEventListener('online', () => {
-        // Best-effort drain. Errors swallowed — surface is event-driven.
-        drainQueue().catch(() => {});
-      });
+      if (typeof Platform !== 'undefined' && Platform && Platform.network
+          && typeof Platform.network.onChange === 'function') {
+        Platform.network.onChange((status) => {
+          if (status && status.connected === true) {
+            drainQueue().catch(() => {});
+          }
+        });
+        onlineSourceBound = true;
+      }
     } catch (_) {}
+    if (!onlineSourceBound) {
+      try {
+        window.addEventListener('online', () => {
+          // Best-effort drain. Errors swallowed — surface is event-driven.
+          drainQueue().catch(() => {});
+        });
+      } catch (_) {}
+    }
     try {
       if (typeof document !== 'undefined' && document.addEventListener) {
         document.addEventListener('visibilitychange', () => {
@@ -601,6 +624,9 @@ const Todoist = (() => {
         });
       }
     } catch (_) {}
+    // Set the latch AFTER both binds so a synchronous failure in any
+    // listener install doesn't lock out a future re-bind attempt.
+    _listenersBound = true;
   }
 
   // ── Test seam ─────────────────────────────────────────────────────────

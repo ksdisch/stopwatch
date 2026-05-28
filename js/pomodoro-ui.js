@@ -667,6 +667,10 @@ function initChecklistInput() {
 function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
   const input = document.getElementById(inputId);
   if (!input) return;
+  // bl-2-todoist: Todoist write-back is scoped to the FOCUS checklist only.
+  // The break-checklist input shares this handler factory but break tasks
+  // are local-only — they must not pollute the user's actual Todoist list.
+  const createsTodoistTasks = (inputId === 'pomo-checklist-input');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -674,14 +678,16 @@ function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
       if (!text) return;
       const items = loadFn();
       const newItem = { text, done: false };
-      // bl-2-todoist: when a token is configured, create a Todoist task
-      // alongside the local one and stamp the returned id on success.
-      // localTag correlates the late-stamp event (from the offline-queue
-      // drain) back to this specific local item even if the user adds
-      // more items before the queue drains.
-      if (typeof Todoist !== 'undefined' && Todoist.hasToken()) {
-        const localTag = 'pomo-' + Date.now() + '-' +
-          Math.random().toString(36).slice(2, 8);
+      // bl-2-todoist: when a token is configured AND this is the focus
+      // checklist input, create a Todoist task alongside the local one
+      // and stamp the returned id on success. localTag correlates the
+      // late-stamp event (from the offline-queue drain) back to this
+      // specific local item even if the user adds more items before the
+      // queue drains.
+      if (createsTodoistTasks && typeof Todoist !== 'undefined' && Todoist.hasToken()) {
+        const localTag = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+          ? 'pomo-' + crypto.randomUUID()
+          : 'pomo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         newItem.localTag = localTag;
         Todoist.createTask({ content: text, localTag }).then(result => {
           if (result && result.ok && result.data &&
@@ -698,14 +704,17 @@ function initChecklistInputFor(inputId, loadFn, saveFn, renderFn) {
   });
 }
 
-// bl-2-todoist: late-stamp helper. Walks all lists that can carry a
-// `localTag` (checklist + break-checklist + actual-work + saved-tasks)
-// and stamps the Todoist id on the matching entry. Persists + re-renders
+// bl-2-todoist: late-stamp helper. Walks the three lists that can carry
+// a `localTag` (focus checklist + break checklist + saved tasks; the
+// actual-work list is still a flat string[] and cannot carry a localTag)
+// and stamps the Todoist id on every matching entry. Persists + re-renders
 // any list that changed. Called from both:
 //   - the synchronous createTask success path (one local item)
 //   - the `todoist:create-resolved` window event (offline-queue drain)
 // Idempotent: only touches entries whose localTag matches AND that don't
-// already have a todoistId.
+// already have a todoistId. Stamps EVERY match (not just the first) so a
+// task that's been pinned-then-+Focused before the create response lands
+// gets stamped on both the saved-task entry and the checklist copy.
 function _stampTodoistIdByLocalTag(localTag, todoistId) {
   if (!localTag || !todoistId) return;
   let dirty = false;
@@ -897,10 +906,13 @@ function renderSavedTasks() {
       const items = loadSavedTasks();
       if (items[idx]) {
         const checklist = loadChecklist();
-        // bl-2-todoist: propagate todoistId from saved task to checklist
-        // item so check/uncheck writes through to Todoist.
+        // bl-2-todoist: propagate todoistId + localTag from saved task to
+        // checklist item so check/uncheck writes through to Todoist AND
+        // late-stamping (from an in-flight createTask) lands on this copy
+        // as well as the saved-tasks entry.
         const entry = { text: items[idx].text, done: false };
         if (items[idx].todoistId) entry.todoistId = items[idx].todoistId;
+        if (items[idx].localTag) entry.localTag = items[idx].localTag;
         checklist.push(entry);
         saveChecklist(checklist);
         renderChecklist();
@@ -915,9 +927,11 @@ function renderSavedTasks() {
       const items = loadSavedTasks();
       if (items[idx]) {
         const checklist = loadBreakChecklist();
-        // bl-2-todoist: propagate todoistId to break checklist as well.
+        // bl-2-todoist: propagate todoistId + localTag to break checklist
+        // (same reasoning as the focus path above).
         const entry = { text: items[idx].text, done: false };
         if (items[idx].todoistId) entry.todoistId = items[idx].todoistId;
+        if (items[idx].localTag) entry.localTag = items[idx].localTag;
         checklist.push(entry);
         saveBreakChecklist(checklist);
         renderBreakChecklist();
@@ -963,12 +977,29 @@ function initSavedTasksPanel() {
           const items = loadSavedTasks();
           for (const t of tasks) {
             if (!t || typeof t.content !== 'string') continue;
-            // De-dupe by Todoist id to avoid re-importing the same task.
-            if (t.id && items.some(it => it && it.todoistId === String(t.id))) {
+            // De-dupe by Todoist id (re-import of same Todoist task) OR by
+            // text when no local entry has a Todoist id yet (the user pinned
+            // 'Write tests' locally and is now importing the matching
+            // Todoist task — should link, not duplicate).
+            const tid = t.id ? String(t.id) : null;
+            const existingByTid = tid && items.some(it => it && it.todoistId === tid);
+            if (existingByTid) continue;
+            const existingByText = items.some(it =>
+              it && it.text === t.content && !it.todoistId
+            );
+            if (existingByText && tid) {
+              // Link the existing local entry instead of appending a dupe.
+              for (const it of items) {
+                if (it && it.text === t.content && !it.todoistId) {
+                  it.todoistId = tid;
+                  break;
+                }
+              }
               continue;
             }
+            if (existingByText) continue;
             const entry = { text: t.content };
-            if (t.id) entry.todoistId = String(t.id);
+            if (tid) entry.todoistId = tid;
             items.push(entry);
           }
           saveSavedTasks(items);

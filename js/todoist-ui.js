@@ -150,8 +150,14 @@ const TodoistUI = (() => {
 
     // ── Wire interactions ─────────────────────────────────────────────
     testBtn.addEventListener('click', async () => {
+      // Capture the previous token BEFORE setting the new one so a failed
+      // test can restore it (otherwise a typo or stray whitespace silently
+      // overwrites a previously-working token). Also disable the button
+      // for the duration of the test so rapid double-clicks can't race.
+      if (testBtn.disabled) return;
+      testBtn.disabled = true;
+      const previousToken = Todoist.getToken();
       const token = (tokenInput.value || '').trim();
-      // Persist before testing so testConnection picks up the new token.
       Todoist.setToken(token);
       testStatus.removeAttribute('data-error');
       testStatus.textContent = 'Testing…';
@@ -160,16 +166,22 @@ const TodoistUI = (() => {
         if (result && result.ok) {
           testStatus.textContent = '✓ Connected';
           testStatus.removeAttribute('data-error');
-          // Now that we know the token works, populate the project list.
           _populateProjects(projectSel);
         } else {
+          // Restore the prior token; do NOT leave the bad value persisted.
+          if (previousToken) Todoist.setToken(previousToken);
+          else Todoist.clearToken();
           const msg = (result && result.message) || 'Failed to connect';
           testStatus.textContent = '✗ ' + msg;
           testStatus.setAttribute('data-error', '');
         }
       } catch (_err) {
+        if (previousToken) Todoist.setToken(previousToken);
+        else Todoist.clearToken();
         testStatus.textContent = '✗ network error';
         testStatus.setAttribute('data-error', '');
+      } finally {
+        testBtn.disabled = false;
       }
       _renderPendingCount(queueStatus);
     });
@@ -383,6 +395,18 @@ const TodoistUI = (() => {
   async function _fetchAndRender(listEl, statusEl, confirmBtn, filter) {
     if (!listEl || !statusEl) return;
 
+    // Preserve any currently-checked task ids across the re-render so a
+    // user who alt-tabs to the Todoist app mid-selection doesn't lose
+    // their checks when visibilitychange:visible triggers a refresh.
+    const previouslyChecked = new Set();
+    try {
+      listEl.querySelectorAll('input[type="checkbox"][data-task-id]:checked').forEach(cb => {
+        if (cb && cb.dataset && cb.dataset.taskId) {
+          previouslyChecked.add(cb.dataset.taskId);
+        }
+      });
+    } catch (_) {}
+
     statusEl.removeAttribute('data-error');
     statusEl.textContent = 'Loading…';
     statusEl.hidden = false;
@@ -425,6 +449,7 @@ const TodoistUI = (() => {
 
     // Render rows. Use textContent (NOT innerHTML) for `task.content` so
     // hostile content can't inject markup.
+    let restoredAnyChecked = false;
     for (const t of tasks) {
       if (!t || typeof t.id === 'undefined') continue;
       const label = document.createElement('label');
@@ -433,6 +458,10 @@ const TodoistUI = (() => {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.dataset.taskId = String(t.id);
+      if (previouslyChecked.has(String(t.id))) {
+        cb.checked = true;
+        restoredAnyChecked = true;
+      }
       cb.addEventListener('change', () => {
         const anyChecked = !!listEl.querySelector('input[type="checkbox"][data-task-id]:checked');
         if (confirmBtn) confirmBtn.disabled = !anyChecked;
@@ -446,7 +475,7 @@ const TodoistUI = (() => {
 
       listEl.appendChild(label);
     }
-    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = !restoredAnyChecked;
   }
 
   function _close() {
