@@ -2983,6 +2983,241 @@ body.focus-mode .global-bfrb-fab {
   color: var(--text);
 }
 
+/* ── bl-2-todoist: Todoist settings drawer panel ──
+   Lives inside #tempo-settings-drawer immediately below the Cloud Sync
+   section. Spacing matches `.tempo-cloud-sync-section` so the two panels
+   sit visually flush. No hardcoded colors — only theme tokens. */
+.tempo-todoist-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--separator);
+  margin-top: 4px;
+}
+
+.tempo-todoist-subhead {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.tempo-todoist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tempo-todoist-label {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: var(--text);
+  min-width: 110px;
+}
+
+.tempo-todoist-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tempo-todoist-input:focus {
+  outline: none;
+  border-color: var(--green);
+}
+
+.tempo-todoist-help {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  padding: 0 2px;
+}
+
+.tempo-todoist-help a {
+  color: var(--green);
+  text-decoration: none;
+}
+
+.tempo-todoist-help a:hover {
+  text-decoration: underline;
+}
+
+/* Secondary button used both for "Test connection" + the "Import from
+   Todoist" surface on the Saved Tasks panel + the picker modal's Cancel.
+   Matches the visual weight of `.pomo-action-btn` (transparent fill,
+   outlined). */
+.tempo-todoist-secondary {
+  background: transparent;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  align-self: flex-start;
+}
+
+.tempo-todoist-secondary:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.tempo-todoist-secondary:active {
+  opacity: 0.7;
+}
+
+.tempo-todoist-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tempo-todoist-status {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.tempo-todoist-status[data-error] {
+  color: var(--red);
+}
+
+.todoist-pending-count {
+  font-style: italic;
+}
+
+.todoist-pending-count[hidden] {
+  display: none;
+}
+
+/* The Import button on the Saved Tasks panel should fit in line with
+   the other Pomodoro inline buttons rather than sit flush-left. */
+#pomo-import-todoist {
+  align-self: stretch;
+  margin: 6px 0;
+}
+
+/* ── bl-2-todoist: shared picker modal ──
+   Open via `TodoistUI.openPicker({ onImport })`. Single backdrop +
+   centered card. The list scrolls inside the body so the header / footer
+   stay visible. Z-index above settings drawer (which is z-index 200ish);
+   we use 1000 to also clear the global BFRB FAB. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.todoist-picker-modal {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.todoist-picker-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todoist-picker-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-subhead {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.todoist-picker-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 12px;
+  min-height: 80px;
+}
+
+.todoist-picker-status {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.todoist-picker-status[data-error] {
+  color: var(--red);
+}
+
+.todoist-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todoist-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.todoist-picker-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.todoist-picker-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.todoist-picker-task-content {
+  flex: 1 1 auto;
+  font-size: 0.9rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.todoist-picker-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--separator);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* ── Flow Block Mode ── */
 .flow-area {
   display: flex;

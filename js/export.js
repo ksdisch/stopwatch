@@ -112,6 +112,36 @@ const Export = (() => {
     'app_mode', 'display_mode', 'install_dismissed',
   ];
 
+  // bl-2-todoist: strip Todoist linkage (todoistId, localTag) from saved
+  // tasks at export time. Backups are portable across Tempo installs;
+  // Todoist ids belong to ONE Todoist account and 404 if restored to a
+  // device signed into a different account. Stripping makes the backup
+  // account-neutral; users who want Todoist sync re-paste their token on
+  // the restored device and re-import via the picker (which dedupes by
+  // text per js/pomodoro-ui.js).
+  function _stripTodoistLinkage(rawJson) {
+    try {
+      const items = JSON.parse(rawJson);
+      if (!Array.isArray(items)) return rawJson;
+      const stripped = items.map(item => {
+        if (typeof item === 'string') return item;
+        if (!item || typeof item !== 'object') return item;
+        const out = { text: item.text };
+        // Preserve any future non-Todoist fields (e.g. done) but DROP
+        // todoistId + localTag specifically.
+        for (const k of Object.keys(item)) {
+          if (k !== 'todoistId' && k !== 'localTag' && k !== 'text') {
+            out[k] = item[k];
+          }
+        }
+        return out;
+      });
+      return JSON.stringify(stripped);
+    } catch (_) {
+      return rawJson;
+    }
+  }
+
   // Extract the JSON payload so it's testable without triggering a browser
   // download. exportAllData calls this and handles the <a> click.
   async function buildBackupData() {
@@ -119,7 +149,12 @@ const Export = (() => {
     const settings = {};
     EXPORT_SETTINGS_KEYS.forEach(key => {
       const val = localStorage.getItem(key);
-      if (val !== null) settings[key] = val;
+      if (val === null) return;
+      if (key === 'pomodoro_saved_tasks') {
+        settings[key] = _stripTodoistLinkage(val);
+      } else {
+        settings[key] = val;
+      }
     });
     return {
       version: 1,

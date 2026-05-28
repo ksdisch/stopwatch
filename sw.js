@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v100-rhythm-per-day';
+const CACHE_NAME = 'stopwatch-v101-todoist-integration';
 const ASSETS = [
   './',
   './index.html',
@@ -67,6 +67,8 @@ const ASSETS = [
   './js/rhythm-ui.js',
   './js/bfrb-events.js',
   './js/distractions.js',
+  './js/todoist.js',
+  './js/todoist-ui.js',
   './js/global-bfrb.js',
   './js/app.js',
   './manifest.json',
