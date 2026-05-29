@@ -1871,3 +1871,30 @@ Token is device-local by design: NOT in `SYNCED_STORES`, NOT in `EXPORT_SETTINGS
 f7ae9b0  feat(todoist): settings panel + picker modal + Pomodoro integration
 <this commit>  docs(backlog): mark Todoist Pomo V1 shipped + flag deferrals
 ```
+
+---
+
+## 2026-05-29 — Todoist Flow user-task list (PR #102, backlog follow-up A)
+
+### What We Built
+
+Backlog row #9 (the deferred Flow half of #2): a user-editable "Tasks for this block" list inside the Flow Block, giving Flow the same two-way Todoist surface Pomodoro got in V1. The list lives in both the Flow setup view (below the fixed 5-item ritual checklist) and the running view (a checkable mirror with a live "Tasks: N/M done" count), backed by a new non-synced localStorage key `flow_user_tasks` (shape `Array<{ text, todoistId?, done, localTag? }>`). Import pulls tasks via the shared V1 picker `TodoistUI.openPicker({ onImport })` (reused unchanged) with three-branch dedupe; checking/unchecking propagates to Todoist via fire-and-forget `closeTask`/`reopenTask`; adding a task calls `createTask` and late-stamps the returned `todoistId` onto the local row via a `'flow-'`-prefixed `localTag` walker on the `todoist:create-resolved` event. Delete stays strictly local (the V1 hard guard — never `Todoist.deleteTask`). `done` resets on each `Flow.start()` (DECISION 5) while `text` survives across blocks; per-block completion is captured conditionally in the Flow history record (`tasksPlanned`/`tasksCompleted`, only when the list is non-empty) and surfaced as a "Tasks N/M" summary-card row. No engine changes beyond a data-only `js/export.js` edit; the UI logic all lives in `js/flow-ui.js`.
+
+The notable correction caught at the Phase 1 audit pause was **RATIFIED DECISION 8** (backup parity): the brief originally kept `flow_user_tasks` out of `EXPORT_SETTINGS_KEYS`, which would have silently dropped Flow task text from a backup/restore round-trip while `pomodoro_saved_tasks` is preserved. Kyle chose parity, so the implementer added `'flow_user_tasks'` to `EXPORT_SETTINGS_KEYS` and broadened the `buildBackupData` strip condition to also run the already-shipped `_stripTodoistLinkage` on it (preserving `text`+`done`, dropping `todoistId`+`localTag`) — no stripper change. `flow_user_tasks` stays OUT of Firestore `SYNCED_STORES` (Todoist is the cross-device source of truth) — backup and Firestore-sync are orthogonal axes.
+
+Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier), Phase 2 implementer (`js/export.js` allowlist + strip-condition), Phase 3 tester (`tests/export.test.js` +6 cases), Phase 4 ui-wirer (`js/flow-ui.js` + `index.html` + `css/styles.css`), Phase 5 ship (docs + cache bump + branch + gated push). `sw.js` CACHE_NAME bumped `v101-todoist-integration` → `v102-flow-tasks`.
+
+### Verification result
+
+`tests/export.test.js` — 6 new cases in a `describe('Export — Todoist-linkage stripping (DECISION 8)')` block, asserting `flow_user_tasks` exports with `todoistId`/`localTag` stripped and `text`/`done` preserved (parity with the existing `pomodoro_saved_tasks` strip regression). Browser-verified via kapture: full suite 714 tests, 710 pass, **4 fail — all 4 are the PRE-EXISTING `tests/recovery-feed.test.js` NPE baseline noise (rhythm PR #98), ZERO from this PR.** Flow UI verified via kapture at `#/timers/flow` (renders clean, zero console errors) + `#/timers/pomodoro` neighbor-route regression pass; a live add → check → start-block interaction confirmed the "Tasks: 0/1 done" count and the DECISION-5 done-reset preserving text.
+
+### Suggested Next Steps
+
+- **Todoist follow-up B — Pomo inline-rename + `Todoist.updateTask` (backlog #9 in the old numbering / the remaining Todoist deferral).** Click-to-edit on Pomodoro saved-task `.text` spans; engine gains `updateTask` + a new `'update'` offline-queue op kind (~50 LoC + 2–4 `tests/todoist.test.js` cases).
+- **Diagnose the 4 `tests/recovery-feed.test.js` baseline failures** — same `Cannot read properties of null` NPE across all 4 cases, predates this PR (rhythm PR #98). Separate PR.
+- **iOS smoke** — repeat one Flow create + one close on the Tempo iOS build after the next `npm run sync-www && npm run ios:open`; confirm WKWebView `fetch` against `api.todoist.com` works.
+
+### Commits
+```
+<impl SHA>  feat(todoist): Flow user-task list two-way integration (backlog follow-up A)
+```

@@ -393,12 +393,34 @@
           <div id="flow-checklist-items"></div>
           <button id="flow-skip-checklist" class="offset-link">Skip checklist</button>
         </div>
+        <!-- todoist-flow-tasks: user-editable "Tasks for this block" list.
+             Sits below the gating ritual checklist; tasks are optional and do
+             NOT gate Start. Import button reuses the V1 picker + button style. -->
+        <div class="flow-checklist flow-user-tasks">
+          <div class="flow-checklist-label">Tasks for this block</div>
+          <div id="flow-user-tasks-items"></div>
+          <div class="flow-user-tasks-add">
+            <input type="text" id="flow-user-task-input"
+                   placeholder="Add a task..." maxlength="120"
+                   aria-label="Add a task for this block">
+          </div>
+          <button id="flow-import-todoist" class="tempo-todoist-secondary"
+                  type="button" aria-label="Import tasks from Todoist">
+            Import from Todoist
+          </button>
+        </div>
       </div>
       <!-- Running: phase label + distraction button -->
       <div id="flow-running" class="flow-running hidden">
         <div class="flow-phase-label">
           <span id="flow-phase-text">Focus</span>
           <span id="flow-goal-display" class="flow-goal-display"></span>
+        </div>
+        <!-- todoist-flow-tasks: in-session checkable task mirror + live count
+             (DECISION 3). Hidden when the list is empty (no count text). -->
+        <div id="flow-running-tasks" class="flow-running-tasks">
+          <div id="flow-running-tasks-count" class="flow-running-tasks-count"></div>
+          <div id="flow-running-tasks-items"></div>
         </div>
         <div class="flow-run-actions">
           <button id="flow-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
