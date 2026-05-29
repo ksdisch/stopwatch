@@ -114,6 +114,120 @@ describe('Export.buildBackupData — payload shape', () => {
   });
 });
 
+describe('Export — Todoist-linkage stripping (DECISION 8)', () => {
+  it('includes flow_user_tasks in getSettingsKeys()', () => {
+    const keys = Export.getSettingsKeys();
+    assertEqual(keys.includes('flow_user_tasks'), true,
+      'flow_user_tasks must be in EXPORT_SETTINGS_KEYS for backup parity with pomodoro_saved_tasks');
+  });
+
+  it('strips todoistId + localTag from flow_user_tasks while preserving text + done', async () => {
+    const raw = JSON.stringify([
+      { text: 'Write spec', todoistId: '12345', localTag: 'flow-abc', done: true },
+    ]);
+    localStorage.setItem('flow_user_tasks', raw);
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      assert(typeof data.settings.flow_user_tasks === 'string',
+        'flow_user_tasks should be exported as a JSON string');
+      const items = JSON.parse(data.settings.flow_user_tasks);
+      assertEqual(items.length, 1);
+      assertEqual(items[0].text, 'Write spec');
+      assertEqual(items[0].done, true);
+      assertEqual('todoistId' in items[0], false, 'todoistId must be stripped');
+      assertEqual('localTag' in items[0], false, 'localTag must be stripped');
+    } finally {
+      localStorage.removeItem('flow_user_tasks');
+    }
+  });
+
+  it('preserves a plain local flow_user_tasks entry verbatim (no linkage to strip)', async () => {
+    const raw = JSON.stringify([{ text: 'Read', done: false }]);
+    localStorage.setItem('flow_user_tasks', raw);
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      const items = JSON.parse(data.settings.flow_user_tasks);
+      assertEqual(items.length, 1);
+      assertEqual(items[0].text, 'Read');
+      assertEqual(items[0].done, false);
+      assertEqual('todoistId' in items[0], false);
+      assertEqual('localTag' in items[0], false);
+    } finally {
+      localStorage.removeItem('flow_user_tasks');
+    }
+  });
+
+  it('omits flow_user_tasks from settings when the key is absent (null-skip path)', async () => {
+    localStorage.removeItem('flow_user_tasks');
+    window.History = { getSessions: async () => [] };
+    const data = await Export.buildBackupData();
+    assertEqual('flow_user_tasks' in data.settings, false,
+      'absent flow_user_tasks must not appear in the backup settings block');
+  });
+
+  it('round-trips flow_user_tasks back into localStorage on import (stripped form)', async () => {
+    // Sweep so only flow_user_tasks is in play.
+    Export.getSettingsKeys().forEach(k => localStorage.removeItem(k));
+    const raw = JSON.stringify([
+      { text: 'Write spec', todoistId: '12345', localTag: 'flow-abc', done: true },
+    ]);
+    localStorage.setItem('flow_user_tasks', raw);
+
+    let stored = [];
+    window.History = {
+      getSessions: async () => stored.slice(),
+      addSession: async (s) => { stored.push(s); },
+      clearAll: async () => { stored = []; },
+    };
+
+    // Export → capture the stripped string.
+    const payload = await Export.buildBackupData();
+    const exported = payload.settings.flow_user_tasks;
+    const json = JSON.stringify(payload);
+
+    // Clear the key, then import the backup back.
+    localStorage.removeItem('flow_user_tasks');
+    assertEqual(localStorage.getItem('flow_user_tasks'), null);
+
+    const result = await Export.importAllData(json);
+    assert(result.settingsRestored >= 1, 'expected at least flow_user_tasks restored');
+    assertEqual(localStorage.getItem('flow_user_tasks'), exported,
+      'imported flow_user_tasks must match the exported (stripped) string');
+
+    // The restored value carries text + done but no linkage.
+    const restored = JSON.parse(localStorage.getItem('flow_user_tasks'));
+    assertEqual(restored[0].text, 'Write spec');
+    assertEqual(restored[0].done, true);
+    assertEqual('todoistId' in restored[0], false);
+    assertEqual('localTag' in restored[0], false);
+
+    localStorage.removeItem('flow_user_tasks');
+  });
+
+  it('regression: still strips todoistId + localTag from pomodoro_saved_tasks', async () => {
+    const raw = JSON.stringify([
+      { text: 'Ship PR', todoistId: '99999', localTag: 'pomo-xyz' },
+      'plain-string-task',
+    ]);
+    localStorage.setItem('pomodoro_saved_tasks', raw);
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      const items = JSON.parse(data.settings.pomodoro_saved_tasks);
+      assertEqual(items.length, 2);
+      assertEqual(items[0].text, 'Ship PR');
+      assertEqual('todoistId' in items[0], false, 'todoistId must be stripped');
+      assertEqual('localTag' in items[0], false, 'localTag must be stripped');
+      // String-form tasks pass through untouched.
+      assertEqual(items[1], 'plain-string-task');
+    } finally {
+      localStorage.removeItem('pomodoro_saved_tasks');
+    }
+  });
+});
+
 describe('Export.importAllData — restore behavior', () => {
   // A minimal in-memory History stub the import path can call.
   function makeHistoryStub() {

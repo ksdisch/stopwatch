@@ -92,6 +92,11 @@ const Export = (() => {
     'flow_state', 'flow_config',
     'flow_distractions', 'flow_bfrbs',
     'flow_checklist_state', 'flow_checklist_skipped', 'flow_last_saved_session',
+    // todoist-flow-tasks (DECISION 8): Flow Block user-task list. Non-synced
+    // (not in SYNCED_STORES — Todoist is the cross-device source of truth) but
+    // backed up here for device portability, with Todoist linkage stripped at
+    // export time exactly like pomodoro_saved_tasks (see buildBackupData).
+    'flow_user_tasks',
 
     // Interval / Sequence / Cooking
     'interval_state',
@@ -150,7 +155,7 @@ const Export = (() => {
     EXPORT_SETTINGS_KEYS.forEach(key => {
       const val = localStorage.getItem(key);
       if (val === null) return;
-      if (key === 'pomodoro_saved_tasks') {
+      if (key === 'pomodoro_saved_tasks' || key === 'flow_user_tasks') {
         settings[key] = _stripTodoistLinkage(val);
       } else {
         settings[key] = val;
