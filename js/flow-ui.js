@@ -6,6 +6,27 @@ const FLOW_BFRB_KEY = 'flow_bfrbs';
 const FLOW_CHECKLIST_STATE_KEY = 'flow_checklist_state';
 const FLOW_CHECKLIST_SKIPPED_KEY = 'flow_checklist_skipped';
 
+// todoist-flow-tasks: user-editable "Tasks for this block" list. Brand-new
+// key (no legacy migration), shape Array<{ text, todoistId?, done, localTag? }>.
+// NOT synced via Firestore (Todoist is the cross-device source of truth) but
+// IS included in local backup with linkage stripped (see js/export.js,
+// DECISION 8). Read-time string-coercion mirrors pomodoro-ui.js loadSavedTasks
+// so a hand-edited localStorage value can't crash the render.
+const FLOW_USER_TASKS_KEY = 'flow_user_tasks';
+
+function loadFlowUserTasks() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FLOW_USER_TASKS_KEY)) || [];
+    return raw.map(item =>
+      typeof item === 'string' ? { text: item, done: false } : item
+    );
+  } catch (e) { return []; }
+}
+
+function saveFlowUserTasks(items) {
+  localStorage.setItem(FLOW_USER_TASKS_KEY, JSON.stringify(items));
+}
+
 // Backlog #2: vibration interval for Flow focus blocks. Same RAF-loop
 // check pattern as Stopwatch's `vibrate_interval` in js/ui.js — fires
 // a haptic at each crossing of the configured interval. Stored under
@@ -188,6 +209,14 @@ function initFlowUI() {
     updateFlowChecklistGate();
   });
 
+  // todoist-flow-tasks: user-editable "Tasks for this block" list. Render on
+  // init + wire the add-input and Import-from-Todoist button. Renders into
+  // both the setup and running targets.
+  renderFlowUserTasks();
+  updateFlowUserTaskCount();
+  initFlowUserTaskInput();
+  initFlowImportButton();
+
   // Distraction log
   initFlowDistractionLog();
 
@@ -323,6 +352,12 @@ function onFlowRight() {
     // PR deferred per Pick C on TODO #6).
     saveFlowBFRBs([]);
     Flow.start();
+    // todoist-flow-tasks (DECISION 5): the planning task list TEXT survives
+    // across blocks, but completion is per-block — reset every item to
+    // done:false on a fresh start. Spread preserves text/todoistId/localTag;
+    // do NOT clear the list.
+    const resetTasks = loadFlowUserTasks().map(it => ({ ...it, done: false }));
+    saveFlowUserTasks(resetTasks);
     // Backlog #2: reset the vibrate cursor so the first haptic fires
     // at vibrateIntervalMs elapsed in THIS focus block (not relative
     // to a previous session's leftover state).
@@ -450,6 +485,9 @@ function updateFlowUI() {
     }
     renderFlowChecklist();
     updateFlowChecklistGate();
+    // todoist-flow-tasks: re-render the user-task list into the setup view.
+    renderFlowUserTasks();
+    updateFlowUserTaskCount();
   }
 
   // Running phase label + goal display
@@ -458,6 +496,10 @@ function updateFlowUI() {
     const goalDisplay = document.getElementById('flow-goal-display');
     goalDisplay.textContent = Flow.getGoal() || '';
     updateFlowDistractionBtnVisibility();
+    // todoist-flow-tasks: render the checkable mirror + live "Tasks: N/M done"
+    // count in the running view (DECISION 3).
+    renderFlowUserTasks();
+    updateFlowUserTaskCount();
   }
 
   // End-early button visibility: running or paused focus phase only.
@@ -610,6 +652,204 @@ function renderFlowChecklist() {
   });
 }
 
+// todoist-flow-tasks: render the user-task list into BOTH targets — the
+// setup-view container (#flow-user-tasks-items) and the running-view mirror
+// (#flow-running-tasks-items). Single source of truth is flow_user_tasks in
+// localStorage; every mutation persists then calls this one function so the
+// two DOM targets + the running count never drift. Mirrors the
+// renderFlowChecklist re-render-from-storage pattern. NO visual marker on
+// Todoist-linked tasks — imported and local tasks look identical.
+function renderFlowUserTasks() {
+  const items = loadFlowUserTasks();
+  const targets = ['flow-user-tasks-items', 'flow-running-tasks-items'];
+
+  const rowsHtml = items.length === 0
+    ? ''
+    : items.map((item, i) =>
+        `<div class="flow-user-task-row ${item.done ? 'flow-user-task-done' : ''}" data-flow-task-idx="${i}">
+          <input type="checkbox" data-flow-task="${i}" ${item.done ? 'checked' : ''}
+                 aria-label="Mark task done: ${escapeHtml(item.text)}">
+          <span class="flow-user-task-text">${escapeHtml(item.text)}</span>
+          <button class="flow-user-task-del" data-flow-task-del="${i}"
+                  type="button" aria-label="Remove task: ${escapeHtml(item.text)}">&times;</button>
+        </div>`
+      ).join('');
+
+  targets.forEach(id => {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.innerHTML = rowsHtml;
+
+    container.querySelectorAll('input[data-flow-task]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = parseInt(cb.dataset.flowTask, 10);
+        const list = loadFlowUserTasks();
+        if (!list[idx]) return;
+        list[idx].done = cb.checked;
+        // todoist-flow-tasks: fire-and-forget write-back for linked tasks.
+        // close/reopen are idempotent and the engine's offline queue absorbs
+        // network failures, so the local check state updates regardless
+        // (DECISION 6). No haptic on the Todoist call (silent per RATIFIED #6).
+        if (list[idx].todoistId && typeof Todoist !== 'undefined') {
+          if (cb.checked) {
+            Todoist.closeTask(list[idx].todoistId).catch(() => {});
+          } else {
+            Todoist.reopenTask(list[idx].todoistId).catch(() => {});
+          }
+        }
+        saveFlowUserTasks(list);
+        renderFlowUserTasks();
+        updateFlowUserTaskCount();
+      });
+    });
+
+    container.querySelectorAll('[data-flow-task-del]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.flowTaskDel, 10);
+        // todoist-flow-tasks HARD GUARD: delete in Tempo NEVER deletes in
+        // Todoist. We discard the local array entry only — no Todoist.* call.
+        const list = loadFlowUserTasks();
+        list.splice(idx, 1);
+        saveFlowUserTasks(list);
+        renderFlowUserTasks();
+        updateFlowUserTaskCount();
+      });
+    });
+  });
+}
+
+// todoist-flow-tasks: refresh the in-session "Tasks: N/M" count element in the
+// running view. Counts only (no task text). Safe to call when the element
+// isn't present (idle view) — it no-ops.
+function updateFlowUserTaskCount() {
+  const countEl = document.getElementById('flow-running-tasks-count');
+  if (!countEl) return;
+  const items = loadFlowUserTasks();
+  if (items.length === 0) {
+    countEl.textContent = '';
+    return;
+  }
+  const done = items.filter(t => t.done).length;
+  countEl.textContent = `Tasks: ${done}/${items.length} done`;
+}
+
+// todoist-flow-tasks: add-task input handler. Mirrors pomodoro-ui.js
+// initChecklistInputFor — Enter commits, and when a Todoist token is set a
+// 'flow-'-prefixed localTag is minted so the late-stamp walker can correlate
+// the create response (sync OR offline-queue drain) back to this exact item.
+function initFlowUserTaskInput() {
+  const input = document.getElementById('flow-user-task-input');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const items = loadFlowUserTasks();
+      const newItem = { text, done: false };
+      if (typeof Todoist !== 'undefined' && Todoist.hasToken()) {
+        const localTag = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+          ? 'flow-' + crypto.randomUUID()
+          : 'flow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        newItem.localTag = localTag;
+        Todoist.createTask({ content: text, localTag }).then(result => {
+          if (result && result.ok && result.data &&
+              typeof result.data.id !== 'undefined') {
+            _stampFlowTaskTodoistId(localTag, String(result.data.id));
+          }
+        }).catch(() => {});
+      }
+      items.push(newItem);
+      saveFlowUserTasks(items);
+      input.value = '';
+      renderFlowUserTasks();
+      updateFlowUserTaskCount();
+    }
+  });
+}
+
+// todoist-flow-tasks: Flow-local late-stamp walker. Mirrors
+// pomodoro-ui.js _stampTodoistIdByLocalTag but walks ONLY flow_user_tasks.
+// Idempotent — stamps only entries whose localTag matches AND that lack a
+// todoistId, then drops the localTag. The 'flow-' prefix + the !todoistId
+// guard make this a guaranteed no-op for Pomo's 'pomo-'-prefixed entries
+// (and vice-versa), so the two create-resolved listeners never cross-stamp.
+function _stampFlowTaskTodoistId(localTag, todoistId) {
+  if (!localTag || !todoistId) return false;
+  const list = loadFlowUserTasks();
+  let changed = false;
+  for (const item of list) {
+    if (item && item.localTag === localTag && !item.todoistId) {
+      item.todoistId = todoistId;
+      delete item.localTag;
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveFlowUserTasks(list);
+    try { renderFlowUserTasks(); } catch (_) {}
+    try { updateFlowUserTaskCount(); } catch (_) {}
+  }
+  return changed;
+}
+
+// todoist-flow-tasks: Import-from-Todoist button. Reuses TodoistUI.openPicker
+// unchanged; on selection appends the chosen tasks with their Todoist ids.
+// Three-branch dedupe copied verbatim from pomodoro-ui.js initSavedTasksPanel:
+// skip-by-id / link-by-text / skip-by-text.
+function initFlowImportButton() {
+  const importBtn = document.getElementById('flow-import-todoist');
+  if (!importBtn || typeof TodoistUI === 'undefined') return;
+  importBtn.addEventListener('click', () => {
+    TodoistUI.openPicker({
+      onImport: (tasks) => {
+        if (!Array.isArray(tasks) || tasks.length === 0) return;
+        const items = loadFlowUserTasks();
+        for (const t of tasks) {
+          if (!t || typeof t.content !== 'string') continue;
+          const tid = t.id ? String(t.id) : null;
+          const existingByTid = tid && items.some(it => it && it.todoistId === tid);
+          if (existingByTid) continue;
+          const existingByText = items.some(it =>
+            it && it.text === t.content && !it.todoistId
+          );
+          if (existingByText && tid) {
+            // Link the existing local entry instead of appending a dupe.
+            for (const it of items) {
+              if (it && it.text === t.content && !it.todoistId) {
+                it.todoistId = tid;
+                break;
+              }
+            }
+            continue;
+          }
+          if (existingByText) continue;
+          items.push({ text: t.content, todoistId: tid, done: false });
+        }
+        saveFlowUserTasks(items);
+        renderFlowUserTasks();
+        updateFlowUserTaskCount();
+      },
+    });
+  });
+}
+
+// todoist-flow-tasks: subscribe once at module load to the offline-queue's
+// create-resolved event so queued creates stamp the Flow list when they drain.
+// Pomo installs its own listener; both fire on every event but each only
+// stamps its own lists (the 'flow-' vs 'pomo-' localTag prefix + the
+// !todoistId guard make cross-list stamping a no-op).
+if (typeof window !== 'undefined') {
+  window.addEventListener('todoist:create-resolved', (e) => {
+    if (!e || !e.detail) return;
+    const { localTag, todoistId } = e.detail;
+    if (localTag && todoistId) {
+      _stampFlowTaskTodoistId(String(localTag), String(todoistId));
+    }
+  });
+}
+
 function updateFlowChecklistGate() {
   // Flow shares btn-right with every other mode. If Flow isn't the active
   // mode, never touch the button — otherwise an unchecked Flow checklist
@@ -723,6 +963,9 @@ function renderFlowSummary() {
     ? Distractions.getForSession('flow', Flow.getSessionStartedAt())
     : [];
   const bfrbs = getFlowSessionBFRBs();
+  // todoist-flow-tasks (DECISION 4): task progress counts for the summary row.
+  const userTasks = loadFlowUserTasks();
+  const tasksDone = userTasks.filter(t => t.done).length;
 
   // Group distractions by category for a breakdown
   const counts = {};
@@ -758,6 +1001,10 @@ function renderFlowSummary() {
       <span class="flow-summary-label">BFRB catches</span>
       <span class="flow-summary-value">${bfrbs.length}</span>
     </div>
+    ${userTasks.length > 0 ? `<div class="flow-summary-row">
+      <span class="flow-summary-label">Tasks</span>
+      <span class="flow-summary-value">${tasksDone}/${userTasks.length}</span>
+    </div>` : ''}
   `;
 }
 
@@ -809,6 +1056,14 @@ function saveFlowSessionToHistory() {
   if (endedEarly) session.endedEarly = true;
   if (distractions.length > 0) session.distractions = distractions;
   if (bfrbs.length > 0) session.bfrbs = bfrbs;
+  // todoist-flow-tasks (DECISION 4): capture task progress as counts only
+  // (never the task text — keeps the record lean; analytics needs no text).
+  // Conditional like distractions/bfrbs — only stamp when the list is used.
+  const userTasks = loadFlowUserTasks();
+  if (userTasks.length > 0) {
+    session.tasksPlanned = userTasks.length;
+    session.tasksCompleted = userTasks.filter(t => t.done).length;
+  }
 
   History.addSession(session);
   localStorage.setItem(FLOW_LAST_SAVED_KEY, String(sessionStartedAt));

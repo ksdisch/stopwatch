@@ -3331,6 +3331,112 @@ body.focus-mode .global-bfrb-fab {
   font-size: 0.75rem;
 }
 
+/* todoist-flow-tasks: user-editable "Tasks for this block" list. Reuses the
+   .flow-checklist container styling; adds row + add-input + import-button
+   layout. The .tempo-todoist-secondary button class is shipped (V1). */
+.flow-user-tasks {
+  margin-top: 8px;
+}
+
+.flow-user-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.flow-user-task-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.flow-user-task-text {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-user-task-done .flow-user-task-text {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.flow-user-task-del {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.4;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.flow-user-task-del:active {
+  opacity: 1;
+  color: var(--red);
+}
+
+.flow-user-tasks-add {
+  padding: 4px 0;
+}
+
+.flow-user-tasks-add input {
+  width: 100%;
+  height: 32px;
+  background: var(--bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0 10px;
+  font-family: inherit;
+  outline: none;
+}
+
+.flow-user-tasks-add input:focus {
+  border-color: var(--green);
+}
+
+.flow-user-tasks-add input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+/* todoist-flow-tasks: in-session running view — live count + checkable
+   mirror. The count hides itself (empty text) when the list is empty. */
+.flow-running-tasks {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow-running-tasks-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.flow-running-tasks-count:empty {
+  display: none;
+}
+
+#flow-running-tasks-items:empty {
+  display: none;
+}
+
 .flow-running {
   display: flex;
   flex-direction: column;
