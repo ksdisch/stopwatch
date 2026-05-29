@@ -1874,7 +1874,7 @@ f7ae9b0  feat(todoist): settings panel + picker modal + Pomodoro integration
 
 ---
 
-## 2026-05-29 — Todoist Flow user-task list (PR #todoist-flow-tasks, backlog follow-up A)
+## 2026-05-29 — Todoist Flow user-task list (PR #102, backlog follow-up A)
 
 ### What We Built
 
