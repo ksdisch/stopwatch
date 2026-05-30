@@ -11,9 +11,10 @@ The committed `firestore.rules` and the rules **actually enforcing in the
 sync only by a human running the deploy below.** Nothing automatic reconciles
 them:
 
-- **No CI publishes the rules.** The suggested-CI list does not include a rules
-  publish step — the closest item is *rules-unit-tests* (a verification gate, not
-  a deploy), and it is still unbuilt (`docs/artifacts-plan.md:231`). Merging a
+- **No CI publishes the rules.** The `firestore-rules` CI job
+  (`.github/workflows/ci.yml`, `tests/rules/firestore-rules.test.mjs`) unit-tests
+  the *committed* ruleset against the emulator — but it is a verification gate,
+  not a deploy, and it cannot tell whether the live project matches. Merging a
   `firestore.rules` change to `main` deploys the *web app* via GitHub Pages
   (`CLAUDE.md` Deployment section), but it does **not** touch Firestore. The new
   rules sit dormant in git until someone runs `firebase deploy`.
@@ -162,15 +163,18 @@ in DevTools, `await SyncFirestore.setDoc(\`users/${SyncAuth.getCurrentUser().uid
 should resolve silently if the catch-all is live and throw `permission-denied`
 if it is not (`docs/sync-impl/FIREBASE-SETUP.md:108-116`).
 
-### Forward pointer: automate these two assertions
+### These two assertions are now automated (against the committed rules)
 
-Both checks above are exactly what a `@firebase/rules-unit-testing` suite running
-against the Firestore emulator would assert in CI — per-user isolation and
-`recovery_state` client-write denial. That is Tempo's artifacts-plan automation
-item 7 / the rules-unit-tests row (`docs/artifacts-plan.md:231`,
-`docs/artifacts-plan.md:178`). Until it lands, the Rules Playground steps above
-are the manual stand-in, and the drift risk at the top of this runbook is
-unmitigated by tooling.
+Both checks above are exactly what the `firestore-rules` CI job now asserts: a
+`@firebase/rules-unit-testing` suite (`tests/rules/firestore-rules.test.mjs`, run
+via `npm run test:rules` against the Firestore emulator) covers per-user
+isolation and `recovery_state` client-write denial — Tempo's artifacts-plan
+automation item 7 (`docs/artifacts-plan.md:231`, `docs/artifacts-plan.md:178`).
+**Important:** that suite validates the *committed* `firestore.rules` is correct;
+it does **not** verify the live project matches it. The committed-vs-live drift
+risk at the top of this runbook is therefore still unmitigated by tooling — the
+Rules Playground / live smoke above remain the only check that what is *deployed*
+is what you think.
 
 ## Related
 
