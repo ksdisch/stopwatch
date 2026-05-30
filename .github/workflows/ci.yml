@@ -115,9 +115,11 @@ jobs:
           # Curated, public-facing docs only. The internal trail under
           # docs/{audits,briefs,sync-impl,sync-review,session-logs} is an
           # append-only working record, not link-maintained, so it is out of
-          # scope here. Widen this list as more top-level docs (CHANGELOG,
-          # ROADMAP, runbooks, playbooks) land.
-          args: --no-progress --verbose README.md docs/ARCHITECTURE.md docs/adr docs/reference
+          # scope here. Tier 3 (artifacts plan) added the top-level
+          # CHANGELOG/ROADMAP and the runbooks/playbooks/postmortems trees;
+          # they are now in scope below. Widen this list further as new
+          # link-maintained top-level docs land.
+          args: --no-progress --verbose README.md CHANGELOG.md ROADMAP.md docs/ARCHITECTURE.md docs/adr docs/reference docs/runbooks docs/playbooks docs/postmortems
           fail: true
 
   # Validate every Mermaid diagram parses. Heaviest job (installs mermaid-cli
