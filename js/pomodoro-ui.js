@@ -890,9 +890,13 @@ function renderSavedTasks() {
   // bl-2-todoist: items are now `{ text, todoistId? }` objects after the
   // shape migration. Render via `.text`. NO visual marker on imported
   // tasks per brief decision #1 — imported and local tasks look identical.
+  // todoist-pomo-rename: the saved-task text span carries a saved-task-only
+  // hook (`data-saved-rename-idx`) so the inline-rename wiring below targets
+  // ONLY these rows — never the shared `.pomo-checklist-item-text` class,
+  // which is also rendered by the focus/break/actual-work/template lists.
   container.innerHTML = items.map((item, i) =>
     `<div class="pomo-saved-task-item">
-      <span class="pomo-checklist-item-text">${escapeChecklistHtml(item.text)}</span>
+      <span class="pomo-checklist-item-text" data-saved-rename-idx="${i}" title="Click to rename" aria-label="Saved task. Click to rename.">${escapeChecklistHtml(item.text)}</span>
       <button class="pomo-saved-task-add" data-saved-idx="${i}" title="Add to focus goals">+Focus</button>
       <button class="pomo-saved-task-add-break" data-saved-idx="${i}" title="Add to break tasks">+Break</button>
       <button class="pomo-checklist-item-delete" data-saved-del="${i}">&times;</button>
@@ -950,6 +954,79 @@ function renderSavedTasks() {
       items.splice(idx, 1);
       saveSavedTasks(items);
       renderSavedTasks();
+    });
+  });
+
+  // todoist-pomo-rename: inline click-to-edit rename, scoped to saved-task
+  // rows only (via `data-saved-rename-idx`). Click → contentEditable; Enter
+  // commits (no newline); Escape cancels (restore original); blur commits.
+  // On commit: read textContent, trim, strip newlines → empty-or-unchanged
+  // reverts with NO write/Todoist call; else persist `text` + (for linked,
+  // already-stamped tasks) fire-and-forget `Todoist.updateTask`, then
+  // re-render LAST (so we never read from the about-to-be-replaced node).
+  container.querySelectorAll('[data-saved-rename-idx]').forEach(span => {
+    let original = '';
+    let cancelled = false;
+
+    span.addEventListener('click', () => {
+      if (span.getAttribute('contenteditable') === 'true') return;
+      original = span.textContent;
+      cancelled = false;
+      span.contentEditable = 'true';
+      span.focus();
+      // select-all the span contents so a fresh type replaces the text
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+
+    span.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        span.blur(); // commit
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelled = true;
+        span.textContent = original; // restore before blur fires
+        span.blur(); // cancel
+      }
+    });
+
+    span.addEventListener('blur', () => {
+      if (span.getAttribute('contenteditable') !== 'true') return;
+      span.contentEditable = 'false';
+      // Escape path already restored textContent — do not commit.
+      if (cancelled) {
+        cancelled = false;
+        span.textContent = original;
+        return;
+      }
+      // Read PLAIN text (never innerHTML), trim, collapse any newlines to a
+      // single space before persisting.
+      const newText = span.textContent.trim().replace(/\s*\n\s*/g, ' ');
+      const oldText = original.trim();
+      if (!newText || newText === oldText) {
+        // empty or unchanged → revert, no write, no Todoist call.
+        span.textContent = original;
+        return;
+      }
+      const idx = parseInt(span.dataset.savedRenameIdx, 10);
+      const items = loadSavedTasks();
+      if (!items[idx]) { renderSavedTasks(); return; }
+      items[idx].text = newText;
+      saveSavedTasks(items);
+      // Write-back only for tasks already linked to Todoist (DECISION 4: a
+      // mid-create item carries `localTag` but no `todoistId` yet → local
+      // only). Fire-and-forget — the engine auto-enqueues on failure and
+      // re-sending the same content is idempotent.
+      if (items[idx].todoistId && !items[idx].localTag && typeof Todoist !== 'undefined') {
+        Todoist.updateTask(items[idx].todoistId, { content: newText }).catch(() => {});
+      }
+      renderSavedTasks(); // re-render LAST; never touch `span` after this.
     });
   });
 }

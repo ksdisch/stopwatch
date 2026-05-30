@@ -11,19 +11,19 @@
 //   - createTask({ content, project_id? })
 //                      → POST /tasks            (returns new Todoist id)
 //
+// **updateTask(id, { content })** — added in follow-up B (rename write-
+//   back). POST /tasks/{id} body `{ content }`; idempotent.
+//
 // **Explicitly NOT on the public surface (per the audit's sign-off
 // checklist + brief Hard rules #1 + #2):**
-//   - `Todoist.updateTask` — rename write-back is deferred to a follow-up
-//     PR. Adding it here would break the sign-off checklist that verifies
-//     its absence.
 //   - `Todoist.deleteTask` — delete in Tempo NEVER deletes in Todoist.
 //     This is a one-way hard guard; a misclick in Tempo must not nuke the
 //     user's real task list. There is no client method for it at all.
 //
 // **Offline queue** — `todoist_pending_ops` (localStorage JSON array,
 // capacity 200, FIFO eviction at cap). Queue ops: `{ id, kind, payload,
-// enqueuedAt }` where `kind ∈ {'close', 'reopen', 'create'}` (NOT
-// `'update'` in V1). Auto-enqueue when `navigator.onLine === false` OR
+// enqueuedAt }` where `kind ∈ {'close', 'reopen', 'create', 'update'}`.
+// Auto-enqueue when `navigator.onLine === false` OR
 // when `fetch` throws. Auto-drain on the `online` event + on
 // `visibilitychange:visible`. Drain branching:
 //   - 2xx → remove from queue (success).
@@ -277,7 +277,7 @@ const Todoist = (() => {
     return { ok: true, data: Array.isArray(data) ? data : [] };
   }
 
-  // ── Write API (V1: close / reopen / create only) ──────────────────────
+  // ── Write API (close / reopen / create / update) ──────────────────────
 
   // Auto-enqueue when offline; otherwise issue POST /tasks/{id}/close.
   // Idempotent — Todoist returns 204 on success regardless of whether
@@ -379,6 +379,41 @@ const Todoist = (() => {
     if (!res.ok) return _failFromResponse(res);
     const data = await _parseJson(res);
     return { ok: true, data: data || {} };
+  }
+
+  // POST /tasks/{id}. Body: `{ content }`. Renames a Todoist task.
+  // Idempotent — re-sending the same content is a no-op server-side, so
+  // offline retries are safe (matches close/reopen). Mirrors `createTask`'s
+  // offline-enqueue-on-`_isOffline()`-or-`catch` pattern + `closeTask`'s
+  // id-validation. The caller doesn't need the returned task, so the
+  // success result is bare `{ ok: true }`. Empty `content` or missing `id`
+  // short-circuit with `{ ok: false, ... }` and fire no request.
+  async function updateTask(id, opts) {
+    opts = opts || {};
+    const content = (typeof opts.content === 'string') ? opts.content : '';
+    if (!id) {
+      return { ok: false, message: 'Invalid task id', isRetryable: false };
+    }
+    if (!content) {
+      return { ok: false, message: 'Empty content', isRetryable: false };
+    }
+    if (_isOffline()) {
+      _enqueueOp({ kind: 'update', payload: { id, content } });
+      return { ok: true, queued: true };
+    }
+    let res;
+    try {
+      res = await _fetch('/tasks/' + encodeURIComponent(id), {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      });
+    } catch (err) {
+      _enqueueOp({ kind: 'update', payload: { id, content } });
+      void err;
+      return { ok: true, queued: true };
+    }
+    if (!res.ok) return _failFromResponse(res);
+    return { ok: true };
   }
 
   // ── Offline queue ─────────────────────────────────────────────────────
@@ -550,6 +585,14 @@ const Todoist = (() => {
           method: 'POST',
           body: JSON.stringify(body),
         });
+      } else if (op.kind === 'update') {
+        // Rename. Idempotent re-send; no special 2xx handling — the
+        // shared `if (res.ok) return 'remove'` path below covers it, and
+        // (unlike 'create') 'update' does NOT emit `create-resolved`.
+        res = await _fetch('/tasks/' + encodeURIComponent(op.payload.id), {
+          method: 'POST',
+          body: JSON.stringify({ content: op.payload.content }),
+        });
       } else {
         // Unknown kind — treat as permanent failure so a forward-incompat
         // op shape from a future release doesn't get stuck in the queue
@@ -668,10 +711,11 @@ const Todoist = (() => {
     getProjects,
     getTasks,
 
-    // Write API — V1 surface only.
+    // Write API.
     closeTask,
     reopenTask,
     createTask,
+    updateTask,
 
     // Queue control.
     drainQueue,
