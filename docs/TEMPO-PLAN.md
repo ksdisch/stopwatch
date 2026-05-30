@@ -4,7 +4,7 @@
 
 **Version:** 1.1
 **Last Updated:** 2026-04-10
-**Status:** Pre-implementation planning (audited post-April 2026 feature session)
+**Status:** ⚠️ **Archival — pre-implementation planning snapshot (2026-04-10).** Most of what this plan proposed has since shipped (the four-pillar nav, the Wellness suite, and the Rhythm pillar are all live). Treat this as the *original* build plan, not a description of current state — the canonical current reference is `CLAUDE.md` (architecture file-map + state model) and `docs/BUILD-HISTORY.md`. Parts describing unbuilt pillars may still be useful as intent.
 
 ---
 

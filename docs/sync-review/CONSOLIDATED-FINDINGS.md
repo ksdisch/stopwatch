@@ -1,5 +1,7 @@
 # Consolidated Findings — Cloud Sync Strategy v1.0 Review
 
+> **⚠️ Archived snapshot.** This is the adversarial review of Cloud Sync Strategy **v1.0**. It fed into the current **[`docs/CLOUD-SYNC-STRATEGY.md`](../CLOUD-SYNC-STRATEGY.md) v2.0**, which is the binding strategy today. Retained as a historical audit-trail artifact — do not read as current strategy.
+
 Synthesis of three parallel adversarial reviews (Agent A — data integrity, Agent B — migration, Agent C — schema evolution) against `docs/CLOUD-SYNC-STRATEGY.md` v1.0. Findings deduped across lenses; revisions grouped by v1.0 section. No code, no v2.0 — input for the user's next phase.
 
 ## Artifact 1 — Findings table
