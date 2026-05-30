@@ -1956,5 +1956,5 @@ Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier, 
 ### Commits
 
 ```
-<impl SHA>  feat(pomodoro): phase revert — "← Go back" to previous phase (#11)
+695700a  feat(pomodoro): phase revert — "← Go back" to previous phase (#11)
 ```
