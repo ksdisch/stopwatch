@@ -1898,3 +1898,32 @@ Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier),
 ```
 <impl SHA>  feat(todoist): Flow user-task list two-way integration (backlog follow-up A)
 ```
+
+---
+
+## 2026-05-29 — Todoist Pomo inline-rename + updateTask (PR #__PR__, backlog follow-up B)
+
+### What We Built
+
+Backlog row #10 (the last Todoist deferral, #10-B): click-to-edit inline rename on Pomodoro saved-task rows, completing the V1 write-back surface (close/reopen/create → now also rename). The engine (`js/todoist.js`) gains a public `updateTask(id, { content })` method (POST `/tasks/{id}` with `{ content }`, mirroring `createTask`'s offline-enqueue-on-`_isOffline()`-or-`catch` pattern) plus a new idempotent `'update'` offline-queue op kind handled by a new branch in `_executeOp` — same `todoist_pending_ops` key, no new persistence key, no schema bump. Re-sending the same content is a Todoist no-op, so drain retries are safe; the `'update'` branch does NOT emit `create-resolved`. `deleteTask` stays absent (the V1 hard guard — delete in Tempo never deletes in Todoist). On the UI side (`js/pomodoro-ui.js`), saved-task rows become click-to-edit: click → `contentEditable` + select-all, Enter commits, Escape cancels, blur commits with `textContent` read → trim → newline-strip → empty-or-unchanged reverts (no write), else mutate `items[idx].text` + persist + fire-and-forget `Todoist.updateTask(...).catch(()=>{})` guarded by `todoistId && !localTag` (mid-create renames stay local), then re-render last. `css/styles.css` gained only a `cursor:text` + editing-affordance state (no new class names).
+
+Two brief-vs-code drift corrections the Phase 1 audit caught: (i) the brief's prose assumed the markup was `<span class="text" contenteditable="false">`, but the real markup is `<span class="pomo-checklist-item-text">` — a class shared by 4 renderers (focus checklist, actual-work, templates, saved tasks), so the editable wiring had to be scoped strictly to `#pomo-saved-tasks-items` rows via a `data-saved-rename-idx` hook rather than the bare class (the single highest-leverage constraint in the PR); (ii) the brief's risk prose claimed saved rows have drag-reorder — they do not (`pomo-drag-handle` lives on the focus-checklist + actual-work rows only), so the real sibling-conflict surface to verify was the `+Focus`/`+Break`/delete buttons, not drag.
+
+Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier), Phase 2 implementer (`js/todoist.js` — `updateTask` + `'update'` branch), Phase 3 tester (`tests/todoist.test.js` +8 cases), Phase 4 ui-wirer (`js/pomodoro-ui.js` + `css/styles.css`), Phase 5 ship (docs + cache bump + branch + gated push). `sw.js` CACHE_NAME bumped `v102-flow-tasks` → `v103-pomo-rename`.
+
+### Verification result
+
+`tests/todoist.test.js` — 8 new cases (a new `describe('Todoist — updateTask')` block + an `'update'`-drain case in the existing `drainQueue` block), all passing locally via `tests/index.html` (browser-verified via kapture, `?nosw=1`). Full suite 716 tests, 712 pass, **4 fail — all 4 are the PRE-EXISTING `tests/recovery-feed.test.js` NPE baseline noise (rhythm PR #98), ZERO from this PR.** UI verified live by the orchestrator on a fresh origin at `#/timers/pomodoro`: seeded a saved task (add checklist item → pin), confirmed click → contenteditable, a rename commit ("Buy groceries" → "Buy oat milk") persisted + re-rendered, a whitespace-only commit reverted to the original, persistence survived a full reload, zero error-level console logs.
+
+### Suggested Next Steps
+
+- **Diagnose the 4 `tests/recovery-feed.test.js` baseline failures** — same `Cannot read properties of null` NPE across all 4 cases, predates this PR (rhythm PR #98). Still the next standing cleanup. Separate PR.
+- **Next high-ROI backlog item: Pomodoro phase-revert (#11) at priority 5** — now the best return-for-effort item with the Todoist initiative fully landed.
+- **iOS smoke** — exercise one Pomo saved-task rename on the Tempo iOS build after the next `npm run sync-www && npm run ios:open`; confirm the WKWebView `fetch` PUT against `api.todoist.com` works (pure REST, expected to be zero-extra-work).
+
+### Commits
+```
+<impl SHA>  feat(todoist): updateTask + 'update' offline-queue op
+<ui SHA>    feat(pomodoro): inline rename on saved tasks with Todoist write-back
+<docs SHA>  docs: ship Todoist follow-up B + audit/brief
+```
