@@ -142,10 +142,12 @@ jobs:
           set -e
           shopt -s nullglob
           found=0
+          # mmdc renders via headless Chromium (Puppeteer); GitHub's Ubuntu
+          # runners need --no-sandbox, supplied by .github/puppeteer-config.json.
           for f in docs/diagrams/*.mmd; do
             found=1
             echo "::group::mmdc $f"
-            mmdc -i "$f" -o "/tmp/$(basename "$f").svg"
+            mmdc -p .github/puppeteer-config.json -i "$f" -o "/tmp/$(basename "$f").svg"
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
