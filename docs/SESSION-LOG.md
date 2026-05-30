@@ -1822,9 +1822,9 @@ UI: both `<select>` blocks (`#flow-ambient-profile` + `#pomo-ambient-profile`) g
 
 ---
 
-*To add a new session: copy the template below and fill it in at the end of a session.*
+> **Two session-log systems — precedence.** Going forward, the canonical per-session log is the dated files under [`docs/session-logs/`](session-logs/) (one file per session, e.g. `2026-05-30-<slug>.md`). This monolithic `SESSION-LOG.md` is the **historical archive** (numbered Sessions 1–10 plus the dated entries below through 2026-05-29); add new sessions as `docs/session-logs/YYYY-MM-DD-<slug>.md`, not by appending here. The block below is the reusable template.
 
-## Session N — YYYY-MM-DD
+## Session template — copy to a new `docs/session-logs/YYYY-MM-DD-<slug>.md`
 
 ### What We Built
 - ...

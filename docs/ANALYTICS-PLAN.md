@@ -1,5 +1,7 @@
 # Analytics Module Buildout
 
+> **⚠️ Archival snapshot (2026-04-22).** This is the *plan* that drove the analytics buildout (the S/M/deferred-tier cards shipped in PRs #24–#35). The "current state audit" below describes `js/analytics.js` as it was *before* that work — it no longer matches the shipped module. Retained as a planning artifact; see `CLAUDE.md` + `docs/BUILD-HISTORY.md` for current analytics state.
+
 ## 1. Current state audit
 
 `js/analytics.js` (126 lines) aggregates `session.duration` only — mode totals,

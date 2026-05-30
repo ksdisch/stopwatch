@@ -1,5 +1,7 @@
 # Stopwatch PWA Expansion — Claude Code Prompt
 
+> **⚠️ Archived kickoff prompt (2026-04-07).** This describes the app at ~3,500 lines / ~20 files / 3 modes — a pre-expansion snapshot now ~7× smaller than reality (68 modules, four pillars, cloud sync, iOS). Kept for historical context only; it is **not** a description of the current app.
+
 Paste everything below the line into your Claude Code session in Cursor's terminal.
 
 ---

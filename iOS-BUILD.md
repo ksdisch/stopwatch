@@ -21,7 +21,7 @@ ios/App/Pods/, ios/App/build/   ← gitignored (reproducible)
 When you change any web code (`js/`, `css/`, `index.html`, etc.) and want it on the phone:
 
 ```bash
-cd /Users/kyledisch/Projects/stopwatch/.claude/worktrees/charming-spence-31e861
+cd "$(git rev-parse --show-toplevel)"   # repo root — works from any checkout or worktree
 npm run ios:copy
 ```
 
@@ -70,7 +70,7 @@ Free Apple ID signing issues a **7-day** development cert. After 7 days, the Tem
 To refresh:
 
 ```bash
-cd /Users/kyledisch/Projects/stopwatch/.claude/worktrees/charming-spence-31e861
+cd "$(git rev-parse --show-toplevel)"   # repo root — works from any checkout or worktree
 npm run ios:open
 ```
 
@@ -92,7 +92,7 @@ The Capacitor wrapper is purely additive. The web build is byte-equivalent to be
 - All 23 haptic call sites and 6 immediate-notification sites now go through `Platform.haptic` / `Platform.notify`, which on web delegate to `navigator.vibrate` / `new Notification` exactly as before.
 - `BgNotify.schedule` / `cancel` still post to the service worker on web; only on native do they bypass the SW and go straight to `LocalNotifications`.
 - The service worker still registers on web (`js/app.js` gates registration on `!Platform.isNative`). Push to `main` → GitHub Pages deploys → cached SW updates after the next visit.
-- Engine tests (`tests/index.html`, 265 cases) run unchanged on web.
+- Engine tests (`tests/index.html`, ~797 cases across 32 files) run unchanged on web.
 
 If you ever notice web behavior drift (e.g., haptics stop working on Android Chrome), check `Platform.haptic` in `js/platform.js` — the web path is just `navigator.vibrate(pattern)` and should be a one-line passthrough.
 
