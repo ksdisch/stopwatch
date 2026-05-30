@@ -1,0 +1,59 @@
+%% Data-flow topology — where each store lives + how it moves (migrate / sync / cache / export).
+flowchart LR
+    subgraph lsbox["localStorage"]
+        ls_meds["wellness_meds"]
+        ls_rest["wellness_rest_log"]
+        ls_presets["quick_presets"]
+        ls_bfrb["bfrb_events"]
+        ls_flowdist["flow_distractions"]
+        ls_pomodist["pomodoro_distractions"]
+        ls_usertasks["flow_user_tasks"]
+        ls_reccache["tempo_recovery_state_* (cache)"]
+        ls_engine["engine state: multi_state / pomodoro_* / flow_* / interval_state"]
+    end
+
+    subgraph idbhist["IndexedDB stopwatch_history_db"]
+        sessions["sessions"]
+    end
+
+    subgraph idbbuf["IndexedDB tempo_sync_db v1"]
+        pending["pending_ops (pointer-shaped)"]
+    end
+
+    subgraph fs["Firestore (per user)"]
+        fs_meds["meds"]
+        fs_hist["history"]
+        fs_rest["rest_log"]
+        fs_presets["presets"]
+        fs_bfrb["bfrb_events"]
+        fs_dist["distractions"]
+        fs_recovery["recovery_state (read-only, external write)"]
+    end
+
+    elt["personal-health-elt pipeline"]
+    rhythm["Rhythm readiness band"]
+    backup["local backup / export JSON"]
+
+    legacy["legacy localStorage (stopwatch_history, flat distraction arrays, 3 BFRB keys)"]
+    legacy -->|"migrate"| sessions
+    legacy -->|"migrate"| ls_bfrb
+    legacy -->|"migrate"| ls_flowdist
+
+    ls_meds -->|"sync"| fs_meds
+    sessions -->|"sync"| fs_hist
+    ls_rest -->|"sync"| fs_rest
+    ls_presets -->|"sync"| fs_presets
+    ls_bfrb -->|"sync"| fs_bfrb
+    ls_flowdist -->|"sync"| fs_dist
+    ls_pomodist -->|"sync"| fs_dist
+
+    ls_usertasks -->|"export only (Todoist linkage stripped); NOT synced"| backup
+
+    pending -->|"drain FIFO on online"| fs_meds
+    pending -.->|"pointer replay re-reads local then merges"| fs_hist
+
+    elt -->|"writes (Admin SDK)"| fs_recovery
+    fs_recovery -->|"read-only"| ls_reccache
+    ls_reccache -->|"cache feeds"| rhythm
+
+    ls_engine -->|"local-only (never synced)"| ls_engine

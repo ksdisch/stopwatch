@@ -1,0 +1,24 @@
+%% C4 Level 1 — System Context for Tempo (modeled as a flowchart; GitHub-safe)
+flowchart TD
+    user["Kyle (single real user)"]
+
+    subgraph system["Tempo (PWA + iOS app)"]
+        tempo["Tempo<br/>cross-platform stopwatch / wellness / focus app"]
+    end
+
+    subgraph google["Google Cloud (Firebase)"]
+        fbauth["Firebase Auth<br/>Google sign-in"]
+        firestore["Cloud Firestore<br/>per-user synced stores"]
+    end
+
+    todoist["Todoist REST API v2<br/>(external task service)"]
+    elt["personal-health-elt pipeline<br/>(separate repo, Admin SDK writer)"]
+
+    user -->|"starts timers, logs meds / BFRB / sleep"| tempo
+    tempo -->|"sign in / sign out (Google)"| fbauth
+    tempo -->|"read + write 6 synced stores (CAS / LWW merge)"| firestore
+    tempo -->|"REST: get / close / reopen / create / update tasks"| todoist
+    elt -->|"writes recovery_state docs (Admin SDK, bypasses rules)"| firestore
+    tempo -->|"read-only: pulls recovery_state for the Rhythm band"| firestore
+
+    legend["Legend: boxes = systems; arrows = data flow with direction + purpose"]

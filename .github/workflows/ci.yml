@@ -1,0 +1,155 @@
+# .github/workflows/ci.yml — Tempo's first CI: a PR gate, not a deploy pipeline.
+#
+# WHAT THIS IS:
+#   GitHub Pages auto-deploys from main's root on every push (~1 min). This
+#   workflow does NOT deploy — it gates PRs targeting main so a bad change is
+#   caught BEFORE it lands.
+#
+# THE FAILURE MODE THIS DOES NOT COVER (by design):
+#   A DIRECT PUSH TO main BYPASSES this gate entirely — `on: pull_request`
+#   never fires for a push that skips the PR flow, and Pages still deploys
+#   that push. This is exactly how the flow-vibrate revert incident shipped
+#   broken: a change went straight to main, deployed, and there was no gate
+#   to stop it. The mitigation is process (open PRs) + a branch-protection
+#   rule requiring this check, NOT anything in this file. Documenting it here
+#   so the gap is explicit rather than assumed-covered.
+#
+# CANONICAL TEST COUNT:
+#   The `engine-tests` job is the single source of truth for how many engine
+#   tests exist. scripts/run-tests.mjs reads document.title ("PASS (n)") set
+#   by tests/test-runner.js:80 and prints "TEST COUNT: n". Don't trust any
+#   hand-maintained count in the docs — trust this job's summary line.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Canonical engine-test gate + test-count source of truth.
+  engine-tests:
+    name: engine-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run engine tests (headless browser via run-tests.mjs)
+        id: tests
+        run: npm test | tee test-output.log
+
+      - name: Append test count to job summary
+        if: always()
+        run: |
+          {
+            echo "### Engine tests"
+            echo ""
+            echo '```'
+            grep -E '^TEST (RESULT|COUNT)' test-output.log || echo "no TEST RESULT line captured"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Reconcile sw.js ASSETS (offline cache list) with index.html <script> tags.
+  asset-integrity:
+    name: asset-integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check asset integrity (sw.js ASSETS == index.html scripts)
+        run: node scripts/check-asset-integrity.mjs
+
+  # Enforce: a changed cached web file MUST bump CACHE_NAME in the same PR.
+  sw-cache-bump:
+    name: sw-cache-bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the PR base commit is available for the diff.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check sw.js CACHE_NAME bump vs PR base
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: node scripts/check-sw-bump.mjs
+
+  # Dead-link check over the repo's markdown. Honors .lycheeignore for known
+  # false positives (localhost/private URLs, deep-link anchors lychee can't
+  # resolve). See the repo-root .lycheeignore.
+  markdown-links:
+    name: markdown-links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check markdown links (fail on dead links)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Curated, public-facing docs only. The internal trail under
+          # docs/{audits,briefs,sync-impl,sync-review,session-logs} is an
+          # append-only working record, not link-maintained, so it is out of
+          # scope here. Widen this list as more top-level docs (CHANGELOG,
+          # ROADMAP, runbooks, playbooks) land.
+          args: --no-progress --verbose README.md docs/ARCHITECTURE.md docs/adr docs/reference
+          fail: true
+
+  # Validate every Mermaid diagram parses. Heaviest job (installs mermaid-cli
+  # which pulls a headless chromium), but a real check — a broken .mmd would
+  # otherwise only fail at render time in the artifacts docs.
+  mermaid-lint:
+    name: mermaid-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install mermaid-cli
+        run: npm i -g @mermaid-js/mermaid-cli
+
+      - name: Validate docs/diagrams/*.mmd parse
+        run: |
+          set -e
+          shopt -s nullglob
+          found=0
+          # mmdc renders via headless Chromium (Puppeteer); GitHub's Ubuntu
+          # runners need --no-sandbox, supplied by .github/puppeteer-config.json.
+          for f in docs/diagrams/*.mmd; do
+            found=1
+            echo "::group::mmdc $f"
+            mmdc -p .github/puppeteer-config.json -i "$f" -o "/tmp/$(basename "$f").svg"
+            echo "::endgroup::"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "no docs/diagrams/*.mmd files found"
+          fi

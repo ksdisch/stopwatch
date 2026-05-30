@@ -7,7 +7,11 @@
     "sync-www": "node scripts/sync-www.mjs",
     "ios:copy": "npm run sync-www && cap copy ios",
     "ios:open": "npm run ios:copy && cap open ios",
-    "ios:sync": "npm run sync-www && cap sync ios"
+    "ios:sync": "npm run sync-www && cap sync ios",
+    "test": "node scripts/run-tests.mjs",
+    "test:serve": "python3 -m http.server 8765",
+    "check:assets": "node scripts/check-asset-integrity.mjs",
+    "check:sw-bump": "node scripts/check-sw-bump.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^6.3.1",
@@ -21,6 +25,7 @@
     "firebase": "^11.10.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.0.0"
+    "@capacitor/cli": "^6.0.0",
+    "playwright": "^1.49.0"
   }
 }

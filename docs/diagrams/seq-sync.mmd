@@ -1,0 +1,36 @@
+%% Sequence — cloud hydrate (first sign-in) + steady-state push, incl. offline buffer path.
+sequenceDiagram
+    participant Client as "App (UI / engine write)"
+    participant Engine as "sync-engine.js"
+    participant FS as "sync-firestore.js"
+    participant Firestore as "Firestore"
+    participant Buffer as "sync-buffer.js"
+
+    Note over Engine: hydrateFromCloud() — fresh signed-in device
+    Engine->>Engine: "preconditions + local-empty + Stage D guard"
+    Engine->>Engine: "SyncState.set('hydrating')"
+    loop "per store: rest_log, meds, presets, history"
+        Engine->>FS: "getCollection(users/uid/store)"
+        FS->>Firestore: "read collection"
+        Firestore-->>FS: "docs"
+        FS-->>Engine: "{ docs, count }"
+        Engine->>Engine: "engine.hydrateFromCloud(records) + set per-store marker"
+    end
+    Engine->>Engine: "set hydrated_all marker + SyncState.set('ready')"
+    Engine-->>Client: "emit hydrate-complete { ok: true }"
+
+    Note over Engine: steady-state merge cycle (online)
+    Engine->>FS: "merge fn fetches cloud + runTransaction (CAS writeback)"
+    FS->>Firestore: "transaction read-modify-write"
+    Firestore-->>FS: "ok (or setDoc fallback on native)"
+    FS-->>Engine: "merge result"
+
+    Note over Client,Buffer: offline write path
+    Client->>Engine: "engine write while Platform.network.isOnline() == false"
+    Engine->>Buffer: "enqueue { store, recordId, originalWallClock }"
+    Note over Buffer: "pointer persisted in tempo_sync_db, survives tab close"
+    Client->>Engine: "network online event"
+    Engine->>Buffer: "drain() FIFO"
+    Buffer->>Engine: "re-read current local state per pointer"
+    Engine->>FS: "merge + CAS writeback"
+    FS->>Firestore: "write"

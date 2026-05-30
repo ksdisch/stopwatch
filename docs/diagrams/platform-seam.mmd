@@ -1,0 +1,38 @@
+%% Platform seam (ADR 0007) — js/platform.js funnels all native-sensitive calls.
+flowchart TD
+    callsites["Call sites: 23 haptic + 6 notification + auth + network<br/>(ui / timer-ui / pomodoro-ui / flow-ui / cooking-ui / bfrb-recovery / app ...)"]
+
+    callsites --> platform["js/platform.js (Platform.*)"]
+
+    platform --> branch{"Platform.isNative?"}
+
+    subgraph web["Web branch"]
+        vibrate["navigator.vibrate(pattern)"]
+        notif["new Notification(title, opts)"]
+        bgnotify["BgNotify.schedule (service worker + setTimeout)"]
+        webauth["lazy import firebase-app + firebase-auth (gstatic CDN)"]
+        webnet["navigator.onLine + window online/offline events"]
+    end
+
+    subgraph native["Native branch (Capacitor plugins)"]
+        haptics["@capacitor/haptics (impact / notification)"]
+        localnotif["@capacitor/local-notifications (schedule / cancel)"]
+        capauth["@capacitor-firebase/authentication"]
+        capnet["@capacitor/network (getStatus / networkStatusChange)"]
+    end
+
+    branch -->|"false (web)"| vibrate
+    branch -->|"false (web)"| notif
+    branch -->|"false (web)"| bgnotify
+    branch -->|"false (web)"| webauth
+    branch -->|"false (web)"| webnet
+
+    branch -->|"true (native)"| haptics
+    branch -->|"true (native)"| localnotif
+    branch -->|"true (native)"| capauth
+    branch -->|"true (native)"| capnet
+
+    haptic_fn["Platform.haptic"] -.-> platform
+    notify_fn["Platform.notify / scheduleNotification / cancelNotification"] -.-> platform
+    auth_fn["Platform.auth (init / signIn / signOut / getCurrentUser / onAuthChange)"] -.-> platform
+    net_fn["Platform.network (isOnline / onChange)"] -.-> platform

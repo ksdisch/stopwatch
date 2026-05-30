@@ -1,0 +1,16 @@
+%% Sequence — mutable-global-proxy primary swap (ADR 0005). No rewiring of consumers.
+sequenceDiagram
+    participant CardsUI as "cards-ui.js (tap a card)"
+    participant IM as "instance-manager.js"
+    participant Global as "global binding: let Stopwatch"
+    participant RAF as "ui.js tick() (RAF loop)"
+
+    Note over Global: "js/stopwatch.js:172 — let Stopwatch = createStopwatch('sw-default')"
+    CardsUI->>IM: "setPrimaryStopwatch(id)"
+    IM->>IM: "instance = stopwatches.find(id)"
+    IM->>Global: "Stopwatch = instance  (reassign the global, js/instance-manager.js:40)"
+    Note over Global: "every module that closed over the name now resolves the NEW primary"
+    RAF->>Global: "next frame: Stopwatch.getStatus() / getElapsedMs()"
+    Global-->>RAF: "reads the newly-promoted instance"
+    RAF->>RAF: "updateDisplay(...) — paints the new primary, zero rewiring"
+    Note over CardsUI,RAF: "offset-input.js, alert-ui.js, ui.js all follow automatically"

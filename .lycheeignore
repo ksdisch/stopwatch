@@ -1,0 +1,12 @@
+# .lycheeignore — URLs the markdown-links CI job (lychee) should skip.
+# One regex per line. Used by .github/workflows/ci.yml › markdown-links.
+
+# Local dev server used in test/run docs (not reachable from CI).
+^http://localhost
+^http://127\.0\.0\.1
+
+# Example / placeholder hosts that appear in docs prose.
+example\.com
+
+# ADR template placeholder link (docs/adr/0000-template.md example, not a real file).
+XXXX-\.\.\.\.md
