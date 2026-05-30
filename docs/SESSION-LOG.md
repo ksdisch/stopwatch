@@ -1901,7 +1901,7 @@ Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier),
 
 ---
 
-## 2026-05-29 — Todoist Pomo inline-rename + updateTask (PR #__PR__, backlog follow-up B)
+## 2026-05-29 — Todoist Pomo inline-rename + updateTask (PR #103, backlog follow-up B)
 
 ### What We Built
 
@@ -1923,7 +1923,7 @@ Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier),
 
 ### Commits
 ```
-<impl SHA>  feat(todoist): updateTask + 'update' offline-queue op
-<ui SHA>    feat(pomodoro): inline rename on saved tasks with Todoist write-back
-<docs SHA>  docs: ship Todoist follow-up B + audit/brief
+c1e5165  feat(todoist): updateTask + 'update' offline-queue op
+6952e7b  feat(pomodoro): inline rename on saved tasks with Todoist write-back
+625c851  docs: ship Todoist follow-up B + audit/brief
 ```
