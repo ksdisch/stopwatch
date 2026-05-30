@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v103-pomo-rename';
+const CACHE_NAME = 'stopwatch-v104-pomo-revert';
 const ASSETS = [
   './',
   './index.html',

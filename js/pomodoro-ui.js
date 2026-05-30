@@ -95,6 +95,17 @@ function initPomodoroUI() {
     }
   });
 
+  // Wire "← Go back" phase-revert link
+  const goBackBtn = document.getElementById('pomo-go-back');
+  if (goBackBtn) {
+    goBackBtn.addEventListener('click', () => {
+      cancelAutoAdvance();
+      Pomodoro.revertPhase();
+      savePomodoroState();
+      updatePomodoroUI();
+    });
+  }
+
   // Wire auto-advance toggle
   const autoAdvBtn = document.getElementById('pomo-auto-advance-toggle');
   if (autoAdvBtn) {
@@ -425,6 +436,15 @@ function updatePomodoroUI() {
 
   // Settings visibility (settings are idle-only — durations shouldn't change mid-session)
   settingsToggle.classList.toggle('hidden', status !== 'idle');
+
+  // "← Go back" visibility: show only when a snapshot exists AND session is running/paused
+  const goBackBtnEl = document.getElementById('pomo-go-back');
+  if (goBackBtnEl) {
+    const state = Pomodoro.getState();
+    const showGoBack = state.previousPhaseSnapshot !== null &&
+      (status === 'running' || status === 'paused');
+    goBackBtnEl.classList.toggle('hidden', !showGoBack);
+  }
 
   // Buttons
   switch (status) {

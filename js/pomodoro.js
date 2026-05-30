@@ -25,6 +25,7 @@ const Pomodoro = (() => {
   let sessionStartedAt = null;  // When the overall Pomodoro session began
   let phaseStartedAt = null;    // When the current phase first started
   let phaseLog = [];            // { phase, startedAt, endedAt, overshootMs, deviceId, phaseStartedAt } per completed phase
+  let previousPhaseSnapshot = null; // { phase, cycleIndex, accumulatedMs } captured before each nextPhase() reset; one-level undo
 
   // F6: per-entry merge keys for cross-device phaseLog append-merge.
   // Reads History.getDeviceId() at runtime (History loads after pomodoro.js
@@ -111,6 +112,7 @@ const Pomodoro = (() => {
     sessionStartedAt = null;
     phaseStartedAt = null;
     phaseLog = [];
+    previousPhaseSnapshot = null;
   }
 
   function adjustRemainingMs(deltaMs) {
@@ -157,6 +159,9 @@ const Pomodoro = (() => {
 
   function nextPhase() {
     if (status !== 'overflowing' && status !== 'done') return;
+    // Capture snapshot BEFORE any mutation — covers both the common path and
+    // the longBreak → done early-return path (audit Finding 3).
+    previousPhaseSnapshot = { phase, cycleIndex, accumulatedMs };
     // Capture overshoot into the most recent phaseLog entry before resetting.
     if (status === 'overflowing') {
       const overshoot = getOvershootMs();
@@ -190,6 +195,22 @@ const Pomodoro = (() => {
       phase = 'work';
     }
     status = 'idle';
+  }
+
+  function revertPhase() {
+    if (!previousPhaseSnapshot) return;
+    const currentElapsed = accumulatedMs +
+      (status === 'running' && startedAt ? Date.now() - startedAt : 0);
+    phase = previousPhaseSnapshot.phase;
+    cycleIndex = previousPhaseSnapshot.cycleIndex;
+    accumulatedMs = previousPhaseSnapshot.accumulatedMs + currentElapsed;
+    if (status === 'running') {
+      startedAt = Date.now();
+    } else {
+      startedAt = null;
+      status = 'paused';
+    }
+    previousPhaseSnapshot = null;
   }
 
   function restartPhase() {
@@ -238,6 +259,7 @@ const Pomodoro = (() => {
       startedAt, accumulatedMs, phaseAdjustmentMs,
       alarmFired, zeroCrossedAt,
       sessionStartedAt, phaseStartedAt, phaseLog,
+      previousPhaseSnapshot,
     };
   }
 
@@ -264,6 +286,7 @@ const Pomodoro = (() => {
     sessionStartedAt = state.sessionStartedAt ?? null;
     phaseStartedAt = state.phaseStartedAt ?? null;
     phaseLog = state.phaseLog ?? [];
+    previousPhaseSnapshot = state.previousPhaseSnapshot ?? null;
 
     // Clock skew guard
     if (status === 'running' && startedAt && startedAt > Date.now()) {
@@ -305,7 +328,7 @@ const Pomodoro = (() => {
   }
 
   return {
-    start, pause, reset, restartPhase, checkFinished, nextPhase,
+    start, pause, reset, restartPhase, checkFinished, nextPhase, revertPhase,
     adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress,
     getOvershootMs, isOvershooting, getZeroCrossedAt,
