@@ -1927,3 +1927,34 @@ c1e5165  feat(todoist): updateTask + 'update' offline-queue op
 6952e7b  feat(pomodoro): inline rename on saved tasks with Todoist write-back
 625c851  docs: ship Todoist follow-up B + audit/brief
 ```
+
+---
+
+## 2026-05-29 — Pomodoro phase revert — "← Go back" (PR #104, backlog #11)
+
+### What We Built
+
+Backlog row #5 (priority 5): single-level undo for Pomodoro phase transitions. Before each `nextPhase()` call, the engine captures `previousPhaseSnapshot = { phase, cycleIndex, accumulatedMs }` at the very top of `nextPhase()` — before any mutation — covering both the common path and the `longBreak → done` early-return branch. `revertPhase()` computes `currentElapsed` (time spent in the new phase: `accumulatedMs + (running ? Date.now() - startedAt : 0)`) and restores `phase`, `cycleIndex`, and `accumulatedMs = snapshot.accumulatedMs + currentElapsed`. If the session was running, `startedAt` is updated to `Date.now()` so counting continues from the folded-back total; otherwise `status` is set to `'paused'` (DECISION 4). `previousPhaseSnapshot` is cleared after a successful revert, cleared on `reset()`, and overwritten (not stacked) on each subsequent `nextPhase()` call — intentional one-level-only design.
+
+The key audit finding (Finding 1 — BLOCKER) was that the brief's sample code called `Persistence.save()` inside `revertPhase()` in the engine. `js/persistence.js` loads three script tags after `js/pomodoro.js`, so the engine test harness (`tests/index.html`) does not include it — any test calling `revertPhase()` would have thrown `ReferenceError: Persistence is not defined`. Resolution: `Persistence.save()` was removed from the engine; the UI click handler in `js/pomodoro-ui.js` calls `cancelAutoAdvance()` → `Pomodoro.revertPhase()` → `savePomodoroState()` → `updatePomodoroUI()`, matching the identical pattern used for `Pomodoro.restartPhase()` in `initActionsDrawer()`. The `cancelAutoAdvance()` guard (also required by the auto-advance race risk in the audit) prevents the 3-second auto-advance countdown from firing `nextPhase()` after the user clicks "← Go back".
+
+The "← Go back" link lives in the `div.pomo-action-links` row (the always-visible row of small links at the top: Stats / Settings / Actions / Auto / Saved Tasks), using `class="offset-link hidden"` and reusing the existing `.offset-link` style — no new CSS class. Visibility is toggled in `updatePomodoroUI()`: visible only when `previousPhaseSnapshot !== null` AND `status ∈ {'running','paused'}`. The link is hidden between phases (`status === 'idle'`) and after session completion (`status === 'done'`), so the common-case 5-link row is unchanged. The `previousPhaseSnapshot` field is additive nullable in `getState()` / `loadState()`, so pre-upgrade `pomodoro_state` entries in localStorage load cleanly via the `?? null` pattern consistent with all other fields.
+
+Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier, 8 risks identified), Phase 2 implementer (`js/pomodoro.js` — snapshot, revertPhase, persist), Phase 3 tester (`tests/pomodoro.test.js` +9 cases), Phase 4 ui-wirer (`js/pomodoro-ui.js` + `index.html`), Phase 5 ship (docs + cache bump + branch + gated push). `sw.js` CACHE_NAME bumped `v103-pomo-rename` → `v104-pomo-revert`.
+
+### Verification result
+
+`tests/pomodoro.test.js` — 9 new cases in a `describe('Pomodoro — revertPhase …')` block, covering: snapshot capture on `nextPhase`, revert while paused, revert while running, revert from idle new phase, `cycleIndex` un-increment, snapshot overwrite on second transition, null-snapshot no-op, `reset()` clearing snapshot, and persistence round-trip. All 9 pass. Suite: 712/716 overall — **4 fail are the PRE-EXISTING `tests/recovery-feed.test.js` NPE baseline failures (rhythm PR #98), ZERO regressions from this PR.**
+
+### Suggested Next Steps
+
+- **Diagnose the 4 `tests/recovery-feed.test.js` baseline failures** — same `Cannot read properties of null` NPE across all 4 cases, predates this PR (rhythm PR #98). Next standing cleanup.
+- **iOS smoke** — exercise one Pomodoro phase transition + "← Go back" on the Tempo iOS build after the next `npm run sync-www && npm run ios:open`; confirm the link appears and the fold-back arithmetic is correct on device.
+- **Backlog priority 6 or 3** — next high-ROI items: native CAS + listener parity for `@capacitor-firebase/firestore` (priority 3, medium/medium) or Split-screen timer comparison (priority 6, medium/high).
+- **iOS sign-out bug** (pre-existing, priority: low) — `authStateChange` re-emit race on iOS still pending; workaround is toggling sync off.
+
+### Commits
+
+```
+695700a  feat(pomodoro): phase revert — "← Go back" to previous phase (#11)
+```

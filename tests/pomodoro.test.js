@@ -382,6 +382,198 @@ describe("Pomodoro — adjustRemainingMs", () => {
 });
 
 
+describe('Pomodoro — revertPhase', () => {
+  // Helper: put engine into overflowing state with a known accumulatedMs.
+  // Uses the same loadState-with-expired-timer pattern the existing overshoot
+  // tests use. workMs is set to 60000 so the arithmetic stays simple.
+  function _forceOverflowing() {
+    Pomodoro.reset();
+    Pomodoro.loadState({
+      status: 'running',
+      phase: 'work',
+      cycleIndex: 0,
+      totalCycles: 4,
+      workMs: 60000,
+      shortBreakMs: 60000,
+      longBreakMs: 60000,
+      startedAt: Date.now() - 70000,
+      accumulatedMs: 0,
+      sessionStartedAt: Date.now() - 70000,
+      phaseStartedAt: Date.now() - 70000,
+      phaseLog: [],
+    });
+    // loadState auto-transitions to 'overflowing'
+  }
+
+  it('snapshot captured on nextPhase', () => {
+    _forceOverflowing();
+    assertEqual(Pomodoro.getStatus(), 'overflowing');
+    Pomodoro.nextPhase();
+    const snap = Pomodoro.getState().previousPhaseSnapshot;
+    assert(snap !== null, 'snapshot should be non-null after nextPhase');
+    assertEqual(snap.phase, 'work');
+    assertEqual(snap.cycleIndex, 0);
+    assert(snap.accumulatedMs > 0, 'snapshot.accumulatedMs should be non-zero (captured at overflow)');
+  });
+
+  it('revertPhase while paused restores phase, cycleIndex, accumulatedMs, status', () => {
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // status → idle, phase → shortBreak
+    const snap = Pomodoro.getState().previousPhaseSnapshot;
+    Pomodoro.start();    // status → running
+    Pomodoro.pause();    // status → paused; accumulatedMs captures some elapsed
+    const pausedAccumulated = Pomodoro.getState().accumulatedMs;
+    Pomodoro.revertPhase();
+    const state = Pomodoro.getState();
+    assertEqual(state.phase, 'work');
+    assertEqual(state.cycleIndex, 0);
+    assertEqual(state.status, 'paused');
+    assertEqual(state.previousPhaseSnapshot, null);
+    // accumulatedMs = snapshot.accumulatedMs + time we spent in the break phase
+    assertClose(state.accumulatedMs, snap.accumulatedMs + pausedAccumulated, 100,
+      'accumulatedMs should fold in time spent in the new phase');
+  });
+
+  it('revertPhase while running keeps status running and resets startedAt', () => {
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // status → idle
+    const snap = Pomodoro.getState().previousPhaseSnapshot;
+    Pomodoro.start();    // status → running
+    const beforeRevert = Date.now();
+    Pomodoro.revertPhase();
+    const afterRevert = Date.now();
+    const state = Pomodoro.getState();
+    assertEqual(state.status, 'running');
+    assertEqual(state.phase, 'work');
+    assertEqual(state.cycleIndex, 0);
+    assertEqual(state.previousPhaseSnapshot, null);
+    // startedAt should be approximately now (set fresh in revertPhase)
+    assert(state.startedAt >= beforeRevert - 5 && state.startedAt <= afterRevert + 5,
+      'startedAt should be approximately now after revert while running');
+    // accumulatedMs is approximately snap.accumulatedMs (minimal elapsed since start)
+    assertClose(state.accumulatedMs, snap.accumulatedMs, 200,
+      'accumulatedMs should be approximately snapshot value when elapsed is near zero');
+  });
+
+  it('revertPhase from idle (new phase not yet started) sets status to paused', () => {
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // status → idle (new phase not started)
+    const snap = Pomodoro.getState().previousPhaseSnapshot;
+    // Do NOT call start() — revert from idle
+    Pomodoro.revertPhase();
+    const state = Pomodoro.getState();
+    assertEqual(state.status, 'paused');
+    assertEqual(state.phase, 'work');
+    assertEqual(state.cycleIndex, 0);
+    assertEqual(state.previousPhaseSnapshot, null);
+    // currentElapsed is 0 when idle (no startedAt), so accumulatedMs == snapshot value
+    assertEqual(state.accumulatedMs, snap.accumulatedMs,
+      'accumulatedMs should equal snapshot when reverting from idle (zero elapsed)');
+  });
+
+  it('cycleIndex is un-incremented after revertPhase (captured before cycleIndex++)', () => {
+    Pomodoro.reset();
+    Pomodoro.loadState({
+      status: 'running',
+      phase: 'work',
+      cycleIndex: 0,
+      totalCycles: 2,
+      workMs: 60000,
+      shortBreakMs: 60000,
+      longBreakMs: 60000,
+      startedAt: Date.now() - 70000,
+      accumulatedMs: 0,
+      sessionStartedAt: Date.now() - 70000,
+      phaseStartedAt: Date.now() - 70000,
+      phaseLog: [],
+    });
+    assertEqual(Pomodoro.getStatus(), 'overflowing');
+    Pomodoro.nextPhase(); // cycleIndex increments to 1, phase → shortBreak
+    assertEqual(Pomodoro.getCycleIndex(), 1);
+    Pomodoro.revertPhase();
+    assertEqual(Pomodoro.getCycleIndex(), 0,
+      'cycleIndex should be restored to pre-transition value (0), not the incremented value (1)');
+  });
+
+  it('snapshot overwritten on second nextPhase reflects second transition pre-state', () => {
+    // First transition: work(cycleIndex=0) → shortBreak
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // snap1: { phase:'work', cycleIndex:0 }
+
+    // Now force the shortBreak to overflow so we can call nextPhase again
+    Pomodoro.loadState({
+      status: 'running',
+      phase: 'shortBreak',
+      cycleIndex: 1,
+      totalCycles: 4,
+      workMs: 60000,
+      shortBreakMs: 60000,
+      longBreakMs: 60000,
+      startedAt: Date.now() - 70000,
+      accumulatedMs: 0,
+      sessionStartedAt: Date.now() - 140000,
+      phaseStartedAt: Date.now() - 70000,
+      phaseLog: Pomodoro.getPhaseLog(),
+    });
+    assertEqual(Pomodoro.getStatus(), 'overflowing');
+
+    // Second transition: shortBreak(cycleIndex=1) → work
+    Pomodoro.nextPhase(); // snap2 should overwrite snap1: { phase:'shortBreak', cycleIndex:1 }
+
+    const snap = Pomodoro.getState().previousPhaseSnapshot;
+    assert(snap !== null, 'snapshot should exist after second nextPhase');
+    assertEqual(snap.phase, 'shortBreak',
+      'snapshot should reflect second transition (shortBreak), not first (work)');
+    assertEqual(snap.cycleIndex, 1,
+      'snapshot cycleIndex should reflect second transition value (1)');
+  });
+
+  it('revertPhase on null snapshot is a no-op and does not throw', () => {
+    Pomodoro.reset();
+    // Fresh instance: previousPhaseSnapshot is null
+    const stateBefore = Pomodoro.getState();
+    let threw = false;
+    try {
+      Pomodoro.revertPhase();
+    } catch (e) {
+      threw = true;
+    }
+    assert(!threw, 'revertPhase should not throw when snapshot is null');
+    const stateAfter = Pomodoro.getState();
+    assertEqual(stateAfter.status, stateBefore.status);
+    assertEqual(stateAfter.phase, stateBefore.phase);
+    assertEqual(stateAfter.cycleIndex, stateBefore.cycleIndex);
+    assertEqual(stateAfter.accumulatedMs, stateBefore.accumulatedMs);
+  });
+
+  it('reset clears previousPhaseSnapshot', () => {
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // creates snapshot
+    assert(Pomodoro.getState().previousPhaseSnapshot !== null, 'snapshot should exist before reset');
+    Pomodoro.reset();
+    assertEqual(Pomodoro.getState().previousPhaseSnapshot, null,
+      'reset() should clear previousPhaseSnapshot');
+  });
+
+  it('persistence round-trip: loadState restores previousPhaseSnapshot', () => {
+    _forceOverflowing();
+    Pomodoro.nextPhase(); // creates snapshot
+    const captured = Pomodoro.getState();
+    const snapBefore = captured.previousPhaseSnapshot;
+    assert(snapBefore !== null, 'snapshot should exist before reset');
+
+    Pomodoro.reset();
+    assertEqual(Pomodoro.getState().previousPhaseSnapshot, null, 'snapshot cleared after reset');
+
+    Pomodoro.loadState(captured);
+    const snapAfter = Pomodoro.getState().previousPhaseSnapshot;
+    assert(snapAfter !== null, 'snapshot should be restored by loadState');
+    assertEqual(snapAfter.phase, snapBefore.phase);
+    assertEqual(snapAfter.cycleIndex, snapBefore.cycleIndex);
+    assertEqual(snapAfter.accumulatedMs, snapBefore.accumulatedMs);
+  });
+});
+
 describe('Pomodoro — overshoot', () => {
   it('phase past zero transitions to overflowing (replaces phaseComplete)', () => {
     Pomodoro.reset();
