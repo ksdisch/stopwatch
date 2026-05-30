@@ -482,14 +482,14 @@ engine tests run by opening `tests/index.html` in a real browser). That gap is n
 | [0002](adr/0002-drift-free-wall-clock-timing.md) | Drift-free wall-clock timing — elapsed is derived, never tick-accumulated | Accepted |
 | [0003](adr/0003-firestore-sync-backend.md) | Firebase/Firestore as the cloud-sync backend | Accepted |
 | [0004](adr/0004-per-store-merge-strategy.md) | Per-store, per-record conflict resolution instead of global last-write-wins | Accepted |
-| [0005](adr/0005-mutable-global-proxy-primary-instance.md) | Mutable-global-proxy primary instance | Planned |
-| [0006](adr/0006-split-localstorage-indexeddb-persistence.md) | Split localStorage / IndexedDB persistence | Planned |
-| [0007](adr/0007-capacitor-native-wrapper.md) | Capacitor native wrapper (one codebase, two runtimes) | Planned |
-| [0008](adr/0008-todoist-personal-token-not-oauth.md) | Todoist personal API token (not OAuth) | Planned |
-| [0009](adr/0009-defer-native-cas-listener-parity.md) | Deferred native CAS / listener parity | Planned |
+| [0005](adr/0005-mutable-global-proxy-primary-instance.md) | Mutable-global-proxy primary instance | Accepted |
+| [0006](adr/0006-split-localstorage-indexeddb-persistence.md) | Split localStorage / IndexedDB persistence | Accepted |
+| [0007](adr/0007-capacitor-native-wrapper.md) | Capacitor native wrapper (one codebase, two runtimes) | Accepted |
+| [0008](adr/0008-todoist-personal-token-not-oauth.md) | Todoist personal API token (not OAuth) | Accepted |
+| [0009](adr/0009-defer-native-cas-listener-parity.md) | Deferred native CAS / listener parity | Accepted |
 
-> ADRs 0005-0009 are the next retro-documentation round per [`docs/adr/README.md`](adr/README.md);
-> the links above point at their planned paths.
+> ADRs 0005-0009 were retro-documented in the Tier 2 artifacts round (see
+> [`docs/adr/README.md`](adr/README.md)) and are now Accepted; the links above resolve.
 
 ## Diagrams
 

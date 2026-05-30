@@ -1,0 +1,68 @@
+# .github/workflows/release.yml — dispatch-only CHANGELOG drafting aid.
+#
+# WHAT THIS IS (and is NOT):
+#   Runs git-cliff (config: cliff.toml) to render a Keep-a-Changelog draft from
+#   the repo's Conventional Commits, then uploads it as an artifact and prints it
+#   to the job summary. It is a DRAFTING AID — it does NOT auto-commit to
+#   CHANGELOG.md and does NOT create a GitHub Release. The canonical log stays
+#   human-curated (CHANGELOG.md), keyed to sw.js CACHE_NAME build slugs.
+#
+# WHY THESE TRIGGERS:
+#   - workflow_dispatch: run it by hand from the Actions tab whenever you want a
+#     fresh draft of the next section.
+#   - push tags 'v*' / 'stopwatch-v*': if/when you start cutting one tag per
+#     CACHE_NAME slug (recommended in docs/artifacts-plan.md), a tag push renders
+#     that slug's section automatically.
+#   It deliberately does NOT trigger on pull_request or on push to main, so it
+#   never runs as part of the PR gate in ci.yml and cannot affect PR status.
+#
+# FIRST-RUN NOTE:
+#   git-cliff needs full history (fetch-depth: 0). The cliff.toml body is the
+#   upstream keepachangelog template; if the render ever needs tuning, edit
+#   cliff.toml — this workflow just invokes it.
+
+name: release-notes
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+      - 'stopwatch-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: render-changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Render CHANGELOG draft with git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.generated.md
+
+      - name: Upload draft artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-draft
+          path: CHANGELOG.generated.md
+
+      - name: Echo draft into the job summary
+        if: always()
+        run: |
+          {
+            echo "### git-cliff CHANGELOG draft"
+            echo ""
+            echo '```markdown'
+            cat CHANGELOG.generated.md 2>/dev/null || echo "(no output produced)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
