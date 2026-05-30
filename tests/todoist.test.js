@@ -389,6 +389,127 @@ describe('Todoist — createTask', () => {
   });
 });
 
+// ── updateTask (rename write-back, follow-up B) ──────────────────────────
+
+describe('Todoist — updateTask', () => {
+  it('online happy path — POST /tasks/{id} with content body; Bearer header; { ok: true }', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _queueResponse(200, '');
+      const r = await Todoist.updateTask('XYZ', { content: 'new' });
+      assertEqual(r.ok, true);
+      assertEqual(_fetchCalls.length, 1);
+      const call = _fetchCalls[0];
+      assertEqual(call.url, 'https://api.todoist.com/rest/v2/tasks/XYZ');
+      assertEqual(call.opts.method, 'POST');
+      assertEqual(call.opts.headers['Content-Type'], 'application/json');
+      assertEqual(call.opts.headers['Authorization'], 'Bearer tkn');
+      assertEqual(call.opts.body, JSON.stringify({ content: 'new' }));
+    } finally { _teardown(); }
+  });
+
+  it('missing/empty id → { ok: false } without fetch', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      let r = await Todoist.updateTask('', { content: 'new' });
+      assertEqual(r.ok, false);
+      assertEqual(r.message, 'Invalid task id');
+      assertEqual(r.isRetryable, false);
+      assertEqual(_fetchCalls.length, 0);
+
+      // Undefined id behaves the same (no id arg).
+      r = await Todoist.updateTask(undefined, { content: 'new' });
+      assertEqual(r.ok, false);
+      assertEqual(r.message, 'Invalid task id');
+      assertEqual(_fetchCalls.length, 0);
+    } finally { _teardown(); }
+  });
+
+  it('empty content → { ok: false } without fetch', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      let r = await Todoist.updateTask('XYZ', { content: '' });
+      assertEqual(r.ok, false);
+      assertEqual(r.message, 'Empty content');
+      assertEqual(r.isRetryable, false);
+      assertEqual(_fetchCalls.length, 0);
+
+      // Missing opts entirely also short-circuits with no fetch.
+      r = await Todoist.updateTask('XYZ');
+      assertEqual(r.ok, false);
+      assertEqual(r.message, 'Empty content');
+      assertEqual(_fetchCalls.length, 0);
+    } finally { _teardown(); }
+  });
+
+  it('offline → queued:true, no fetch, persisted { kind: update, payload:{id,content} }', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _setOffline(true);
+      const r = await Todoist.updateTask('XYZ', { content: 'renamed' });
+      assertEqual(r.ok, true);
+      assertEqual(r.queued, true);
+      assertEqual(_fetchCalls.length, 0);
+      const raw = localStorage.getItem('todoist_pending_ops');
+      assert(raw !== null, 'pending_ops written to localStorage');
+      const persisted = JSON.parse(raw);
+      assertEqual(persisted.length, 1);
+      assertEqual(persisted[0].kind, 'update');
+      assertEqual(persisted[0].payload.id, 'XYZ');
+      assertEqual(persisted[0].payload.content, 'renamed');
+    } finally { _teardown(); }
+  });
+
+  it('auto-enqueues an update op when fetch throws (network error path)', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _setOffline(false);
+      _fetchThrow = true;
+      const r = await Todoist.updateTask('XYZ', { content: 'renamed' });
+      assertEqual(r.ok, true);
+      assertEqual(r.queued, true);
+      // fetch WAS attempted (and threw), op landed in queue.
+      assertEqual(_fetchCalls.length, 1);
+      const persisted = JSON.parse(localStorage.getItem('todoist_pending_ops'));
+      assertEqual(persisted.length, 1);
+      assertEqual(persisted[0].kind, 'update');
+      assertEqual(persisted[0].payload.content, 'renamed');
+    } finally { _teardown(); }
+  });
+
+  it('4xx → { ok: false, isRetryable: false } (permanent failure)', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _queueResponse(404, '');
+      const r = await Todoist.updateTask('XYZ', { content: 'new' });
+      assertEqual(r.ok, false);
+      assertEqual(r.status, 404);
+      assertEqual(r.message, 'Not Found');
+      assertEqual(r.isRetryable, false);
+      assertEqual(_fetchCalls.length, 1);
+    } finally { _teardown(); }
+  });
+
+  it('5xx → { ok: false, isRetryable: true } (transient)', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _queueResponse(503, '');
+      const r = await Todoist.updateTask('XYZ', { content: 'new' });
+      assertEqual(r.ok, false);
+      assertEqual(r.status, 503);
+      assertEqual(r.message, 'Todoist server error (503)');
+      assertEqual(r.isRetryable, true);
+    } finally { _teardown(); }
+  });
+});
+
 // ── Error normalization ──────────────────────────────────────────────────
 
 describe('Todoist — error normalization', () => {
@@ -699,6 +820,39 @@ describe('Todoist — drainQueue', () => {
       assert(received !== null, 'create-resolved event fired');
       assertEqual(received.localTag, 'tag-1');
       assertEqual(received.todoistId, 'new-id');
+    } finally { _teardown(); }
+  });
+
+  it('update op — POST /tasks/{id}, removed on 2xx, NO create-resolved emitted', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _setOffline(true);
+      await Todoist.updateTask('XYZ', { content: 'renamed' });
+      _setOffline(false);
+
+      // An 'update' drain must NOT signal create-resolved (create-only).
+      let createResolvedFired = false;
+      const handler = () => { createResolvedFired = true; };
+      window.addEventListener('todoist:create-resolved', handler);
+      try {
+        _queueResponse(200, '');
+        const r = await Todoist.drainQueue();
+        assertEqual(r.ok, true);
+        assertEqual(r.drained, 1);
+        assertEqual(r.failed, 0);
+        // Exactly one fetch, to the rename endpoint with the right body.
+        assertEqual(_fetchCalls.length, 1);
+        assertEqual(_fetchCalls[0].url, 'https://api.todoist.com/rest/v2/tasks/XYZ');
+        assertEqual(_fetchCalls[0].opts.method, 'POST');
+        assertEqual(_fetchCalls[0].opts.body, JSON.stringify({ content: 'renamed' }));
+      } finally {
+        window.removeEventListener('todoist:create-resolved', handler);
+      }
+      assertEqual(createResolvedFired, false);
+      // Queue empty after a successful drain (2xx removes).
+      const persisted = JSON.parse(localStorage.getItem('todoist_pending_ops'));
+      assertArrayEqual(persisted, []);
     } finally { _teardown(); }
   });
 });
