@@ -2001,6 +2001,24 @@ input:focus:not(:focus-visible) {
   border-bottom: 0.5px solid var(--separator);
 }
 
+/* todoist-pomo-rename: inline click-to-edit affordance, scoped to saved-task
+   rows only (the rename behavior is wired exclusively on these spans). */
+.pomo-saved-task-item .pomo-checklist-item-text {
+  cursor: text;
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin: -1px -3px;
+}
+
+.pomo-saved-task-item .pomo-checklist-item-text[contenteditable="true"] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  background: var(--btn-bg);
+  outline: 1.5px solid var(--green);
+  cursor: text;
+}
+
 .pomo-saved-task-add,
 .pomo-saved-task-add-break {
   background: none;
