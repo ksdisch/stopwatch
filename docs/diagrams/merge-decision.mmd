@@ -1,0 +1,21 @@
+%% Per-store conflict resolution (ADR 0004 + js/sync-merge-*.js). One incoming remote record.
+flowchart TD
+    incoming["Incoming remote record (per store)"]
+    future{"Schema.isFutureRecord()?"}
+    incoming --> future
+    future -->|"yes (schemaVersion > local)"| skip["Skip: refuse writeback, keep byte-clean on disk (F19a)"]
+    future -->|"no"| dispatch{"Dispatch by store key"}
+
+    dispatch -->|"meds"| meds["Metadata LWW by updatedAt<br/>+ doseLog append-merge, F1 +/-15min reconcile, F16 skew clamp"]
+    dispatch -->|"history"| hist["Union by id<br/>+ record-level LWW (updatedAt)<br/>+ phaseLog dedup by (deviceId, phaseStartedAt) F6"]
+    dispatch -->|"rest_log"| rest["Per-date key<br/>sleep LWW by updatedAt (cloud wins tie)<br/>+ naps append-merge by (deviceId, startedAt)"]
+    dispatch -->|"presets"| pres["Full-record LWW by updatedAt<br/>+ deletedAt tombstone propagation"]
+    dispatch -->|"bfrb_events"| bfrb["Union-dedup by (deviceId, takenAt)<br/>deterministic id = deviceId + '-' + takenAt"]
+    dispatch -->|"distractions"| dist["Union-dedup by (context, sessionId, deviceId, timestamp)"]
+
+    meds --> cas["CAS writeback via SyncFirestore.runTransaction (web) / setDoc fallback (native)"]
+    hist --> cas
+    rest --> cas
+    pres --> cas
+    bfrb --> cas
+    dist --> cas

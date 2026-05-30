@@ -1,0 +1,49 @@
+%% Timing-engine status machines (status enums read from the engine source files).
+stateDiagram-v2
+    state "Stopwatch (js/stopwatch.js:2)" as SW {
+        [*] --> sw_idle
+        sw_idle --> sw_running : "start()"
+        sw_running --> sw_paused : "pause()"
+        sw_paused --> sw_running : "start()"
+        sw_running --> sw_idle : "reset()"
+        sw_paused --> sw_idle : "reset()"
+    }
+
+    state "Timer (js/timer.js:2-4)" as TM {
+        [*] --> tm_idle
+        tm_idle --> tm_running : "start()"
+        tm_running --> tm_paused : "pause()"
+        tm_paused --> tm_running : "start()"
+        tm_running --> tm_finished : "reaches zero (halt-at-zero)"
+        tm_running --> tm_overflowing : "reaches zero (allowOvershoot)"
+        tm_finished --> tm_idle : "reset()"
+        tm_overflowing --> tm_idle : "reset()"
+    }
+
+    state "Pomodoro (js/pomodoro.js:1-7)" as PM {
+        [*] --> pm_idle
+        pm_idle --> pm_running : "start()"
+        pm_running --> pm_paused : "pause()"
+        pm_paused --> pm_running : "start()"
+        pm_running --> pm_overflowing : "phase crosses zero (alarm fired, keeps counting up)"
+        pm_overflowing --> pm_running : "nextPhase() (work / shortBreak / longBreak)"
+        pm_running --> pm_running : "revertPhase() (one-level undo via previousPhaseSnapshot)"
+        pm_running --> pm_done : "final cycle complete"
+        pm_done --> pm_idle : "reset()"
+    }
+
+    state "Flow Block (js/flow.js:7-12)" as FL {
+        [*] --> fl_idle
+        fl_idle --> fl_running : "start() (focus 90 / 120 min)"
+        fl_running --> fl_paused : "pause()"
+        fl_paused --> fl_running : "start()"
+        fl_running --> fl_overflowing : "focus crosses zero"
+        fl_overflowing --> fl_recovery : "start recovery (15 min)"
+        fl_running --> fl_recovery : "focus complete -> recovery"
+        fl_recovery --> fl_recoveryPaused : "pause()"
+        fl_recoveryPaused --> fl_recovery : "start()"
+        fl_recovery --> fl_recoveryOverflowing : "recovery crosses zero"
+        fl_recovery --> fl_done : "recovery complete / skip"
+        fl_recoveryOverflowing --> fl_done : "end"
+        fl_done --> fl_idle : "reset()"
+    }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v104-pomo-revert';
+const CACHE_NAME = 'stopwatch-v105-sw-schema-asset';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const ASSETS = [
   './css/tempo-shell.css',
   './js/utils.js',
   './js/platform.js',
+  './js/schema.js',
   './js/tempo-nav.js',
   './js/stopwatch.js',
   './js/timer.js',

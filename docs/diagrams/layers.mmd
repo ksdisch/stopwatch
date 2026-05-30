@@ -1,0 +1,34 @@
+%% Module load-order tiers — mirrors the <script> order in index.html (ADR 0001).
+%% Arrow = loads-after / depends-on. index.html script order IS the dependency graph.
+flowchart TD
+    subgraph t1["T1 — primitives"]
+        utils["utils.js"]
+        domutils["dom-utils.js"]
+    end
+
+    subgraph t2["T2 — platform + schema"]
+        platform["platform.js (web/native seam)"]
+        schema["schema.js (sync stamp / F19a)"]
+    end
+
+    subgraph t3["T3 — engine factories + sync orchestration"]
+        engines["stopwatch / timer / instance-manager / pomodoro / flow / interval / meds"]
+        persistence["persistence.js"]
+        syncstack["sync-firebase-config / sync-flag / sync-firestore / sync-buffer / sync-engine / sync-merge-*.js / sync-auth"]
+    end
+
+    subgraph t4["T4 — IIFE data / infra singletons"]
+        data["audio / themes / history / export / backup / presets / distractions / bfrb-events / recovery-feed / rhythm-engine"]
+    end
+
+    subgraph t5["T5 — UI globals"]
+        ui["ui / cards-ui / compare-ui / timer-ui / pomodoro-ui / flow-ui / meds-ui / recovery-ui / rhythm-ui / tempo-nav (and the rest of *-ui.js)"]
+    end
+
+    root["app.js (entry point — wires everything)"]
+
+    t1 --> t2
+    t2 --> t3
+    t3 --> t4
+    t4 --> t5
+    t5 --> root

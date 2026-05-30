@@ -1,0 +1,47 @@
+%% C4 Level 2 — Containers. ONE JS codebase ships two ways; Platform is the seam.
+flowchart TD
+    subgraph webrt["Web PWA (GitHub Pages)"]
+        webjs["Same js/*.js (browser tab / installed PWA)"]
+        sw["sw.js (service worker, cache-first, CACHE_NAME bump)"]
+    end
+
+    subgraph nativert["iOS app (Capacitor 6)"]
+        wkwv["WKWebView running the SAME js/*.js"]
+        capplugins["Capacitor plugins: Haptics / LocalNotifications / FirebaseAuth / FirebaseFirestore / Network"]
+    end
+
+    seam["js/platform.js (Platform seam: web vs native branch)"]
+
+    subgraph local["Device-local stores"]
+        ls["localStorage (engine state, configs, sync markers, recovery cache)"]
+        idbhist["IndexedDB stopwatch_history_db (sessions)"]
+        idbbuf["IndexedDB tempo_sync_db v1 (pending_ops buffer)"]
+    end
+
+    subgraph cloud["Firebase (Google)"]
+        fbauth["Firebase Auth"]
+        firestore["Firestore: 6 synced stores + read-only recovery_state"]
+    end
+
+    todoist["Todoist REST API v2"]
+
+    webjs --> seam
+    wkwv --> seam
+    seam -->|"native branch"| capplugins
+    webjs -->|"register (web only)"| sw
+
+    webjs --> ls
+    webjs --> idbhist
+    webjs --> idbbuf
+    wkwv --> ls
+    wkwv --> idbhist
+    wkwv --> idbbuf
+
+    seam -->|"auth"| fbauth
+    webjs -->|"sync read + write"| firestore
+    wkwv -->|"sync read + write"| firestore
+    webjs -->|"read-only recovery_state"| firestore
+    webjs -->|"REST tasks"| todoist
+    wkwv -->|"REST tasks"| todoist
+
+    legend["Legend: subgraphs = deployment containers; both runtimes execute identical JS"]

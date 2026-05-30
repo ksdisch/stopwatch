@@ -1,0 +1,40 @@
+%% C4 Level 3 — Component view of the cloud-sync stack (js/sync-*.js)
+flowchart TD
+    engine["sync-engine.js (orchestrator, ~2600 lines)<br/>init / hydrate / steady-state / CAS writeback"]
+
+    flag["sync-flag.js (tempo_sync_enabled master flag)"]
+    authm["sync-auth.js (signIn / signOut / onAuthChange)"]
+    schema["schema.js (stamp / isFutureRecord — F19a guard)"]
+    firestore["sync-firestore.js (SDK seam: getDoc / setDoc / getCollection / runTransaction / subscribe)"]
+    buffer["sync-buffer.js (offline pointer-op buffer, IndexedDB)"]
+    toast["sync-toast.js (arrival / overflow / downlevel toasts)"]
+
+    subgraph merges["Per-store merge modules (dispatched by store key)"]
+        mmeds["sync-merge-meds.js"]
+        mhist["sync-merge-history.js"]
+        mrest["sync-merge-rest-log.js"]
+        mpres["sync-merge-presets.js"]
+        mbfrb["sync-merge-bfrb.js"]
+        mdist["sync-merge-distractions.js"]
+    end
+
+    engine -->|"gate: isEnabled()"| flag
+    engine -->|"current user + auth-change"| authm
+    engine -->|"filter future-schema records"| schema
+    engine -->|"all cloud reads / writes"| firestore
+    engine -->|"enqueue on offline / drain on online"| buffer
+    engine -->|"emit events to listeners"| toast
+
+    engine -->|"_runMergeCycle dispatch"| mmeds
+    engine --> mhist
+    engine --> mrest
+    engine --> mpres
+    engine --> mbfrb
+    engine --> mdist
+
+    mmeds -->|"CAS runTransaction writeback"| firestore
+    mhist --> firestore
+    mrest --> firestore
+    mpres --> firestore
+    mbfrb --> firestore
+    mdist --> firestore

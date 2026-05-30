@@ -1,0 +1,32 @@
+%% SyncEngine lifecycle (js/sync-engine.js). States = engine phases; markers in localStorage.
+stateDiagram-v2
+    [*] --> Disabled
+
+    Disabled --> Initialized : "init() with flag on"
+    note right of Disabled
+        flag off (tempo_sync_enabled != '1') -> init() is a no-op
+    end note
+
+    Initialized --> AuthSignedIn : "auth-change (user present)"
+    AuthSignedIn --> StageDHandoff : "local non-empty AND cloud has foreign device"
+    AuthSignedIn --> Hydrating : "local empty AND not all-hydrated"
+    AuthSignedIn --> SteadyState : "tempo_sync_hydrated_all == '1'"
+
+    Hydrating --> SteadyState : "per-store pull (rest_log meds presets history) -> markers set"
+    Hydrating --> SyncError : "pull / write error"
+
+    StageDHandoff --> SteadyState : "reconcileImportedBucket() ok -> markers set, handoff cleared"
+    StageDHandoff --> SyncError : "reconcile error (handoff stays set, retry idempotent)"
+
+    state SteadyState {
+        [*] --> Listening
+        Listening --> Merging : "onSnapshot (web) / 300s poll (fallback)"
+        Merging --> Writeback : "per-store merge dispatch"
+        Writeback --> Listening : "CAS runTransaction (setDoc fallback)"
+    }
+
+    SteadyState --> Buffering : "network offline -> enqueue pointer-ops"
+    Buffering --> SteadyState : "online -> SyncBuffer.drain() FIFO"
+
+    SyncError --> SteadyState : "user retry (SyncState -> ready)"
+    SteadyState --> Disabled : "sign out / flag off -> stopSteadyState()"
