@@ -30,7 +30,7 @@ Firestore stores with client-side conflict resolution (ADR 0003/0004). A *sevent
 `recovery_state`, is **read-only**: it is written by an external `personal-health-elt` pipeline (a
 separate repo, using an Admin-SDK credential that bypasses the security rules) and Tempo only ever
 reads it to paint the Rhythm readiness band ([`js/recovery-feed.js:5-12`](../js/recovery-feed.js),
-[`firestore.rules:11-14`](../firestore.rules)).
+[`firestore.rules:21-33`](../firestore.rules)).
 
 ---
 
@@ -70,7 +70,7 @@ flowchart TD
 
 The recovery feed's read-only boundary is enforced server-side: `recovery_state` documents allow
 `read` for the owner but `write: if false` for every client
-([`firestore.rules:11-14`](../firestore.rules)). A compromised client cannot poison its own feed.
+([`firestore.rules:21-33`](../firestore.rules)). A compromised client cannot poison its own feed.
 
 ---
 

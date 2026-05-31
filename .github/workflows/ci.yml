@@ -155,3 +155,33 @@ jobs:
           if [ "$found" -eq 0 ]; then
             echo "no docs/diagrams/*.mmd files found"
           fi
+
+  # Firestore security-rules unit tests — the first NON-browser test job. Spins
+  # up the Firestore emulator and asserts firestore.rules enforces per-user
+  # isolation + recovery_state client-write denial (tests/rules/). The emulator
+  # is a Java app, so this job provisions a JDK; firebase-tools is fetched on
+  # demand via npx (kept OUT of package.json so it doesn't bloat package-lock or
+  # slow the npm ci in the other jobs). See docs/runbooks/firestore-rules-publish.md.
+  firestore-rules:
+    name: firestore-rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up JDK (Firestore emulator runtime)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run Firestore rules unit tests (emulator)
+        run: npm run test:rules

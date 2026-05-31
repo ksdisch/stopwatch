@@ -15,7 +15,9 @@ this codebase — runs a dbt build over Apple Health exports, materializes a dai
 mart called `mart_recovery_state`, and pushes the result into Firestore using a
 **Firebase Admin service-account credential**. Admin SDK writes **bypass**
 `firestore.rules` entirely, so the pipeline writes freely while the Tempo client
-is denied write access by rule (`firestore.rules:11-14`).
+is denied write access by rule (`firestore.rules:21-33` — the `if false` block
+plus the catch-all's `collection != 'recovery_state'` exclusion; see *Access
+control* below).
 
 Tempo's only job is to **read** the latest row, **cache** it to `localStorage`,
 and **render** it as the Rhythm readiness band. There is no write path, no
@@ -91,37 +93,52 @@ Any unrecognized `recovery_signal` string falls through to the
 
 ## Access control
 
-Access is enforced entirely by `firestore.rules`, not by the client. The
-recovery feed has its own match block (`firestore.rules:11-14`):
+Access is enforced entirely by `firestore.rules`, not by the client. Two match
+blocks under `/databases/{database}/documents` carry the policy. The recovery
+feed has its own block (`firestore.rules:21-24`):
 
 ```
 match /users/{userId}/recovery_state/{docId} {
-  allow read: if request.auth != null && request.auth.uid == userId;
+  allow read: if isOwner(userId);
   allow write: if false;
 }
 ```
 
 Two guarantees:
 
-1. **Read-only for clients.** `allow write: if false` denies every client write,
-   unconditionally. The `personal-health-elt` Admin service-account bypasses
-   rules, so it writes freely while a compromised or buggy client cannot poison
-   its own feed (`firestore.rules:4-7`).
+1. **Read-only for clients.** `allow write: if false` denies the client write in
+   this block. The `personal-health-elt` Admin service-account bypasses rules, so
+   it writes freely while a compromised or buggy client cannot poison its own feed
+   (`firestore.rules:8-11`).
 2. **Per-user isolation.** A client may read only its own UID's documents
-   (`request.auth.uid == userId`). No cross-user reads.
+   (`isOwner(userId)` = `request.auth != null && request.auth.uid == userId`,
+   `firestore.rules:4-6`). No cross-user reads.
 
-**Why the block order matters.** This specific match is declared **before** the
-general `/users/{userId}/{document=**}` catch-all (`firestore.rules:15-17`),
-which grants `read, write`. Firestore evaluates rules **cumulatively** — once any
-matching rule grants an operation, it is allowed. If the general (read+write)
-rule were the only match for `recovery_state`, clients would be able to write the
-feed. The more-specific block doesn't *subtract* the catch-all's write grant;
-rather, both blocks match, and the recovery-state write is governed by its own
-`if false` while the catch-all's write still applies to the *other* subcollections
-under `users/{uid}`. The intent — stated in the rules comment
-(`firestore.rules:8-10`) — is to narrow `recovery_state` to read-only for
-clients. (See ADR 0003 §Decision for the same carve-out rationale,
-`docs/adr/0003-firestore-sync-backend.md`.)
+**Why the catch-all must exclude `recovery_state` (the non-obvious part).**
+`allow write: if false` above is necessary but **not sufficient on its own**,
+because Firestore evaluates rules **cumulatively**: a write is allowed if *any*
+matching rule grants it, and match-block **order is irrelevant**. The general
+user block uses a recursive wildcard (`firestore.rules:30-33`):
+
+```
+match /users/{userId}/{collection}/{docId=**} {
+  allow read: if isOwner(userId);
+  allow write: if isOwner(userId) && collection != 'recovery_state';
+}
+```
+
+That `{docId=**}` recursive wildcard **also** matches `recovery_state/latest`, so
+without the `collection != 'recovery_state'` exclusion its `allow write` would
+re-grant the very write the block above denies — a more-specific `if false`
+cannot subtract a broader grant. **The exclusion is what actually makes the feed
+read-only.** (An earlier version of these rules, and of this section, claimed the
+guarantee came from declaring the specific block "first"; that was wrong — block
+order has no effect, and the old rules let a client write its own
+`recovery_state`. A rules-unit test now pins the real behavior:
+`tests/rules/firestore-rules.test.mjs`; see also
+[`docs/runbooks/firestore-rules-publish.md`](../runbooks/firestore-rules-publish.md).)
+See ADR 0003 §Decision for the carve-out rationale
+(`docs/adr/0003-firestore-sync-backend.md`).
 
 ## Client behaviour
 
@@ -210,7 +227,7 @@ There is **no negotiation channel** between the two repos — the producer
 (`personal-health-elt`) and the consumer (Tempo) are separate codebases with no
 shared schema artifact and no compile-time link. The contract is implicit,
 discoverable only by reading `js/recovery-feed.js:1-19` and the
-`firestore.rules:4-14` comments.
+`firestore.rules:8-20` comments.
 
 Rules of engagement:
 
@@ -233,7 +250,7 @@ Rules of engagement:
 - `js/recovery-feed.js` — the read-only consumer module (cache, gate, refresh,
   auth-change wiring).
 - `firestore.rules` — the read-only + per-user-isolation guarantee
-  (`firestore.rules:11-17`).
+  (`firestore.rules:21-33`).
 - `docs/reference/data-dictionary.md` — the broader datastore reference
   (*planned*; `recovery_state` rolls up there alongside the 6 synced stores).
 - `docs/adr/0003-firestore-sync-backend.md` — ADR 0003, which records the

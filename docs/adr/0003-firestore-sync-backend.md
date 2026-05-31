@@ -19,15 +19,16 @@ Four vendors were evaluated in parallel against a 5-requirement matrix (`BACKEND
 
 Use **Firebase Authentication (Google sign-in) + Cloud Firestore** as the sync backend. The Firestore document shape `users/{uid}/{store}/{record}` is baked into the engine and is not abstracted behind a vendor-neutral interface.
 
-The public web client config is committed verbatim — project `tempo-sync-6f7b2`, `js/sync-firebase-config.js:12-20`. This is deliberate: Firebase's security model puts all access control behind server-side rules, not behind hiding the API key (`js/sync-firebase-config.js:2-9`). Enforcement is per-user UID isolation in `firestore.rules:15-17`:
+The public web client config is committed verbatim — project `tempo-sync-6f7b2`, `js/sync-firebase-config.js:12-20`. This is deliberate: Firebase's security model puts all access control behind server-side rules, not behind hiding the API key (`js/sync-firebase-config.js:2-9`). Enforcement is per-user UID isolation in `firestore.rules:30-33`:
 
 ```
-match /users/{userId}/{document=**} {
-  allow read, write: if request.auth != null && request.auth.uid == userId;
+match /users/{userId}/{collection}/{docId=**} {
+  allow read: if isOwner(userId);
+  allow write: if isOwner(userId) && collection != 'recovery_state';
 }
 ```
 
-with a more-specific read-only carve-out declared *before* it so a compromised client cannot poison its own server-written recovery feed (`firestore.rules:11-14` — `allow write: if false` on `recovery_state`, which an Admin service-account ELT pipeline writes and the client only reads).
+with a read-only carve-out for the server-written recovery feed so a compromised client cannot poison it (`firestore.rules:21-24` — `allow write: if false` on `recovery_state`, which an Admin service-account ELT pipeline writes and the client only reads). That read-only guarantee is enforced by the `collection != 'recovery_state'` exclusion in the catch-all above — *not* by declaration order, since Firestore evaluates rules cumulatively. (Corrected 2026-05-31: the original of this ADR described the guarantee as coming from declaring the carve-out block "before" the catch-all; that was wrong — block order has no effect, and the un-excluded recursive catch-all silently re-granted the client write. A rules-unit test now pins the behavior: `tests/rules/firestore-rules.test.mjs`.)
 
 The `users/{uid}/{store}/{record}` path is hardcoded across the sync layer, not parameterized: `js/sync-engine.js:801` (`users/${user.uid}/${storeKey}/${id}`), and per-store at `:1673` (history), `:1685` (meds), `:1703` (rest_log), `:1717` (presets). Reads use the same shape — `js/sync-engine.js:571,957`. The web-vs-native split lives in one seam, `js/sync-firestore.js`: the web branch lazy-imports the Firestore SDK from the gstatic CDN (`js/sync-firestore.js:43-44`, pinned to `firebasejs/11.10.0`) so a zero-dep PWA stays zero-dep until sync is enabled; the native branch routes to `window.Capacitor.Plugins.FirebaseFirestore`. Cross-device identity is "same Google account → same Firebase UID → same Firestore path," with no separate user-mapping table (`docs/sync-impl/FIREBASE-SETUP.md:132`).
 
@@ -62,7 +63,7 @@ CAS granularity is doc-level (per record), which `BACKEND-SELECTION.md:149` argu
 
 - `docs/sync-review/BACKEND-SELECTION.md` — decision matrix (`:28-37`), recommendation + two accepted tradeoffs (`:140-155`)
 - `js/sync-firebase-config.js:2-20` — committed public web config (project `tempo-sync-6f7b2`)
-- `firestore.rules:11-17` — per-user UID isolation + `recovery_state` read-only carve-out
+- `firestore.rules:21-33` — per-user UID isolation + `recovery_state` read-only carve-out (the `collection != 'recovery_state'` exclusion)
 - `js/sync-firestore.js:13-14,43-44,320-347,408-432` — web CDN-lazy-import vs Capacitor-plugin seam; web-only `runTransaction`/`subscribe`
 - `js/sync-engine.js:801,1673-1717` — hardcoded `users/{uid}/{store}/{record}` document shape
 - `docs/sync-impl/FIREBASE-SETUP.md:51-53,185,245-259` — region permanence, $1 budget alert, HIPAA/BAA posture
