@@ -1,19 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Recovery state feed: the personal-health-elt pipeline writes here
-    // with a Firebase Admin service-account credential (which bypasses
-    // these rules), and the signed-in Tempo client only ever READS. Deny
-    // client writes so a compromised client cannot poison its own feed.
-    // Declared BEFORE the general /users/{userId}/{document=**} match
-    // because Firestore evaluates rules cumulatively — the more specific
-    // path narrows write permission to read-only for clients.
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Recovery state feed: the personal-health-elt pipeline writes here with a
+    // Firebase Admin service-account credential (which bypasses these rules),
+    // and the signed-in Tempo client only ever READS. Client writes are denied
+    // so a compromised or buggy client cannot poison its own feed.
+    //
+    // IMPORTANT — Firestore evaluates rules CUMULATIVELY: a write is allowed if
+    // ANY matching rule grants it, a more-specific `allow write: if false` does
+    // NOT override a broader grant, and match-block ORDER is irrelevant. So the
+    // read-only guarantee canNOT come from this block alone — the general user
+    // rule below MUST exclude recovery_state from its write grant
+    // (`collection != 'recovery_state'`), or its recursive `{docId=**}` would
+    // re-grant the write here. A rules-unit test asserts exactly this
+    // (tests/rules/firestore-rules.test.mjs).
     match /users/{userId}/recovery_state/{docId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if isOwner(userId);
       allow write: if false;
     }
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+    // Everything else under a user's tree — meds, history, rest_log, presets,
+    // bfrb_events, distractions, all written as `users/{uid}/{store}/{id}` — is
+    // full read/write for the owner, and read-isolated from other users. The
+    // `collection != 'recovery_state'` exclusion keeps the feed above read-only.
+    match /users/{userId}/{collection}/{docId=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && collection != 'recovery_state';
     }
   }
 }

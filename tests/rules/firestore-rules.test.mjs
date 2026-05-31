@@ -79,10 +79,12 @@ test('owner can write and read their own users/{uid} document', async () => {
   await assertSucceeds(getDoc(doc(alice, 'users/alice/meds/m1')));
 });
 
-test('owner can write a nested synced-store document (history sessions)', async () => {
+test('owner can write a synced-store document (history session)', async () => {
+  // Real shape: users/{uid}/history/{sessionId} (the store is the collection,
+  // sessions are documents directly under it — js/sync-engine.js:1673).
   const alice = clientFor('alice');
   await assertSucceeds(
-    setDoc(doc(alice, 'users/alice/history/sessions/s1'), { type: 'flow' })
+    setDoc(doc(alice, 'users/alice/history/s1'), { type: 'flow' })
   );
 });
 

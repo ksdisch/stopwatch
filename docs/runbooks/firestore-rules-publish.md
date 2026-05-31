@@ -90,73 +90,81 @@ it, or the next CLI deploy will overwrite your edit with the stale repo version.
 
 ## What the rules encode
 
-The full ruleset is 19 lines; two match blocks under
-`/databases/{database}/documents` carry the whole policy.
+The full ruleset is 35 lines; a shared `isOwner()` helper (`firestore.rules:4-6`)
+plus two match blocks under `/databases/{database}/documents` carry the whole
+policy.
 
 **1. Per-user isolation (the catch-all).** Every document under a user's tree is
-readable and writable only by that signed-in user
-(`firestore.rules:15-17`):
+readable and writable only by that signed-in user — except `recovery_state`,
+which the `collection != 'recovery_state'` clause carves out to read-only
+(`firestore.rules:30-33`):
 
 ```
-match /users/{userId}/{document=**} {
-  allow read, write: if request.auth != null && request.auth.uid == userId;
+match /users/{userId}/{collection}/{docId=**} {
+  allow read: if isOwner(userId);
+  allow write: if isOwner(userId) && collection != 'recovery_state';
 }
 ```
 
 This is what keeps the six read-write synced stores (`meds` / `history` /
-`rest_log` / `presets` / `bfrb_events` / `distractions`) private per account.
+`rest_log` / `presets` / `bfrb_events` / `distractions`, all written as
+`users/{uid}/{store}/{id}`) private per account.
 
 **2. `recovery_state` is read-only for clients (the carve-out).** The recovery
-feed has its own block, declared **before** the catch-all
-(`firestore.rules:11-14`):
+feed has its own block (`firestore.rules:21-24`):
 
 ```
 match /users/{userId}/recovery_state/{docId} {
-  allow read: if request.auth != null && request.auth.uid == userId;
+  allow read: if isOwner(userId);
   allow write: if false;
 }
 ```
 
-`allow write: if false` denies every client write to `recovery_state`,
-unconditionally. That feed is written **only** by the external
-`personal-health-elt` pipeline using a **Firebase Admin service-account
-credential, which bypasses these rules entirely** — so the pipeline writes freely
-while no client (compromised or buggy) can poison its own readiness feed. The
-read-only contract these rules enforce is specified in
+`allow write: if false` denies the client write here. That feed is written
+**only** by the external `personal-health-elt` pipeline using a **Firebase Admin
+service-account credential, which bypasses these rules entirely** — so the
+pipeline writes freely while no client (compromised or buggy) can poison its own
+readiness feed. The read-only contract these rules enforce is specified in
 [../reference/recovery-state-contract.md](../reference/recovery-state-contract.md)
 (see its *Access control* section).
 
-### Block order is load-bearing
+### The catch-all's exclusion is load-bearing (block order is NOT)
 
-The `recovery_state` block **must** stay declared before the
-`/users/{userId}/{document=**}` catch-all. Firestore evaluates rules
-**cumulatively**: once any matching rule grants an operation, it is allowed — the
-more-specific block does not *subtract* the catch-all's grant. The comment in the
-rules file states this rationale directly (`firestore.rules:4-10`). If you ever
-reorder or restructure these blocks, the `recovery_state` write denial is the
-invariant to protect: the carve-out narrows write permission to read-only for
-clients precisely because it is the more specific path, declared first. (Same
-carve-out rationale: [../adr/0003-firestore-sync-backend.md](../adr/0003-firestore-sync-backend.md),
-§Decision.) The client-side per-store merge that rides on top of these
-per-user-isolated stores is documented in
-[../adr/0004-per-store-merge-strategy.md](../adr/0004-per-store-merge-strategy.md).
+The read-only guarantee does **not** come from `allow write: if false` alone, and
+it does **not** depend on declaration order. Firestore evaluates rules
+**cumulatively**: a write is allowed if *any* matching rule grants it, and a
+more-specific block does **not** *subtract* a broader grant. The catch-all's
+recursive `{docId=**}` (`firestore.rules:30-33`) also matches
+`recovery_state/latest`, so its `allow write` would re-grant the write the
+carve-out denies — unless the `collection != 'recovery_state'` exclusion holds it
+back. **That exclusion is the invariant to protect.** If you restructure these
+rules, the test to keep green is `tests/rules/firestore-rules.test.mjs` (the
+`firestore-rules` CI job); an earlier version of these rules omitted the
+exclusion and silently let clients write their own `recovery_state`. (Carve-out
+rationale: [../adr/0003-firestore-sync-backend.md](../adr/0003-firestore-sync-backend.md),
+§Decision. The client-side per-store merge that rides on top of these
+per-user-isolated stores:
+[../adr/0004-per-store-merge-strategy.md](../adr/0004-per-store-merge-strategy.md).)
 
 ## Verify after a deploy
 
-There are no rules-unit tests in this repo yet, so verification is manual. Use the
-**Firebase Console → Firestore Database → Rules → Rules Playground** to assert
-both guarantees:
+The `firestore-rules` CI job unit-tests the **committed** rules on every PR
+(`tests/rules/firestore-rules.test.mjs`, run via `npm run test:rules` against the
+Firestore emulator) — but that proves the file in git, **not** the live project.
+For the live deploy, verify manually in the **Firebase Console → Firestore
+Database → Rules → Rules Playground** to assert both guarantees:
 
 1. **Per-user isolation holds.** Simulate an authenticated read **and** a write
    against `users/{uid}/meds/{anyDoc}` as that same `uid` → both **ALLOW**.
    Repeat the same read/write as a *different* authenticated uid → both **DENY**.
-   This exercises `firestore.rules:15-17`.
+   This exercises `firestore.rules:30-33`.
 2. **`recovery_state` is client-write-denied.** Simulate an authenticated write
    against `users/{uid}/recovery_state/latest` as that same `uid` → **DENY**
-   (the `allow write: if false` at `firestore.rules:13`). Then simulate a
-   *read* of the same path as that uid → **ALLOW** (`firestore.rules:12`). A
-   client that can write `recovery_state` means the carve-out was dropped or
-   reordered — stop and fix.
+   (the `allow write: if false` at `firestore.rules:23`, made effective by the
+   `collection != 'recovery_state'` exclusion at `firestore.rules:32`). Then
+   simulate a *read* of the same path as that uid → **ALLOW**
+   (`firestore.rules:22`). A client that can write `recovery_state` means the
+   carve-out exclusion was dropped — stop and fix.
 
 A quick live smoke is also available without the Playground: signed in to the app,
 in DevTools, `await SyncFirestore.setDoc(\`users/${SyncAuth.getCurrentUser().uid}/_test/probe\`, { ok: true })`
