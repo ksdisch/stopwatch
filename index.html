@@ -198,6 +198,10 @@
           <button class="tempo-subnav-btn" data-subnav-key="cooking">Cooking</button>
           <button class="tempo-subnav-btn" data-subnav-key="recovery">Recovery</button>
         </div>
+        <div data-subnav-for="rhythm">
+          <button class="tempo-subnav-btn is-active" data-subnav-key="timeline">Timeline</button>
+          <button class="tempo-subnav-btn" data-subnav-key="insights">Insights</button>
+        </div>
       </div>
     </nav>
 
@@ -1104,6 +1108,19 @@
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
   <script src="js/rhythm-engine.js"></script>
+  <!-- Rhythm Insights (#12): foundation engine (registry + chart helpers +
+       DI data layer) loads after rhythm-engine; self-registering panel
+       modules load after the foundation; rhythm-ui (the only consumer of
+       RhythmInsights.renderInto) loads last. Panel script order is irrelevant
+       — getPanels() sorts by each panel's `order` field. -->
+  <script src="js/rhythm-insights.js"></script>
+  <script src="js/rhythm-panel-meds-sleep.js"></script>
+  <script src="js/rhythm-panel-recovery-trends.js"></script>
+  <script src="js/rhythm-panel-focus-minutes.js"></script>
+  <script src="js/rhythm-panel-bfrb-frequency.js"></script>
+  <script src="js/rhythm-panel-distraction-rollup.js"></script>
+  <script src="js/rhythm-panel-event-zoom.js"></script>
+  <script src="js/rhythm-panel-correlations.js"></script>
   <script src="js/rhythm-ui.js"></script>
   <!-- Global BFRB tally + competing-response routine. Always visible,
        floats above all modes and pages. Tap or keyboard shortcut B

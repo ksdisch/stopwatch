@@ -34,6 +34,8 @@
 
   <!-- Load engine modules (no DOM dependencies) -->
   <script src="../js/utils.js"></script>
+  <!-- escapeHtml — used by rhythm-insights card chrome + panel renders. -->
+  <script src="../js/dom-utils.js"></script>
   <script src="../js/schema.js"></script>
   <script src="../js/stopwatch.js"></script>
   <script src="../js/timer.js"></script>
@@ -64,6 +66,18 @@
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
   <script src="../js/rhythm-engine.js"></script>
+  <!-- Rhythm Insights (#12): foundation engine + self-registering panels.
+       build() reads via injected deps so tests pass plain data (no
+       MedsManager/RecoveryUI seeding). The 6 parallel panels register their
+       own production + test scripts during integration. -->
+  <script src="../js/rhythm-insights.js"></script>
+  <script src="../js/rhythm-panel-meds-sleep.js"></script>
+  <script src="../js/rhythm-panel-recovery-trends.js"></script>
+  <script src="../js/rhythm-panel-focus-minutes.js"></script>
+  <script src="../js/rhythm-panel-bfrb-frequency.js"></script>
+  <script src="../js/rhythm-panel-distraction-rollup.js"></script>
+  <script src="../js/rhythm-panel-event-zoom.js"></script>
+  <script src="../js/rhythm-panel-correlations.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
   <!-- Audio engine: ambient profile registration test. The IIFE does NOT
@@ -124,6 +138,13 @@
   <script src="presets.test.js"></script>
   <script src="analytics.test.js"></script>
   <script src="rhythm.test.js"></script>
+  <script src="rhythm-insights.test.js"></script>
+  <script src="rhythm-panel-recovery-trends.test.js"></script>
+  <script src="rhythm-panel-focus-minutes.test.js"></script>
+  <script src="rhythm-panel-bfrb-frequency.test.js"></script>
+  <script src="rhythm-panel-distraction-rollup.test.js"></script>
+  <script src="rhythm-panel-event-zoom.test.js"></script>
+  <script src="rhythm-panel-correlations.test.js"></script>
   <script src="recovery-feed.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>

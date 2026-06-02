@@ -180,6 +180,55 @@ const RecoveryUI = (() => {
     return `${m} min`;
   }
 
+  // ── #11 bedtime / wake-time helpers ────────────────────────────────
+
+  // "HH:MM" → minutes since midnight (0..1439), or null if malformed.
+  function parseHHMM(s) {
+    if (typeof s !== 'string') return null;
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = +m[1], min = +m[2];
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+  }
+
+  // Hours in bed from bedtime → wakeTime, wrapping past midnight. null if
+  // either time is missing/malformed.
+  function timeDiffHours(bedtime, wakeTime) {
+    const b = parseHHMM(bedtime), w = parseHHMM(wakeTime);
+    if (b == null || w == null) return null;
+    let diff = w - b;
+    if (diff <= 0) diff += 24 * 60; // crosses midnight
+    return diff / 60;
+  }
+
+  function formatTimeLabel(hhmm) {
+    const mins = parseHHMM(hhmm);
+    if (mins == null) return '';
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const h12 = (h % 12 === 0) ? 12 : (h % 12);
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
+  // Bedtime → wake line under the logged value, with an in-bed cross-check
+  // against the manually entered hours when both times are present. Returns
+  // '' when no times were logged.
+  function renderSleepTimes(sleep) {
+    if (!sleep || (!sleep.bedtime && !sleep.wakeTime)) return '';
+    let line;
+    if (sleep.bedtime && sleep.wakeTime) {
+      const inBed = timeDiffHours(sleep.bedtime, sleep.wakeTime);
+      const cross = (inBed != null) ? ` · in bed ${Math.round(inBed * 10) / 10}h` : '';
+      line = `${formatTimeLabel(sleep.bedtime)} → ${formatTimeLabel(sleep.wakeTime)}${cross}`;
+    } else if (sleep.bedtime) {
+      line = `Bedtime ${formatTimeLabel(sleep.bedtime)}`;
+    } else {
+      line = `Wake ${formatTimeLabel(sleep.wakeTime)}`;
+    }
+    return `<div class="recovery-sleep-times-display">${escapeHtml(line)}</div>`;
+  }
+
   // ── Rendering ──────────────────────────────────────────────────────
 
   function render(surface) {
@@ -233,6 +282,7 @@ const RecoveryUI = (() => {
           <div class="recovery-sleep-value">
             <strong>${sleep.hours}</strong> hr${qLabel}
           </div>
+          ${renderSleepTimes(sleep)}
           <div class="recovery-sleep-actions">
             <button class="recovery-link-btn" data-sleep-edit>Edit</button>
             <button class="recovery-link-btn recovery-link-muted" data-sleep-clear>Clear</button>
@@ -257,6 +307,16 @@ const RecoveryUI = (() => {
                        aria-label="${q} of 5" role="radio" aria-checked="false">${q}</button>`
             ).join('')}
           </div>
+        </div>
+        <div class="recovery-sleep-times">
+          <label class="recovery-sleep-time-label">
+            Bedtime
+            <input id="recovery-sleep-bedtime" type="time" autocomplete="off">
+          </label>
+          <label class="recovery-sleep-time-label">
+            Wake
+            <input id="recovery-sleep-wake" type="time" autocomplete="off">
+          </label>
         </div>
         <div class="recovery-sleep-submit-row">
           <button type="submit" class="recovery-primary-btn" data-sleep-submit>Log sleep</button>
@@ -357,6 +417,16 @@ const RecoveryUI = (() => {
         }
         const sleep = { hours: Math.round(hours * 100) / 100 };
         if (quality) sleep.quality = quality;
+        // #11: optional bedtime / wake-time (raw "HH:MM" strings). Additive
+        // nullable — only attached when filled; rest_log already syncs the
+        // whole sleep object, so the new fields round-trip with no registry
+        // change. Feeds the Rhythm Insights Meds-vs-Sleep "onset" view.
+        const bedtimeEl = form.querySelector('#recovery-sleep-bedtime');
+        const wakeEl = form.querySelector('#recovery-sleep-wake');
+        const bedtime = bedtimeEl && bedtimeEl.value ? bedtimeEl.value : '';
+        const wakeTime = wakeEl && wakeEl.value ? wakeEl.value : '';
+        if (bedtime) sleep.bedtime = bedtime;
+        if (wakeTime) sleep.wakeTime = wakeTime;
         setSleep(todayDateStr, sleep);
         render(surface);
       });

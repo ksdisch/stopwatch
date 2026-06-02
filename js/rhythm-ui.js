@@ -2,6 +2,7 @@
 // TempoNav.applyRoute() calls render() when the rhythm pillar activates.
 const RhythmUI = (() => {
   let activeDate = null;
+  let activeSub = 'timeline'; // 'timeline' | 'insights' (Rhythm sub-nav)
   let currentTickInterval = null;
   let lastRenderedDayKey = null;
 
@@ -37,22 +38,34 @@ const RhythmUI = (() => {
     return '●';
   }
 
-  async function render() {
+  async function render(sub) {
     const container = document.querySelector('.tempo-pillar[data-pillar-id="rhythm"]');
     if (!container) return;
+    // A provided sub means this is a route/nav event (tempo-nav is the single
+    // router) — adopt it and reset to today, mirroring the prior
+    // hashchange-resets-to-today behavior. Tick / day-nav / internal
+    // re-renders call render() with no arg and preserve activeSub + activeDate.
+    if (sub) { activeSub = sub; activeDate = startOfDay(new Date()); }
     if (!activeDate) activeDate = startOfDay(new Date());
 
     if (!container.querySelector('.rhythm-root')) {
+      // Two sibling sub-surfaces inside the single .rhythm-root that RhythmUI
+      // owns. The Insights surface is a stable child that RhythmInsights writes
+      // into — keeping RhythmUI the sole owner of .rhythm-root's innerHTML so
+      // neither view clobbers the other.
       container.innerHTML = `
         <div class="rhythm-root">
-          <div class="rhythm-header">
-            <button class="rhythm-nav-btn" data-rhythm-nav="prev" aria-label="Previous day">‹</button>
-            <div class="rhythm-day-label" data-rhythm-day-label></div>
-            <button class="rhythm-nav-btn" data-rhythm-nav="next" aria-label="Next day">›</button>
+          <div class="rhythm-timeline-surface" data-rhythm-sub="timeline">
+            <div class="rhythm-header">
+              <button class="rhythm-nav-btn" data-rhythm-nav="prev" aria-label="Previous day">‹</button>
+              <div class="rhythm-day-label" data-rhythm-day-label></div>
+              <button class="rhythm-nav-btn" data-rhythm-nav="next" aria-label="Next day">›</button>
+            </div>
+            <div class="rhythm-readiness-band" data-rhythm-readiness hidden></div>
+            <div class="rhythm-status" data-rhythm-status></div>
+            <div class="rhythm-timeline" data-rhythm-timeline></div>
           </div>
-          <div class="rhythm-readiness-band" data-rhythm-readiness hidden></div>
-          <div class="rhythm-status" data-rhythm-status></div>
-          <div class="rhythm-timeline" data-rhythm-timeline></div>
+          <div class="rhythm-insights-surface" data-rhythm-sub="insights" hidden></div>
         </div>
       `;
       container.querySelectorAll('[data-rhythm-nav]').forEach(btn => {
@@ -62,6 +75,21 @@ const RhythmUI = (() => {
           render();
         });
       });
+    }
+
+    // Sub-surface visibility (Timeline | Insights).
+    const timelineEl = container.querySelector('.rhythm-timeline-surface');
+    const insightsEl = container.querySelector('.rhythm-insights-surface');
+    const showInsights = activeSub === 'insights';
+    if (timelineEl) timelineEl.hidden = showInsights;
+    if (insightsEl) insightsEl.hidden = !showInsights;
+
+    if (showInsights) {
+      stopTick(); // insights has no live tick
+      if (typeof RhythmInsights !== 'undefined' && typeof RhythmInsights.renderInto === 'function') {
+        RhythmInsights.renderInto(insightsEl, { days: 14 });
+      }
+      return;
     }
 
     container.querySelector('[data-rhythm-day-label]').textContent = labelForDate(activeDate);
@@ -284,14 +312,14 @@ const RhythmUI = (() => {
   }
 
   function init() {
-    window.addEventListener('hashchange', () => {
-      if (TempoNav && TempoNav.getPillar() === 'rhythm') {
-        activeDate = startOfDay(new Date());
-        render();
-      }
-    });
+    // tempo-nav.js is the single router: it calls RhythmUI.render(sub) on
+    // route + hashchange (applyRoute → rhythm branch). RhythmUI no longer
+    // listens to hashchange itself — that would double-render and ignore the
+    // Timeline|Insights sub. We only do the initial paint when the page loads
+    // already on the rhythm pillar.
     if (TempoNav && TempoNav.getPillar() === 'rhythm') {
-      render();
+      const onInsights = /#\/rhythm\/insights/.test(window.location.hash || '');
+      render(onInsights ? 'insights' : 'timeline');
     }
   }
 
