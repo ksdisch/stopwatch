@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v107-rhythm-timeline-meds';
+const CACHE_NAME = 'stopwatch-v108-analytics-meds-adherence';
 const ASSETS = [
   './',
   './index.html',
