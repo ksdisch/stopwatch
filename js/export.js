@@ -107,7 +107,13 @@ const Export = (() => {
     'offset_presets', 'quick_presets', 'presets_seeded',
 
     // Wellness pillar — the user's primary concern for cross-device sync
-    'wellness_meds',       // Medications + dose log
+    // Legacy pre-F18 single-blob meds key. meds.js's F18 migration deletes it
+    // (meds moved to per-record meds/{id} keys), so on migrated devices it is
+    // null and new exports capture meds via the meds/* sweep below
+    // (collectMedRecords → payload.meds). Retained here so RESTORING a
+    // pre-migration backup still works: the blob is written back, then
+    // loadAll's _migrateLegacyBlob folds it into per-record keys on reload.
+    'wellness_meds',       // Medications + dose log (legacy blob — see above)
     'wellness_rest_log',   // Sleep + naps by day
     'bfrbs_global',        // BFRB catches logged outside any focus session
 
@@ -147,6 +153,34 @@ const Export = (() => {
     }
   }
 
+  // F18 meds migration moved each med out of the single `wellness_meds` blob
+  // into its own `meds/{medId}` localStorage key. Those per-record keys are
+  // NOT in EXPORT_SETTINGS_KEYS (a fixed list), so without this sweep a
+  // post-migration backup would silently omit EVERY medication — a data-loss
+  // bug for users not on cloud sync, and it also weakens the F12 mandatory
+  // pre-push backup (js/backup.js reuses buildBackupData). Reads localStorage
+  // directly (not MedsManager) so the backup captures persisted state with no
+  // load-order dependency; mirrors MedsManager.loadAll's `meds/` enumeration.
+  const MEDS_PREFIX = 'meds/';
+  function collectMedRecords() {
+    const records = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith(MEDS_PREFIX)) continue;
+        const raw = localStorage.getItem(k);
+        if (raw === null) continue;
+        try {
+          const rec = JSON.parse(raw);
+          if (rec && typeof rec === 'object' && typeof rec.id === 'string') {
+            records.push(rec);
+          }
+        } catch (_) { /* corrupt record — skip, don't abort the backup */ }
+      }
+    } catch (_) { /* localStorage unavailable */ }
+    return records;
+  }
+
   // Extract the JSON payload so it's testable without triggering a browser
   // download. exportAllData calls this and handles the <a> click.
   async function buildBackupData() {
@@ -166,6 +200,9 @@ const Export = (() => {
       exportedAt: new Date().toISOString(),
       sessions,
       settings,
+      // Per-record meds (post-F18). Array of wire-format records, each with a
+      // string `id`. importAllData writes them back to meds/{id}.
+      meds: collectMedRecords(),
     };
   }
 
@@ -205,7 +242,31 @@ const Export = (() => {
         }
       });
     }
-    return { sessionsImported, settingsRestored };
+    // Per-record meds (post-F18). Clear existing meds/{id} keys first so a
+    // stale local med not present in the backup doesn't survive the restore
+    // (mirrors how a settings overwrite replaces prior values), then write
+    // each backed-up record. MedsManager.loadAll() picks these up on the
+    // post-import reload (history-ui.js reloads after importAllData). Absent
+    // on pre-F18 backups (data.meds undefined → skipped), in which case the
+    // restored legacy wellness_meds blob migrates on reload instead.
+    let medsRestored = 0;
+    if (Array.isArray(data.meds)) {
+      const stale = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(MEDS_PREFIX)) stale.push(k);
+      }
+      stale.forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
+      data.meds.forEach(rec => {
+        if (rec && typeof rec === 'object' && typeof rec.id === 'string') {
+          try {
+            localStorage.setItem(MEDS_PREFIX + rec.id, JSON.stringify(rec));
+            medsRestored++;
+          } catch (_) { /* quota or unavailable — skip this record */ }
+        }
+      });
+    }
+    return { sessionsImported, settingsRestored, medsRestored };
   }
 
   // Test surface. Small getter so the test suite can assert coverage
