@@ -2090,3 +2090,29 @@ Browser-verified at `tests/index.html?nosw=1` (fresh port to defeat Chrome's HTT
 fix(export): backup/export captures per-record meds/{id}, not just the deleted wellness_meds blob
 (branch fix/export-meds-records, stacked on PR A; squash hash assigned at PR merge)
 ```
+
+---
+
+## 2026-06-03 — Recovery-feed test baseline fixed — suite fully green (815/815)
+
+### What We Built
+
+Diagnosed and fixed the 4 long-standing `tests/recovery-feed.test.js` failures (`Cannot read properties of null (reading 'day'/'rows')`) that had been the standing "ignore these" baseline across the last several PRs. **It was a test-authoring bug, not a production bug.** `js/recovery-feed.js` references its collaborators — `SyncFlag` / `SyncAuth` / `SyncFirestore` / `SyncEngine` — **lexically**, and all four are top-level `const` singletons that ARE loaded in `tests/index.html`. The tests tried to inject fakes by assigning `window.SyncFlag = {…}` etc., but a lexical `const` reference never reads `window.<Name>` — so the stubs silently did nothing and the module kept reading the real modules. The real `SyncFlag.isEnabled()` is off by default → `_canFetch()` returned null → `refresh()` returned null → the four happy-path cases NPE'd on `out.day` / `cached.rows`. (The gate/no-op cases passed *coincidentally* — they also expect null. And the analytics/rhythm suites' `window.History` stubs work only because `history.js` is NOT loaded there, so `window.History` is the only binding.)
+
+The fix rewrites the test's stubbing to overwrite the real `const` objects' **methods** (`SyncFlag.isEnabled = …`, `SyncFirestore.getDoc = …`, …) — the exact idiom `tests/sync-hydrate.test.js` already uses for `SyncFirestore.getCollection` — saving the originals up front and restoring them after the suite. The "SyncFirestore unavailable" case now sets `SyncFirestore.getDoc = undefined` (a missing collaborator method) instead of an ineffective `window.SyncFirestore = undefined`. **Production code is untouched** — the module correctly reads the real lexical singletons at runtime — so there's no `sw.js` cache bump (only a test file + docs changed). Stacked on PR B; merge order #112 → A → B → C.
+
+### Verification result
+
+Browser-verified at `tests/index.html?nosw=1` (fresh port): **815 passed / 0 failed of 815** — the entire engine suite is green for the first time across this session's work. All four formerly-failing happy-path cases (`writes the fetched latest doc`, `writes the fetched history doc`, `history fetch failure does not void the latest write`, `returns the same in-flight promise for concurrent calls`) plus the rewritten gate case now pass, and the 2 time-of-day-flaky rhythm-engine cases passed on this run. `node --check` clean.
+
+### Suggested Next Steps
+
+- **Merge the stack** in order: #112 (rhythm timeline) → PR A (#113, analytics) → PR B (#114, export) → PR C (recovery-feed). Each rebases onto `main` as the prior merges.
+- With the suite green, future "4 pre-existing failures" caveats in PR notes are obsolete — a red board now means a real regression.
+
+### Commits
+
+```
+test(recovery-feed): stub real const singletons' methods, not window globals — fixes 4 NPE baseline failures
+(branch fix/recovery-feed-npe, stacked on PR B; squash hash assigned at PR merge)
+```

@@ -3,10 +3,31 @@
 // analytics.test.js / rhythm.test.js: stub globals per-case, exercise the
 // public surface, restore at end.
 
-const _rfRealSyncFlag = window.SyncFlag;
-const _rfRealSyncAuth = window.SyncAuth;
-const _rfRealSyncFirestore = window.SyncFirestore;
-const _rfRealSyncEngine = window.SyncEngine;
+// recovery-feed.js references SyncFlag / SyncAuth / SyncFirestore / SyncEngine
+// LEXICALLY — they are top-level `const` singletons (all loaded in
+// tests/index.html), NOT window properties. A lexical `const` reference never
+// reads `window.<Name>`, so the only way to inject a fake is to overwrite the
+// real object's METHODS (the same idiom sync-hydrate.test.js uses for
+// SyncFirestore.getCollection). Replacing window.SyncFlag etc. — the original
+// approach here — silently did nothing: the module kept reading the real
+// modules (flag off by default → gate closed → refresh() returned null), which
+// is exactly why the four happy-path cases NPE'd on `out.day` / `cached.rows`.
+// Save the real methods now; restore them after the suite.
+const _rfOrig = {
+  flagIsEnabled: SyncFlag.isEnabled,
+  authGetCurrentUser: SyncAuth.getCurrentUser,
+  fsGetDoc: SyncFirestore.getDoc,
+  engineOn: SyncEngine.on,
+  engineEmit: SyncEngine.emit,
+};
+
+function rfRestoreGlobals() {
+  SyncFlag.isEnabled = _rfOrig.flagIsEnabled;
+  SyncAuth.getCurrentUser = _rfOrig.authGetCurrentUser;
+  SyncFirestore.getDoc = _rfOrig.fsGetDoc;
+  SyncEngine.on = _rfOrig.engineOn;
+  SyncEngine.emit = _rfOrig.engineEmit;
+}
 
 function rfClearCache() {
   localStorage.removeItem('tempo_recovery_state_latest');
@@ -14,13 +35,14 @@ function rfClearCache() {
 }
 
 function rfStubGate({ flagOn = true, uid = 'user-abc', firestore = null } = {}) {
-  window.SyncFlag = { isEnabled: () => flagOn };
-  window.SyncAuth = { getCurrentUser: () => (uid ? { uid } : null) };
-  window.SyncFirestore = firestore || {
-    getDoc: async () => ({ id: 'missing', data: null }),
-  };
+  // Overwrite methods on the REAL const singletons (see note above).
+  SyncFlag.isEnabled = () => flagOn;
+  SyncAuth.getCurrentUser = () => (uid ? { uid } : null);
+  const fs = firestore || { getDoc: async () => ({ id: 'missing', data: null }) };
+  SyncFirestore.getDoc = fs.getDoc;
   // Bus stub — accept .on/.emit registrations without doing anything.
-  window.SyncEngine = { on: () => {}, emit: () => {} };
+  SyncEngine.on = () => {};
+  SyncEngine.emit = () => {};
 }
 
 function rfFirestoreReturning(map) {
@@ -139,12 +161,13 @@ describe('RecoveryFeed.refresh — gate', () => {
     assertEqual(RecoveryFeed.getLatest(), null);
   });
 
-  it('no-ops when SyncFirestore is unavailable', async () => {
+  it('no-ops when SyncFirestore.getDoc is unavailable', async () => {
     rfClearCache();
-    window.SyncFlag = { isEnabled: () => true };
-    window.SyncAuth = { getCurrentUser: () => ({ uid: 'u' }) };
-    window.SyncFirestore = undefined;
-    window.SyncEngine = { on: () => {}, emit: () => {} };
+    SyncFlag.isEnabled = () => true;
+    SyncAuth.getCurrentUser = () => ({ uid: 'u' });
+    SyncFirestore.getDoc = undefined;   // collaborator method missing → gate closed
+    SyncEngine.on = () => {};
+    SyncEngine.emit = () => {};
     const result = await RecoveryFeed.refresh();
     assertEqual(result, null);
   });
@@ -239,8 +262,5 @@ describe('RecoveryFeed.refresh — dedup', () => {
   });
 });
 
-// Restore globals so later test suites see the real environment.
-window.SyncFlag = _rfRealSyncFlag;
-window.SyncAuth = _rfRealSyncAuth;
-window.SyncFirestore = _rfRealSyncFirestore;
-window.SyncEngine = _rfRealSyncEngine;
+// Restore the real collaborator methods so later suites see a clean environment.
+rfRestoreGlobals();
