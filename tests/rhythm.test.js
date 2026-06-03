@@ -16,6 +16,10 @@ function rhClearStores() {
   localStorage.removeItem('flow_bfrbs');
   localStorage.removeItem('pomodoro_bfrbs');
   localStorage.removeItem('tempo_bfrb_events_migration_v1');
+  // getDoseEntries now reads the live MedsManager (not the wellness_meds
+  // blob, which meds.js deletes post-migration). Reset the in-memory
+  // singleton so each case starts with zero meds.
+  if (typeof MedsManager !== 'undefined' && MedsManager.clear) MedsManager.clear();
 }
 
 // Build a local-day timestamp at a specific (hour, minute) on a given date.
@@ -103,43 +107,58 @@ describe('Rhythm.getDayTimeline — session entries', () => {
 });
 
 describe('Rhythm.getDayTimeline — dose entries', () => {
-  it('emits dose-logged for each takenAt in the day', async () => {
+  it('emits dose-logged for each in-window takenAt, excluding out-of-window doses', async () => {
     rhClearStores();
     rhSetSessions([]);
     const today = new Date();
-    localStorage.setItem('wellness_meds', JSON.stringify({
-      meds: [{
-        id: 'm1', name: 'Vyvanse', dose: '60 mg', frequency: 'once-daily',
-        doseLog: [
-          { takenAt: atDate(today, 8) },
-          { takenAt: atDate(today, 14) },
-          { takenAt: atDate(today, 0) - 7200000 }, // yesterday — out of window
-        ],
-      }],
-    }));
+    // Seed via the LIVE manager — getDoseEntries reads MedsManager.all(),
+    // not the deleted wellness_meds blob.
+    const med = MedsManager.add({ name: 'Vyvanse', dose: '60 mg', frequency: 'once-daily' });
+    med.logDose(atDate(today, 8));
+    med.logDose(atDate(today, 14));
+    med.logDose(atDate(today, 0) - 7200000); // yesterday — out of window
     const entries = await Rhythm.getDayTimeline(today);
     assertEqual(entries.length, 2);
     assertEqual(entries[0].type, 'dose-logged');
+    assertEqual(entries[0].module, 'meds');
     assertEqual(entries[0].pillar, 'wellness');
     assertEqual(entries[0].summary.includes('Vyvanse'), true);
     assertEqual(entries[0].summary.includes('60 mg'), true);
+    assertEqual(entries[0].metadata.medName, 'Vyvanse');
+    assertEqual(entries[0].metadata.dose, '60 mg');
   });
 
-  it('skips entries without a numeric takenAt', async () => {
+  it('uses a half-open [start, end) window — keeps the day-start dose, drops the day-end dose', async () => {
     rhClearStores();
     rhSetSessions([]);
+    const today = new Date();
+    const dayStart = new Date(today); dayStart.setHours(0, 0, 0, 0);
+    const startMs = dayStart.getTime();
+    const endMs = startMs + 86400000;
+    const med = MedsManager.add({ name: 'EdgeMed' });
+    // Deterministic regardless of wall-clock: logDose stores timestamps
+    // verbatim (no future-dose guard), so the endMs dose is dropped by
+    // getDoseEntries' own `>= endMs` window check, not at log time.
+    med.logDose(startMs); // exactly the day start → included (>= startMs)
+    med.logDose(endMs);   // exactly the next day's start → excluded (>= endMs)
+    const entries = await Rhythm.getDayTimeline(today);
+    assertEqual(entries.length, 1);
+    assertEqual(entries[0].type, 'dose-logged');
+    assertEqual(entries[0].time, startMs);
+  });
+
+  it('ignores the legacy wellness_meds blob — reads MedsManager only (regression lock for backlog #13)', async () => {
+    rhClearStores(); // clears MedsManager + removes wellness_meds
+    rhSetSessions([]);
+    const today = new Date();
+    // A pre-migration blob lingering in storage must NOT be read: meds.js
+    // deletes this key post-migration, and the live source is MedsManager.
+    // With the manager empty, the timeline shows no dose events.
     localStorage.setItem('wellness_meds', JSON.stringify({
-      meds: [{ id: 'm1', name: 'X', doseLog: [{ takenAt: 'bad' }, { foo: 1 }] }],
+      meds: [{ id: 'm1', name: 'Ghost', dose: '10 mg',
+               doseLog: [{ takenAt: atDate(today, 9) }] }],
     }));
-    const entries = await Rhythm.getDayTimeline(new Date());
-    assertEqual(entries.length, 0);
-  });
-
-  it('handles missing/malformed wellness_meds gracefully', async () => {
-    rhClearStores();
-    rhSetSessions([]);
-    localStorage.setItem('wellness_meds', '{{not json');
-    const entries = await Rhythm.getDayTimeline(new Date());
+    const entries = await Rhythm.getDayTimeline(today);
     assertEqual(entries.length, 0);
   });
 });
@@ -216,9 +235,8 @@ describe('Rhythm.getDayTimeline — sorting + mixing', () => {
     rhSetSessions([
       { type: 'flow', date: new Date(atDate(today, 9)).toISOString(), duration: 90 * 60 * 1000 },
     ]);
-    localStorage.setItem('wellness_meds', JSON.stringify({
-      meds: [{ id: 'm', name: 'X', doseLog: [{ takenAt: atDate(today, 8) }] }],
-    }));
+    const med = MedsManager.add({ name: 'X' });
+    med.logDose(atDate(today, 8));
     localStorage.setItem('wellness_rest_log', JSON.stringify({
       [dayKey]: { naps: [{ startedAt: atDate(today, 13), durationMs: 20 * 60 * 1000 }] },
     }));
@@ -272,3 +290,5 @@ describe('Rhythm.getCurrentDayStatus', () => {
 
 // Restore stubs after the suite — analytics tests do the same.
 window.History = _rhRealHistory;
+// Leave the in-memory meds singleton clean for any later suite.
+if (typeof MedsManager !== 'undefined' && MedsManager.clear) MedsManager.clear();

@@ -1990,3 +1990,45 @@ Browser-verified via Playwright at `tests/index.html?nosw=1`: **808 tests, 802 p
 feat(rhythm): Insights dashboard — 7-panel multi-chart view (#11 + #12)
 (branch feat/rhythm-insights-meds-sleep; final squash hash assigned at PR merge)
 ```
+
+---
+
+## 2026-06-03 — Rhythm Timeline dose dots read live MedsManager (backlog #13)
+
+### What We Built
+
+Fixed backlog row #13: the Rhythm **Timeline** silently rendered **no medication dose events** on any device that had run the F18 meds migration. Root cause: `js/rhythm-engine.js` `getDoseEntries()` read `localStorage['wellness_meds']`, but `js/meds.js`'s F18 per-record migration (`_migrateLegacyBlob`, `meds.js:549`) **deletes** that legacy blob after moving each med to its own `meds/{medId}` key. So post-migration the blob is permanently `null` and the dose-timeline read came back empty. (The Rhythm **Insights** Meds-vs-Sleep panel was already unaffected — it reads the live `MedsManager.all()`.)
+
+The fix points `getDoseEntries` at the live source, mirroring `js/rhythm-insights.js` `_deps` and the Meds-vs-Sleep panel: iterate `MedsManager.all()` (guarded by `typeof MedsManager !== 'undefined'`), and per med use `getId()` / `getName()` / `getDose()` / `getDoseLog()`. The emitted entry shape is **byte-equivalent** to the old code for every field — `{ time, type:'dose-logged', module:'meds', pillar:'wellness', summary:`${medName}${dose} taken`, metadata:{ medId, medName, dose } }` — only the data *source* changed (raw JSON props → manager getters). Per-med metadata is hoisted out of the dose loop (it never depended on the per-dose record), and `MedsManager`-undefined + per-getter guards fail closed to an empty timeline exactly like the old "blob absent" path. The `readJSON` helper stays — it still legitimately serves the nap (`wellness_rest_log`) and legacy-BFRB reads, which are not migration-deleted.
+
+`tests/rhythm.test.js` was re-seeded onto the live manager: `rhClearStores()` now resets the `MedsManager` singleton; the dose, boundary, and sorting cases seed via `MedsManager.add({...})` + `med.logDose(ts)`; the suite clears the singleton on exit. The old "non-numeric takenAt" and "malformed wellness_meds" cases were dropped — both exercised malformed-input paths that are **unreachable** through the live manager (`logDose` coerces non-numbers to `Date.now()` and `getDoseLog()` returns sanitized entries), and the surviving defensive guards stay in the engine. Two new tests replace them: a **half-open `[start, end)` boundary** test (a dose at exactly `endMs` is dropped, at `startMs` kept — wall-clock deterministic) and a **regression-lock** that seeds a lingering `wellness_meds` blob and asserts the engine ignores it (0 entries) — this would fail if anyone reverts `getDoseEntries` to read the blob.
+
+`sw.js` CACHE_NAME bumped `v106-rhythm-insights` → `v107-rhythm-timeline-meds`.
+
+### Blast-radius finding (out of scope — flagged for follow-up)
+
+This bug is a **3-site class**, not one site. The F18 migration deletes `wellness_meds`, but three consumers read it. This PR fixes one; an adversarial multi-agent review (3 lenses + verify) independently confirmed the other two as **HIGH-severity, real, and out of scope** for the Timeline fix:
+
+1. **`js/rhythm-engine.js` `getDoseEntries()` — FIXED here.**
+2. **`js/analytics.js` `getMedAdherence()` (`:426`) — still broken.** Reads the deleted blob → returns `{ meds: [] }` → the Analytics **Medication-adherence** card renders empty for every migrated user. Reached live from `analytics-ui.js:637` (`renderAnalytics()` on tab show). Near-identical one-file fix (point at `MedsManager.all()`); needs its own `tests/analytics.test.js` re-seed.
+3. **`js/export.js` `buildBackupData()` + `EXPORT_SETTINGS_KEYS` (`:110`) — still broken, higher stakes.** Flat `getItem` per key with **no `meds/*` per-record sweep**, so local backups/exports **silently omit all medications** post-migration — data loss for non-cloud users, and it's also the F12 mandatory pre-push backup (`sync-engine.js:666`). The existing `tests/export.test.js` masks it by re-seeding the legacy blob. Feature-sized fix (per-record sweep on export **and** restore + tests). Cloud-synced devices are safe (sync's `snapshotForSync` reads the live manager), but sync is off by default.
+
+The review also proved the sweep exhaustive — *refuted* the bfrb-events legacy buckets (intentionally retained, no orphaned reader) and `stopwatch_history` (only the migration reads it) — and surfaced one **low** smell: `offset_presets` is deleted by `presets.js` migration yet still read+written by `offset-input.js` (stale coexistence, no data loss).
+
+### Verification result
+
+Browser-verified at `tests/index.html?nosw=1` (Kapture-driven host Chrome): **804 passed / 4 failed of 808**. All 4 failures are the **pre-existing `recovery-feed` NPE baseline** (`Cannot read properties of null (reading 'day'/'rows')`); **zero rhythm/dose failures**, and the 2 time-of-day-flaky rhythm-engine cases passed on this daytime run. The 3 rewritten dose tests + the new regression-lock + boundary tests are all green. **Live smoke:** logged a dose under Wellness › Meds in the real app, then opened Rhythm › Timeline (today) — a ◆ "OnMerge taken" dose dot now renders at the current time (silently absent before the fix).
+
+### Suggested Next Steps
+
+- **Sibling fix A (analytics adherence, small):** mirror this fix in `js/analytics.js` `getMedAdherence()` + re-seed `tests/analytics.test.js`. One-file, same pattern.
+- **Sibling fix B (backup data-loss, feature-sized, higher priority):** add a `meds/*` per-record sweep to `buildBackupData()` **and** `importAllData()` (reuse `MedsManager.snapshotForSync()`), retire the dead `wellness_meds` export key, and add a post-migration `tests/export.test.js` case so the regression can't hide again.
+- **Diagnose the 4 `recovery-feed.test.js` baseline NPEs** — still the standing test-suite cleanup (predates this work).
+- **Optional low cleanup:** `offset_presets` migration/reader stale-coexistence in `presets.js` ↔ `offset-input.js`.
+
+### Commits
+
+```
+fix(rhythm): Timeline dose dots read live MedsManager, not deleted wellness_meds blob (#13)
+(branch fix/rhythm-timeline-meds-source; squash hash assigned at PR merge)
+```
