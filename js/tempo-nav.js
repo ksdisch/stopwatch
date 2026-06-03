@@ -147,7 +147,7 @@ const TempoNav = (() => {
     const subnav = document.querySelector('.tempo-subnav');
     if (subnav) {
       subnav.dataset.pillar = pillar;
-      const hasSub = (pillar === 'timers' || pillar === 'wellness');
+      const hasSub = (pillar === 'timers' || pillar === 'wellness' || pillar === 'rhythm');
       subnav.dataset.empty = hasSub ? 'false' : 'true';
     }
 
@@ -173,11 +173,13 @@ const TempoNav = (() => {
       syncSubnavActive('wellness', sub || 'meds');
       showWellnessSub(sub || 'meds');
     } else if (pillar === 'rhythm') {
-      // Rhythm pillar: render the daily timeline on activation. The UI
-      // module owns its own DOM + tick interval; calling render() is
-      // idempotent and re-paints with today's data.
+      // Rhythm pillar: Timeline | Insights sub-nav. tempo-nav is the single
+      // router — RhythmUI.render(sub) branches on the sub and owns its own DOM
+      // + tick interval (RhythmUI no longer listens to hashchange itself).
+      const rsub = (sub === 'insights') ? 'insights' : 'timeline';
+      syncSubnavActive('rhythm', rsub);
       if (typeof RhythmUI !== 'undefined' && typeof RhythmUI.render === 'function') {
-        RhythmUI.render();
+        RhythmUI.render(rsub);
       }
     } else if (pillar === 'analytics') {
       // Placeholder shows an "Open dashboard" CTA that opens the existing
@@ -255,6 +257,14 @@ const TempoNav = (() => {
       btn.addEventListener('click', () => {
         const sub = btn.dataset.subnavKey || 'meds';
         applyRoute({ pillar: 'wellness', sub });
+      });
+    });
+    // Rhythm sub-nav: Timeline | Insights. Emit an empty sub for timeline so
+    // the hash stays "#/rhythm"; insights → "#/rhythm/insights".
+    document.querySelectorAll('[data-subnav-for="rhythm"] button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sub = btn.dataset.subnavKey || 'timeline';
+        applyRoute({ pillar: 'rhythm', sub: sub === 'timeline' ? '' : sub });
       });
     });
   }

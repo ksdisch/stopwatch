@@ -5588,3 +5588,186 @@ body.focus-mode .global-bfrb-fab {
     border-color: #e5e5ea;
   }
 }
+
+/* ── Rhythm Insights dashboard (#12) ───────────────────────────────────
+   Panels reuse the .analytics-card* chrome; these classes cover the
+   insights surface, shared building blocks, the Meds-vs-Sleep panel, and
+   the #11 bedtime/wake-time inputs. Theme vars keep light/dark in sync. */
+
+.rhythm-insights-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 24px;
+}
+
+.rhythm-insights-loading,
+.rhythm-insight-empty {
+  color: var(--text-secondary, #8e8e93);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.rhythm-insight-card { gap: 10px; }
+
+/* Segmented toggles + selectors (aside controls / med picker) */
+.rhythm-ms-toggle,
+.rhythm-ms-meds {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.rhythm-ms-meds { margin-top: 2px; }
+
+.rhythm-ms-toggle button,
+.rhythm-ms-med {
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary, #8e8e93);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.rhythm-ms-toggle button.is-active,
+.rhythm-ms-med.is-active {
+  color: #fff;
+  background: var(--active-accent, #007aff);
+  border-color: var(--active-accent, #007aff);
+}
+
+.rhythm-ms-subtitle {
+  font-size: 0.78rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.rhythm-ms-chart { display: block; width: 100%; margin-top: 4px; }
+
+.rhythm-ms-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  color: var(--text-secondary, #8e8e93);
+  margin-top: 2px;
+}
+
+.rhythm-ms-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.66rem;
+  color: var(--text-secondary, #8e8e93);
+  margin-top: 4px;
+}
+.rhythm-ms-legend i {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.rhythm-ms-legend-note { margin-left: auto; opacity: 0.7; }
+
+/* Generic insight building blocks (reused by recovery/event/correlation panels) */
+.rhythm-spark { display: block; width: 100%; }
+
+.rhythm-spark-row {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.78rem;
+}
+.rhythm-spark-row + .rhythm-spark-row { margin-top: 8px; }
+.rhythm-spark-label { color: var(--text-secondary, #8e8e93); font-weight: 600; }
+.rhythm-spark-value { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.rhythm-callout-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rhythm-callout {
+  font-size: 0.84rem;
+  color: var(--text);
+  line-height: 1.4;
+  padding-left: 16px;
+  position: relative;
+}
+.rhythm-callout::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--active-accent, #007aff);
+}
+
+/* event-zoom panel: 14-day condensed activity strip. Per-segment height +
+   background are set inline in the panel JS; these are the structural rules. */
+.rhythm-zoom-strip {
+  display: flex;
+  flex-direction: row;
+  gap: 3px;
+  align-items: flex-end;
+}
+.rhythm-zoom-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rhythm-zoom-bar {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.rhythm-zoom-segment { width: 100%; }
+.rhythm-zoom-label {
+  margin-top: 4px;
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* #11: bedtime / wake-time inputs on the Recovery sleep form */
+.recovery-sleep-times {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.recovery-sleep-time-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8e8e93);
+  flex: 1 1 0;
+}
+.recovery-sleep-time-label input[type="time"] {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--text);
+}
+.recovery-sleep-times-display {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #8e8e93);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}

@@ -1958,3 +1958,35 @@ Shipped via the orchestrated 5-phase subagent flow: Phase 1 audit (medium tier, 
 ```
 695700a  feat(pomodoro): phase revert — "← Go back" to previous phase (#11)
 ```
+
+---
+
+## 2026-06-01 — Rhythm Insights dashboard — full 7-panel build (backlog #11 + #12)
+
+### What We Built
+
+Overhauled the Rhythm pillar from a single-day timeline into a multi-panel **Insights dashboard** (backlog #12), bundling the #11 sleep-schema prerequisite. Shipped via a **registry pattern** so the panels were parallelizable: a `js/rhythm-insights.js` foundation (panel registry sorted by `order`; a dependency-injected data layer `_deps` overridable for tests; shared inline-SVG chart helpers `windowDays`/`bucketByDay`/`sumByDay`/`svgScaffold`/`linePoints`/`polyline`/`area`/`qualityColor`/`fmtHour`/`card`/`empty`; and `renderInto()` which builds all panels concurrently with `Promise.allSettled` per-panel failure isolation, writes the container once, wires a single delegated toggle listener, and memoizes `getSessions` per render). Seven self-registering panel modules: **meds-sleep** (10, flagship), **recovery-trends** (20), **focus-minutes** (30), **bfrb-frequency** (40), **distraction-rollup** (50), **event-zoom** (60), **correlations** (70).
+
+The flagship **Meds-vs-Sleep** scatter plots first-dose hour (x) against that night's sleep, with an **Onset|Duration** toggle (Onset y=bedtime via the new #11 field, mapped on a continuous 6 PM→6 AM "night hour" axis so 11 PM and 12:30 AM sit adjacent; Duration y=hours slept), dot color = sleep quality (1–5 red→green), and a med selector defaulting to the most-dosed med. Key correctness call: a dose on day D is paired with the **following** night's sleep (`restLog[D+1]`), since the user logs "last night's sleep" the next morning — same-day pairing would be non-causal.
+
+**#11 schema** (`js/recovery-ui.js`): optional Bedtime + Wake `<input type="time">` on the sleep form, captured only when filled, with a `wake−bed mod 24` "in bed Nh" cross-check line in the logged view. Additive nullable; `rest_log` already syncs, so no registry change. **Sub-nav** (`js/tempo-nav.js` + `js/rhythm-ui.js` + `index.html`): a Timeline|Insights segmented toggle reusing the wellness sub-nav pattern; tempo-nav became the single router (RhythmUI's own hashchange listener removed to avoid a double-render); Insights renders into a sibling `.rhythm-insights-surface` inside `.rhythm-root` to avoid the innerHTML-clobber. `sw.js` CACHE_NAME `v105-sw-schema-asset` → `v106-rhythm-insights` (+ 8 new assets).
+
+**Orchestration:** foundation + flagship panel built in-session; the other 6 panels by 6 parallel subagents, each writing only 1 new JS + 1 test file (zero shared-file edits — the registry made panels disjoint), wired centrally in integration.
+
+### Verification result
+
+Browser-verified via Playwright at `tests/index.html?nosw=1`: **808 tests, 802 pass, 6 fail** — and a stash/baseline run confirmed all 6 are PRE-EXISTING (4 `recovery-feed.test.js` NPEs + 2 time-of-day-flaky `rhythm-engine` "straddles now"/"upcoming" cases). **Zero new failures** from this PR; +59 new cases (`tests/rhythm-insights.test.js` 18 + six `tests/rhythm-panel-*.test.js`) all green. One distraction-rollup test caught + fixed during integration (over-strict `>6<` count regex vs the flow/pomo split subtext). All 7 panels visually verified populated + in order at 390px (Meds-vs-Sleep 12 dots, recovery sparklines, focus bars, BFRB area chart, distraction leaderboard, 14-day activity strip, 3 correlation callouts); empty-state guards confirmed; no panel errored.
+
+### Suggested Next Steps
+
+- **Fix the Rhythm *Timeline* dose-dot bug (new, flagged):** `rhythm-engine.js:119` reads the legacy `wellness_meds` blob that `meds.js:549` deletes post-migration → Timeline dose events silently empty. One-liner (point at `MedsManager`) + a `tests/rhythm.test.js` seed update — separate small PR. (Insights panel uses live `MedsManager`, unaffected.)
+- **Diagnose the 4 `recovery-feed.test.js` baseline NPEs** — still the standing test-suite cleanup (predates this work).
+- **Rhythm Insights follow-ups:** an Onset-vs-Duration default heuristic (default to whichever has data), a window toggle (7/14/30d), and richer correlations once more overlapping data accrues.
+- **iOS smoke** — route to `#/rhythm/insights` on the Tempo iOS build; confirm the SVG charts + Timeline|Insights toggle render in WKWebView.
+
+### Commits
+
+```
+feat(rhythm): Insights dashboard — 7-panel multi-chart view (#11 + #12)
+(branch feat/rhythm-insights-meds-sleep; final squash hash assigned at PR merge)
+```

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v105-sw-schema-asset';
+const CACHE_NAME = 'stopwatch-v106-rhythm-insights';
 const ASSETS = [
   './',
   './index.html',
@@ -65,6 +65,14 @@ const ASSETS = [
   './js/recovery-ui.js',
   './js/recovery-feed.js',
   './js/rhythm-engine.js',
+  './js/rhythm-insights.js',
+  './js/rhythm-panel-meds-sleep.js',
+  './js/rhythm-panel-recovery-trends.js',
+  './js/rhythm-panel-focus-minutes.js',
+  './js/rhythm-panel-bfrb-frequency.js',
+  './js/rhythm-panel-distraction-rollup.js',
+  './js/rhythm-panel-event-zoom.js',
+  './js/rhythm-panel-correlations.js',
   './js/rhythm-ui.js',
   './js/bfrb-events.js',
   './js/distractions.js',
