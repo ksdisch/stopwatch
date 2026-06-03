@@ -330,6 +330,157 @@ describe('Export.importAllData — restore behavior', () => {
   });
 });
 
+describe('Export — per-record meds sweep (post-F18)', () => {
+  // The migrated meds store is per-record `meds/{id}` keys (NOT the legacy
+  // single `wellness_meds` blob, which meds.js deletes on migration). These
+  // keys are outside EXPORT_SETTINGS_KEYS, so buildBackupData/importAllData
+  // handle them via the dedicated `meds` payload field.
+  function clearMedsRecords() {
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('meds/')) stale.push(k);
+    }
+    stale.forEach(k => localStorage.removeItem(k));
+  }
+  function seedMedRecord(id, obj) {
+    localStorage.setItem('meds/' + id, JSON.stringify(Object.assign({ id }, obj)));
+  }
+  function makeHistoryStub() {
+    let stored = [];
+    return {
+      getSessions: async () => stored.slice(),
+      addSession: async (s) => { stored.push(s); },
+      clearAll: async () => { stored = []; },
+    };
+  }
+
+  it('captures per-record meds/{id} keys in payload.meds on a migrated device', async () => {
+    clearMedsRecords();
+    localStorage.removeItem('wellness_meds'); // migrated: legacy blob is gone
+    seedMedRecord('med-a', { name: 'Vyvanse', dose: '60 mg', frequency: 'once-daily',
+      doseLog: [{ takenAt: 1700000000000, deviceId: 'd1' }] });
+    seedMedRecord('med-b', { name: 'Strattera', frequency: 'twice-daily', doseLog: [] });
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      assertEqual(Array.isArray(data.meds), true);
+      assertEqual(data.meds.length, 2);
+      const byId = {}; data.meds.forEach(m => { byId[m.id] = m; });
+      assertEqual(byId['med-a'].name, 'Vyvanse');
+      assertEqual(byId['med-a'].doseLog.length, 1);
+      assertEqual(byId['med-b'].frequency, 'twice-daily');
+      // The legacy blob is absent on a migrated device, yet meds are captured.
+      assertEqual(data.settings.wellness_meds, undefined);
+    } finally {
+      clearMedsRecords();
+    }
+  });
+
+  it('skips corrupt meds/{id} entries without aborting the backup', async () => {
+    clearMedsRecords();
+    seedMedRecord('med-good', { name: 'Good', doseLog: [] });
+    localStorage.setItem('meds/med-bad', '{{not json');
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      assertEqual(data.meds.length, 1);
+      assertEqual(data.meds[0].id, 'med-good');
+    } finally {
+      clearMedsRecords();
+    }
+  });
+
+  it('payload.meds is an empty array when there are no meds/* keys', async () => {
+    clearMedsRecords();
+    localStorage.removeItem('wellness_meds');
+    window.History = { getSessions: async () => [] };
+    const data = await Export.buildBackupData();
+    assertEqual(Array.isArray(data.meds), true);
+    assertEqual(data.meds.length, 0);
+  });
+
+  it('importAllData restores per-record meds and reports medsRestored', async () => {
+    clearMedsRecords();
+    window.History = makeHistoryStub();
+    const payload = JSON.stringify({
+      version: 1, sessions: [], settings: {},
+      meds: [
+        { id: 'med-x', name: 'Adderall', dose: '20 mg', frequency: 'twice-daily',
+          doseLog: [{ takenAt: 1700000000000, deviceId: 'd9' }] },
+        { id: 'med-y', name: 'Wellbutrin', frequency: 'once-daily', doseLog: [] },
+      ],
+    });
+    try {
+      const result = await Export.importAllData(payload);
+      assertEqual(result.medsRestored, 2);
+      const x = JSON.parse(localStorage.getItem('meds/med-x'));
+      assertEqual(x.name, 'Adderall');
+      assertEqual(x.doseLog[0].takenAt, 1700000000000);
+      assertEqual(JSON.parse(localStorage.getItem('meds/med-y')).frequency, 'once-daily');
+    } finally {
+      clearMedsRecords();
+    }
+  });
+
+  it('import clears stale meds/{id} keys not present in the backup', async () => {
+    clearMedsRecords();
+    seedMedRecord('med-stale', { name: 'Old', doseLog: [] });
+    window.History = makeHistoryStub();
+    const payload = JSON.stringify({
+      version: 1, sessions: [], settings: {},
+      meds: [{ id: 'med-fresh', name: 'New', doseLog: [] }],
+    });
+    try {
+      await Export.importAllData(payload);
+      assertEqual(localStorage.getItem('meds/med-stale'), null);          // cleared
+      assert(localStorage.getItem('meds/med-fresh') !== null, 'fresh med written');
+    } finally {
+      clearMedsRecords();
+    }
+  });
+
+  it('pre-F18 backups (no meds field) leave meds/* untouched — medsRestored 0', async () => {
+    clearMedsRecords();
+    seedMedRecord('med-keep', { name: 'Keep', doseLog: [] });
+    window.History = makeHistoryStub();
+    const payload = JSON.stringify({
+      version: 1, sessions: [], settings: { wellness_meds: '{"meds":[]}' },
+    });
+    try {
+      const result = await Export.importAllData(payload);
+      assertEqual(result.medsRestored, 0);
+      // No meds field → meds/* not cleared; legacy blob restored for reload-time migration.
+      assert(localStorage.getItem('meds/med-keep') !== null, 'existing med preserved');
+      assertEqual(localStorage.getItem('wellness_meds'), '{"meds":[]}');
+    } finally {
+      clearMedsRecords();
+      localStorage.removeItem('wellness_meds');
+    }
+  });
+
+  it('round-trips per-record meds through export → import onto a fresh store', async () => {
+    clearMedsRecords();
+    localStorage.removeItem('wellness_meds');
+    seedMedRecord('med-rt', { name: 'Vyvanse', dose: '50 mg', frequency: 'once-daily',
+      doseLog: [{ takenAt: 1699999999999, deviceId: 'd1' }] });
+    window.History = makeHistoryStub();
+    try {
+      const json = JSON.stringify(await Export.buildBackupData());
+      clearMedsRecords(); // simulate a fresh device
+      assertEqual(localStorage.getItem('meds/med-rt'), null);
+      const result = await Export.importAllData(json);
+      assertEqual(result.medsRestored, 1);
+      const restored = JSON.parse(localStorage.getItem('meds/med-rt'));
+      assertEqual(restored.name, 'Vyvanse');
+      assertEqual(restored.dose, '50 mg');
+      assertEqual(restored.doseLog[0].takenAt, 1699999999999);
+    } finally {
+      clearMedsRecords();
+    }
+  });
+});
+
 describe('Export + Import round-trip', () => {
   it('backup → restore preserves every covered key + sessions', async () => {
     // Seed localStorage with representative values for every critical key.

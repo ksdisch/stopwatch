@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v108-analytics-meds-adherence';
+const CACHE_NAME = 'stopwatch-v109-export-meds-records';
 const ASSETS = [
   './',
   './index.html',

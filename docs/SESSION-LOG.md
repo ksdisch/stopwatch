@@ -2062,3 +2062,31 @@ Browser-verified at `tests/index.html?nosw=1`: **804 passed / 4 failed of 808** 
 fix(analytics): medication-adherence reads live MedsManager, not deleted wellness_meds blob
 (branch fix/analytics-meds-adherence-source, stacked on #112; squash hash assigned at PR merge)
 ```
+
+---
+
+## 2026-06-03 — Backup/export captures per-record meds (sibling of #13, highest-stakes)
+
+### What We Built
+
+Third and last of the F18 orphaned-reader fixes — and the most serious, because it's silent **data loss**, not just an empty chart. `js/export.js` `buildBackupData()` builds its `settings` block from a fixed `EXPORT_SETTINGS_KEYS` list that still names the legacy `wellness_meds` key. The F18 migration deletes that key (meds moved to per-record `meds/{medId}` keys, which are NOT in the list), so **every local backup/export made post-migration silently omitted all medications**. This also weakened the F12 mandatory pre-push backup (`js/backup.js` → `sync-engine.js:666` reuse `buildBackupData`). Cloud-synced devices were safe (sync's `snapshotForSync` reads the live manager), but sync is off by default, so a non-cloud user's only safety net was a meds-less backup. The existing `tests/export.test.js` masked the bug by re-seeding `wellness_meds` before each export.
+
+The fix adds a per-record sweep on both sides. **Export:** a new `collectMedRecords()` enumerates `localStorage` for `meds/*` keys (mirroring `MedsManager.loadAll`'s enumeration — reads storage directly, no MedsManager load-order dependency, skips corrupt records), and `buildBackupData` emits them as a new top-level `payload.meds` array of wire-format records. **Restore:** `importAllData` clears stale `meds/*` keys (so a local med absent from the backup doesn't survive, matching settings-overwrite semantics) then writes each backed-up record to `meds/{id}`; `MedsManager.loadAll()` picks them up on the post-import reload (`history-ui.js:52` reloads after import). It also reports a new `medsRestored` count. `wellness_meds` stays in `EXPORT_SETTINGS_KEYS` (and satisfies the `CRITICAL_KEYS` coverage test) so **pre-F18 backups still restore** — the blob is written back and `_migrateLegacyBlob` folds it into per-record keys on reload; pre-F18 backups have no `meds` field, so the restore leaves `meds/*` untouched.
+
+`tests/export.test.js` gains a 7-case `describe('Export — per-record meds sweep (post-F18)')`: payload capture on a migrated device (blob gone), corrupt-record skip, empty-array case, restore + `medsRestored`, stale-key clearing, pre-F18-backup no-op, and a full export→import round-trip onto a fresh store. `sw.js` CACHE_NAME `v108-analytics-meds-adherence` → `v109-export-meds-records`. **Stacked on PR A**; merge order #112 → A → B.
+
+### Verification result
+
+Browser-verified at `tests/index.html?nosw=1` (fresh port to defeat Chrome's HTTP cache of the prior run's `export.test.js`): **811 passed / 4 failed of 815** — +7 from the new meds-sweep block, all green; the 4 failures remain the pre-existing `recovery-feed` NPE baseline; **zero export/import/meds failures**. `node --check` clean on `js/export.js` + `tests/export.test.js`.
+
+### Suggested Next Steps
+
+- **All three F18 orphaned readers are now fixed** (rhythm timeline #112, analytics adherence PR A, export/backup PR B). The "Remaining Tech Debt" bullet is marked resolved and can be dropped once the stack merges.
+- **Recovery-feed baseline** (`recovery-feed.test.js` ×4 NPEs) is the last open item — next in the stack.
+
+### Commits
+
+```
+fix(export): backup/export captures per-record meds/{id}, not just the deleted wellness_meds blob
+(branch fix/export-meds-records, stacked on PR A; squash hash assigned at PR merge)
+```
