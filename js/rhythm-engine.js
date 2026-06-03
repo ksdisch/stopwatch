@@ -115,24 +115,34 @@ const Rhythm = (() => {
     return out;
   }
 
+  // Reads the LIVE meds source (MedsManager) rather than the legacy
+  // `wellness_meds` blob: js/meds.js F18 per-record migration
+  // (_migrateLegacyBlob) deletes that key after moving each med to its own
+  // `meds/{medId}` key, so the blob is gone on any device that's migrated.
+  // Mirrors the Insights Meds-vs-Sleep panel + js/rhythm-insights.js _deps,
+  // which already read via MedsManager.all() + per-med getDoseLog().
   function getDoseEntries(startMs, endMs) {
-    const state = readJSON('wellness_meds');
-    if (!state || !Array.isArray(state.meds)) return [];
+    if (typeof MedsManager === 'undefined' || typeof MedsManager.all !== 'function') {
+      return [];
+    }
     const out = [];
-    state.meds.forEach(med => {
-      const doseLog = Array.isArray(med.doseLog) ? med.doseLog : [];
+    MedsManager.all().forEach(med => {
+      if (!med || typeof med.getDoseLog !== 'function') return;
+      const medId = (typeof med.getId === 'function' && med.getId()) || null;
+      const medName = (typeof med.getName === 'function' && med.getName()) || 'Medication';
+      const medDose = (typeof med.getDose === 'function' && med.getDose()) || '';
+      const dose = medDose ? ` ${medDose}` : '';
+      const doseLog = med.getDoseLog() || [];
       doseLog.forEach(d => {
         if (!d || typeof d.takenAt !== 'number') return;
         if (d.takenAt < startMs || d.takenAt >= endMs) return;
-        const medName = med.name || 'Medication';
-        const dose = med.dose ? ` ${med.dose}` : '';
         out.push({
           time: d.takenAt,
           type: 'dose-logged',
           module: 'meds',
           pillar: 'wellness',
           summary: `${medName}${dose} taken`,
-          metadata: { medId: med.id || null, medName, dose: med.dose || '' },
+          metadata: { medId, medName, dose: medDose },
         });
       });
     });
