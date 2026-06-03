@@ -64,6 +64,23 @@ function migrateBFRBStores() {
 
 function clearMedsStore() {
   localStorage.removeItem('wellness_meds');
+  // getMedAdherence now reads the live MedsManager (the wellness_meds blob is
+  // deleted by meds.js's F18 migration), so reset the in-memory singleton too.
+  if (typeof MedsManager !== 'undefined' && MedsManager.clear) MedsManager.clear();
+}
+
+// Seed meds via the live manager instead of the deleted wellness_meds blob:
+// clear, then add each med and replay its doseLog through logDose (which
+// stores { takenAt, deviceId } and keeps the log sorted — getMedAdherence
+// only reads takenAt, so results match the old blob-seeded path exactly).
+function seedMeds(meds) {
+  if (typeof MedsManager === 'undefined') return;
+  MedsManager.clear();
+  meds.forEach(m => {
+    const med = MedsManager.add({ name: m.name, dose: m.dose, frequency: m.frequency });
+    if (!med) return;
+    (m.doseLog || []).forEach(d => med.logDose(d.takenAt));
+  });
 }
 
 // ── § G — Focus streak (PR #25) ────────────────────────────────────────
@@ -470,10 +487,10 @@ describe('Analytics.getMedAdherence', () => {
   });
 
   it('as-needed meds are filtered out — no adherence concept', async () => {
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 'a', name: 'Advil', frequency: 'as-needed',
         doseLog: [{ takenAt: atHoursAgo(0, 10) }] },
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     assertEqual(r.meds.length, 0);
   });
@@ -481,9 +498,9 @@ describe('Analytics.getMedAdherence', () => {
   it('once-daily perfect 30-day log = 100%, all dots full', async () => {
     const log = [];
     for (let i = 0; i < 30; i++) log.push({ takenAt: atHoursAgo(i, 9) });
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 'v', name: 'Vyvanse', frequency: 'once-daily', doseLog: log },
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     assertEqual(r.meds[0].adherencePct, 100);
     assertEqual(r.meds[0].dots.every(d => d.status === 'full'), true);
@@ -495,9 +512,9 @@ describe('Analytics.getMedAdherence', () => {
       log.push({ takenAt: atHoursAgo(i, 9) });
       log.push({ takenAt: atHoursAgo(i, 21) });
     }
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 's', name: 'Strattera', frequency: 'twice-daily', doseLog: log },
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     assertEqual(r.meds[0].adherencePct, 100);
     assertEqual(r.meds[0].dots.every(d => d.status === 'full'), true);
@@ -509,9 +526,9 @@ describe('Analytics.getMedAdherence', () => {
       if (i === 5 || i === 14 || i === 22) continue;
       log.push({ takenAt: atHoursAgo(i, 9) });
     }
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 'v', name: 'Vyvanse', frequency: 'once-daily', doseLog: log },
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     assertEqual(r.meds[0].adherencePct, 90);
     assertEqual(r.meds[0].dots.filter(d => d.status === 'missed').length, 3);
@@ -525,9 +542,9 @@ describe('Analytics.getMedAdherence', () => {
         log.push({ takenAt: atHoursAgo(i, 21) });
       }
     }
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 's', name: 'Strattera', frequency: 'twice-daily', doseLog: log },
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     assertEqual(r.meds[0].adherencePct, 92);
     assertEqual(r.meds[0].dots.filter(d => d.status === 'partial').length, 5);
@@ -535,13 +552,13 @@ describe('Analytics.getMedAdherence', () => {
   });
 
   it('doses outside 30-day window are excluded', async () => {
-    localStorage.setItem('wellness_meds', JSON.stringify({ meds: [
+    seedMeds([
       { id: 'v', name: 'Old', frequency: 'once-daily', doseLog: [
         { takenAt: atHoursAgo(45, 9) },
         { takenAt: atHoursAgo(60, 9) },
         { takenAt: atHoursAgo(5, 9) },
       ]},
-    ]}));
+    ]);
     const r = await Analytics.getMedAdherence(30);
     // Only 1 in-window dose → 1/30 ≈ 3%
     assertEqual(r.meds[0].adherencePct, 3);

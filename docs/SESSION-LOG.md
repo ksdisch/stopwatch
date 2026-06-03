@@ -2032,3 +2032,33 @@ Browser-verified at `tests/index.html?nosw=1` (Kapture-driven host Chrome): **80
 fix(rhythm): Timeline dose dots read live MedsManager, not deleted wellness_meds blob (#13)
 (branch fix/rhythm-timeline-meds-source; squash hash assigned at PR merge)
 ```
+
+---
+
+## 2026-06-03 — Analytics adherence reads live MedsManager (sibling of #13)
+
+### What We Built
+
+Second of the three orphaned-reader fixes surfaced by the #13 blast-radius review. `js/analytics.js` `getMedAdherence()` read `localStorage['wellness_meds']` directly — the blob `js/meds.js`'s F18 migration **deletes** — so the Analytics **Medication-adherence** card rendered empty (`{ meds: [] }`) for every migrated user. Reached live from `analytics-ui.js:637` (`renderAnalytics()` on Analytics-tab show).
+
+Fix mirrors #13: `getMedAdherence` now guards `typeof MedsManager` and iterates `MedsManager.all()`, reading `getFrequency()` / `getDoseLog()` / `getId()` / `getName()` / `getDose()` instead of raw blob props. Confirmed the live source is populated in time: `MedsUI.init()` runs at `app.js:92` (app startup) and calls `MedsManager.loadAll()`, so the manager is loaded before any tab — including Analytics-first — can request adherence. The stale `// Reads localStorage directly ... safe even before app.js inits meds` comment (whose rationale the migration invalidated) was rewritten. The day-bucketing, window, score, and output shape are all unchanged.
+
+`tests/analytics.test.js` re-seeds the 7 adherence cases via the live manager: `clearMedsStore()` also clears the singleton, and a new `seedMeds()` helper does `MedsManager.clear()` → `add({name,dose,frequency})` → replay `doseLog` through `med.logDose(takenAt)`. Since `getMedAdherence` only reads `takenAt`, results match the old blob-seeded path exactly. `sw.js` CACHE_NAME `v107-rhythm-timeline-meds` → `v108-analytics-meds-adherence`.
+
+This PR is **stacked on #112** (`fix/rhythm-timeline-meds-source`) to avoid doc/cache conflicts; merge after #112.
+
+### Verification result
+
+Browser-verified at `tests/index.html?nosw=1`: **804 passed / 4 failed of 808** — total unchanged (the 7 adherence cases were reworked in place, not added/removed), the 4 failures are the same pre-existing `recovery-feed` NPE baseline, and **zero analytics/meds failures**. Both changed files pass `node --check`.
+
+### Suggested Next Steps
+
+- **Consumer #3 (export/backup, the highest-stakes sibling):** `js/export.js buildBackupData()` still omits all migrated meds from local backups — next in the stack (`fix/export-meds-records`).
+- **Recovery-feed baseline:** the 4 `recovery-feed.test.js` NPEs remain the standing suite cleanup.
+
+### Commits
+
+```
+fix(analytics): medication-adherence reads live MedsManager, not deleted wellness_meds blob
+(branch fix/analytics-meds-adherence-source, stacked on #112; squash hash assigned at PR merge)
+```

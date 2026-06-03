@@ -411,8 +411,14 @@ const Analytics = (() => {
   // Per-med dot row over the last N days against the user's declared
   // frequency. 'as-needed' meds are skipped — no adherence concept.
   //
-  // Reads localStorage directly (not the MedsManager singleton) so this is
-  // safe to call even before app.js finishes initializing meds.
+  // Reads the LIVE MedsManager (MedsManager.all() + per-med getters), NOT the
+  // legacy `wellness_meds` blob: js/meds.js's F18 per-record migration
+  // (_migrateLegacyBlob, meds.js:549) deletes that key after moving each med
+  // to its own `meds/{medId}` key, so the blob is gone on any migrated device
+  // and a direct read would render an empty adherence card. MedsManager is
+  // loaded at startup (MedsUI.init → MedsManager.loadAll, app.js:92), so it is
+  // populated before any tab can request analytics. Mirrors the rhythm-engine
+  // getDoseEntries source (backlog #13) and js/rhythm-insights.js _deps.
   //
   // Score per day:
   //   takenThatDay === 0                  → missed  (○)
@@ -421,11 +427,9 @@ const Analytics = (() => {
   //
   // Overall %: mean of per-day `min(1, taken / expected)` across the window.
   async function getMedAdherence(days = 30) {
-    let state;
-    try {
-      state = JSON.parse(localStorage.getItem('wellness_meds'));
-    } catch (e) { state = null; }
-    if (!state || !Array.isArray(state.meds)) return { meds: [] };
+    if (typeof MedsManager === 'undefined' || typeof MedsManager.all !== 'function') {
+      return { meds: [] };
+    }
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const windowStart = new Date(today);
@@ -435,11 +439,12 @@ const Analytics = (() => {
 
     const out = [];
 
-    state.meds.forEach(med => {
-      const freq = med.frequency || 'once-daily';
+    MedsManager.all().forEach(med => {
+      if (!med || typeof med.getDoseLog !== 'function') return;
+      const freq = (typeof med.getFrequency === 'function' && med.getFrequency()) || 'once-daily';
       if (freq === 'as-needed') return;
       const expected = freq === 'twice-daily' ? 2 : 1;
-      const doseLog = Array.isArray(med.doseLog) ? med.doseLog : [];
+      const doseLog = med.getDoseLog() || [];
 
       // Bucket each dose by its local-calendar day.
       const byDay = {};
@@ -466,9 +471,9 @@ const Analytics = (() => {
       }
 
       out.push({
-        id: med.id || null,
-        name: med.name || 'Medication',
-        dose: med.dose || '',
+        id: (typeof med.getId === 'function' && med.getId()) || null,
+        name: (typeof med.getName === 'function' && med.getName()) || 'Medication',
+        dose: (typeof med.getDose === 'function' && med.getDose()) || '',
         frequency: freq,
         expectedPerDay: expected,
         adherencePct: Math.round((scoreSum / days) * 100),
