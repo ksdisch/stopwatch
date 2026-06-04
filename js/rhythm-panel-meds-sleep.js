@@ -32,6 +32,16 @@
     return Utils.localDateKey(nd);
   }
 
+  // Compact hour label for the Onset y-axis (time strings): 18→'6p', 21→'9p',
+  // 24→'12a', 27→'3a', 30→'6a'. Input is a continuous night-hour (18..30).
+  function compactNightHour(nh) {
+    let h = ((Math.round(nh) % 24) + 24) % 24; // 18..30 → 18,21,0,3,6
+    if (h === 0) return '12a';
+    if (h === 12) return '12p';
+    if (h < 12) return h + 'a';
+    return (h - 12) + 'p';
+  }
+
   RI.register({
     key: KEY,
     title: 'Meds vs Sleep',
@@ -145,15 +155,39 @@
           ? 'Log bedtimes under Wellness › Recovery to chart sleep onset.'
           : 'No sleep hours logged for the nights after these doses yet.');
       } else {
-        const dims = RI.svgScaffold({ w: 320, h: 150, padL: 34, padR: 8, padT: 10, padB: 24 });
+        // Onset's y-labels are time strings ('12a'…) — give padL a touch more
+        // room than Duration's 'Nh' labels so they never clip on the left edge.
+        const dims = RI.svgScaffold({ w: 320, h: 150, padL: view === 'onset' ? 40 : 34, padR: 8, padT: 10, padB: 24 });
         const xMax = 24; // dose hour 0..24
 
         // Onset: convert bedtime to a continuous "night hour" so 11 PM (23) and
         // 12:30 AM (→24.5) sit adjacent; fixed 6 PM→6 AM band (18..30), earlier
-        // = top. Duration: hours slept, more = top.
+        // = top. Duration: hours slept, more = top — yMax snapped to a nice
+        // tick so dots align with the gridlines/labels.
+        const durTicks = view === 'duration'
+          ? RI.niceTicks(Math.max(12, ...usable.map(p => p.hours)), 4)
+          : null;
         const yMin = view === 'onset' ? 18 : 0;
-        const yMax = view === 'onset' ? 30 : Math.max(12, ...usable.map(p => p.hours));
+        const yMax = view === 'onset' ? 30 : durTicks[durTicks.length - 1];
         const yClamp = (v) => Math.max(yMin, Math.min(yMax, v));
+        const yToPx = (yVal) => dims.padT + dims.innerH - ((yVal - yMin) / (yMax - yMin || 1)) * dims.innerH;
+
+        // Y-axis ticks + the pixel rows they sit on (shared by gridlines).
+        let yTicks, yTickPx;
+        if (view === 'onset') {
+          const vals = [18, 21, 24, 27, 30];
+          yTicks = vals.map(v => ({ y: yToPx(v), label: compactNightHour(v) }));
+          yTickPx = yTicks.map(t => t.y);
+        } else {
+          yTicks = durTicks.map(v => ({ y: yToPx(v), label: v + 'h' }));
+          yTickPx = yTicks.map(t => t.y);
+        }
+
+        // X-axis ticks at the four 6-hour marks + midnight bookends.
+        const xTicks = [0, 6, 12, 18, 24].map(h => ({
+          x: dims.padL + (h / xMax) * dims.innerW,
+          label: RI.fmtHour(h),
+        }));
 
         const dots = usable.map(p => {
           const x = dims.padL + (p.doseHour / xMax) * dims.innerW;
@@ -166,23 +200,25 @@
             yVal = yClamp(p.hours);
             yLabel = p.hours + ' h';
           }
-          const y = dims.padT + dims.innerH - ((yVal - yMin) / (yMax - yMin || 1)) * dims.innerH;
+          const y = yToPx(yVal);
           const color = RI.qualityColor(p.quality);
-          const tip = p.doseDayLabel + ': dose ' + RI.fmtHour(p.doseHour) + ' → ' + yLabel
-            + (p.quality ? ' · q' + p.quality : '');
+          const tip = p.doseDayLabel + ' · dose ' + RI.fmtHour(p.doseHour) + ' → ' + yLabel
+            + (p.quality ? ' · q' + p.quality + '/5' : '');
           return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5"'
-            + ' fill="' + color + '" fill-opacity="0.85"><title>' + escapeHtml(tip) + '</title></circle>';
+            + ' fill="' + color + '" fill-opacity="0.85"'
+            + ' data-day="' + escapeHtml(p.doseDayKey) + '"'
+            + ' data-tip="' + escapeHtml(tip) + '"/>';
         }).join('');
 
-        // x-axis baseline + tick labels (12a / 6a / 12p / 6p / 12a).
-        const baseY = dims.padT + dims.innerH;
-        const axis = '<line x1="' + dims.padL + '" y1="' + dims.padT + '" x2="' + dims.padL + '" y2="' + baseY + '" stroke="var(--btn-border)" stroke-width="1"/>'
-          + '<line x1="' + dims.padL + '" y1="' + baseY + '" x2="' + (dims.padL + dims.innerW) + '" y2="' + baseY + '" stroke="var(--btn-border)" stroke-width="1"/>';
+        // Axis baselines + tick labels + faint gridlines, emitted BEFORE the
+        // dots so the dots render on top and stay hoverable.
+        const axis = RI.xAxis(dims, xTicks) + RI.yAxis(dims, yTicks);
+        const grid = RI.gridlines(dims, { ys: yTickPx });
 
         chart = '<svg class="rhythm-ms-chart" viewBox="0 0 ' + dims.W + ' ' + dims.H + '"'
           + ' width="100%" height="' + dims.H + '" role="img"'
           + ' aria-label="Scatter of first dose hour versus ' + (view === 'onset' ? 'bedtime' : 'hours slept') + '">'
-          + axis + dots + '</svg>'
+          + axis + grid + dots + '</svg>'
           + '<div class="rhythm-ms-axis">'
           + '<span>' + (view === 'onset' ? 'Earlier bedtime ↑' : 'More sleep ↑') + '</span>'
           + '<span>Earlier dose → later dose</span>'
