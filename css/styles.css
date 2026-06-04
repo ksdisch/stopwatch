@@ -5771,3 +5771,60 @@ body.focus-mode .global-bfrb-fab {
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
+
+/* Shared axis + gridline chrome for the SVG insight panels (RI.gridlines /
+   RI.xAxis / RI.yAxis). Set as CSS so they track light/dark themes. */
+.rhythm-gridline {
+  stroke: var(--btn-border);
+  stroke-width: 1;
+  opacity: 0.35;
+}
+.rhythm-axis-line {
+  stroke: var(--btn-border);
+  stroke-width: 1;
+}
+.rhythm-axis-text {
+  fill: var(--text-secondary, #8e8e93);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cross-panel day highlight: hovering any element with data-day="YYYY-MM-DD"
+   emphasizes every element sharing that day across all panels. HTML bars get an
+   outline; SVG dots get a contrasting stroke. */
+.rhythm-day-hi {
+  outline: 2px solid var(--active-accent, #007aff);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+circle.rhythm-day-hi,
+rect.rhythm-day-hi {
+  outline: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  paint-order: stroke;
+}
+
+/* Shared custom hover tooltip: a single <div> on <body> that follows the
+   cursor (positioned inline by JS). pointer-events:none so it never eats the
+   hover it describes. */
+.rhythm-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 220px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--btn-bg, #1c1c1e);
+  color: var(--text, #fff);
+  border: 1px solid var(--btn-border);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-line;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.rhythm-tooltip[hidden] {
+  display: none;
+}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v109-export-meds-records';
+const CACHE_NAME = 'stopwatch-v110-rhythm-insights-foundation';
 const ASSETS = [
   './',
   './index.html',
