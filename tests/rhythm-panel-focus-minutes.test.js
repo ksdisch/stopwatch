@@ -106,5 +106,37 @@
       assert(/data-insight-panel="focus-minutes"/.test(html), 'card hook present');
       assert(/91 min · 14d/.test(html), 'aside total present');
     });
+
+    it('render(populated) shows the y-scale peak label + a 0 baseline', () => {
+      const model = {
+        days: 14,
+        series: RI.windowDays(14, NOW).map((w, i) => ({ key: w.key, label: w.label, value: i })),
+        totalMin: 91,
+        maxMin: 13,
+      };
+      const html = panel().render(model);
+      // Peak (maxMin) shown at the top of the gutter, with the "min" unit.
+      assert(/13 min<\/span>/.test(html), 'max-value scale label present');
+      assert(/>0<\/span>/.test(html), '0 baseline label present');
+    });
+
+    it('render(populated) emits data-day + data-tip on columns and drops title=', () => {
+      const win = RI.windowDays(14, NOW);
+      const model = {
+        days: 14,
+        series: win.map((w, i) => ({ key: w.key, label: w.label, value: i })),
+        totalMin: 91,
+        maxMin: 13,
+      };
+      const html = panel().render(model);
+      // Cross-panel highlight hook: data-day carries the YYYY-MM-DD key.
+      assert(/data-day="/.test(html), 'data-day present on columns');
+      assert(html.indexOf('data-day="' + win[0].key + '"') !== -1, 'data-day uses the series key');
+      // Shared hover tooltip hook, ' · '-joined single line with the min unit.
+      assert(/data-tip="/.test(html), 'data-tip present on columns');
+      assert(/ · \d+ min"/.test(html), 'data-tip is the label · value min line');
+      // The old native title= tooltip is gone (replaced by the shared tooltip).
+      assert(/ title="/.test(html) === false, 'no native title= attribute remains');
+    });
   });
 })();
