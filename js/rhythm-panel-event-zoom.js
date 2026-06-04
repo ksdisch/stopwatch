@@ -1,4 +1,5 @@
-/* CSS NEEDED (add to css/styles.css — .rhythm-zoom-* classes don't exist yet):
+/* STRUCTURAL CSS (lives in css/styles.css — the .rhythm-zoom-* classes already
+   exist; this block documents the layout contract, it is NOT a to-do):
 
    .rhythm-zoom-strip {
      display: flex;
@@ -126,13 +127,30 @@
         const tip = d.label + ' · ' + d.total + ' session' + (d.total === 1 ? '' : 's')
           + ' (' + d.productivity + ' prod / ' + d.wellness + ' wellness)';
 
-        return '<div class="rhythm-zoom-col" title="' + escapeHtml(tip) + '">'
+        // data-day joins the foundation's cross-panel highlight; data-tip drives
+        // the shared hover tooltip (replaces the old native title=). The column —
+        // not the inner segments — carries both so the whole day reads as one unit.
+        return '<div class="rhythm-zoom-col" data-day="' + escapeHtml(d.key)
+          + '" data-tip="' + escapeHtml(tip) + '">'
           + '<div class="rhythm-zoom-bar">' + segs + '</div>'
           + '<span class="rhythm-zoom-label">' + escapeHtml(labelTxt) + '</span>'
           + '</div>';
       }).join('');
 
-      let body = '<div class="rhythm-zoom-strip">' + cols + '</div>';
+      // Peak reference — the busiest single day's session count anchors the
+      // proportional bar heights so the strip is readable without a full axis.
+      const peak = '<div style="font-size:10px;color:var(--text-secondary);margin-bottom:4px">'
+        + escapeHtml('peak ' + max + ' session' + (max === 1 ? '' : 's')) + '</div>';
+
+      // Legend — makes the two stacked segment colors interpretable. Inline-styled
+      // swatches (coordinator owns styles.css; no new CSS classes here).
+      const sw = 'display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle';
+      const legend = '<div style="display:flex;gap:12px;font-size:10px;color:var(--text-secondary);margin-top:6px">'
+        + '<span><span style="' + sw + ';background:var(--active-accent,#007aff)"></span>Productivity</span>'
+        + '<span><span style="' + sw + ';background:var(--green)"></span>Wellness</span>'
+        + '</div>';
+
+      let body = peak + '<div class="rhythm-zoom-strip">' + cols + '</div>' + legend;
       if (model.grandTotal === 0) {
         body += RI.empty('No sessions in the last 14 days.');
       }

@@ -153,5 +153,56 @@
       assertEqual(typeof html, 'string');
       assert(/data-insight-panel="event-zoom"/.test(html), 'card hook present even on null');
     });
+
+    it('render(populated) includes the Productivity/Wellness legend', () => {
+      const days = RI.windowDays(14, NOW).map((w, i) => ({
+        key: w.key, label: w.label, productivity: i % 2, wellness: (i % 3 === 0) ? 1 : 0,
+        total: (i % 2) + ((i % 3 === 0) ? 1 : 0),
+      }));
+      const grandTotal = days.reduce((s, d) => s + d.total, 0);
+      const maxTotal = days.reduce((m, d) => Math.max(m, d.total), 0);
+      const html = panel().render({ days: days, maxTotal: maxTotal, grandTotal: grandTotal });
+      assert(/Productivity/.test(html), 'legend Productivity label present');
+      assert(/Wellness/.test(html), 'legend Wellness label present');
+    });
+
+    it('render(populated) shows the peak/maxTotal scale reference', () => {
+      const days = RI.windowDays(14, NOW).map((w, i) => ({
+        key: w.key, label: w.label, productivity: (i === 0) ? 4 : 0, wellness: 0,
+        total: (i === 0) ? 4 : 0,
+      }));
+      const grandTotal = days.reduce((s, d) => s + d.total, 0);
+      const maxTotal = days.reduce((m, d) => Math.max(m, d.total), 0); // 4
+      const html = panel().render({ days: days, maxTotal: maxTotal, grandTotal: grandTotal });
+      assert(/peak 4 sessions/.test(html), 'peak reference reflects maxTotal');
+    });
+
+    it('peak reference singularizes "session" when maxTotal is 1', () => {
+      const days = RI.windowDays(14, NOW).map((w, i) => ({
+        key: w.key, label: w.label, productivity: (i === 0) ? 1 : 0, wellness: 0,
+        total: (i === 0) ? 1 : 0,
+      }));
+      const html = panel().render({ days: days, maxTotal: 1, grandTotal: 1 });
+      assert(/peak 1 session(?!s)/.test(html), 'peak reference singular for maxTotal 1');
+    });
+
+    it('columns emit data-day + data-tip and no native title= (foundation contract)', () => {
+      const days = RI.windowDays(14, NOW).map((w, i) => ({
+        key: w.key, label: w.label, productivity: i % 2, wellness: (i % 3 === 0) ? 1 : 0,
+        total: (i % 2) + ((i % 3 === 0) ? 1 : 0),
+      }));
+      const grandTotal = days.reduce((s, d) => s + d.total, 0);
+      const maxTotal = days.reduce((m, d) => Math.max(m, d.total), 0);
+      const html = panel().render({ days: days, maxTotal: maxTotal, grandTotal: grandTotal });
+      assert(/data-day="/.test(html), 'data-day attr present on columns');
+      assert(/data-tip="/.test(html), 'data-tip attr present on columns');
+      // the tip string still carries the rich per-day summary
+      assert(/prod \/ /.test(html), 'tip retains prod/wellness breakdown');
+      // the old native title= attribute is gone (replaced by data-tip)
+      assert(/rhythm-zoom-col/.test(html), 'columns rendered');
+      assert(!/ title="/.test(html), 'no leftover native title= attribute');
+      // the data-day value should be a YYYY-MM-DD key, not the human label
+      assert(new RegExp('data-day="' + days[0].key + '"').test(html), 'data-day uses the day key');
+    });
   });
 })();
