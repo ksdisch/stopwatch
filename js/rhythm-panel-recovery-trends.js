@@ -7,6 +7,11 @@
 // though the three live on totally different numeric ranges. The latest value
 // is shown on the right, formatted with its unit.
 //
+// Interactivity: each sparkline point renders a small <circle> marker carrying
+// inert data-tip + data-day attributes. The Insights foundation's single
+// delegated listener (rhythm-insights.js) consumes those to drive the shared
+// cursor tooltip + the cross-panel day-highlight — this panel stays pure.
+//
 // CSS: reuses the existing generic insight building blocks
 //   .rhythm-spark / .rhythm-spark-row / .rhythm-spark-label / .rhythm-spark-value
 // (styles.css ~5678). No new CSS needed.
@@ -60,14 +65,18 @@
       if (rows.length === 0) return { empty: true };
 
       const metrics = METRICS.map(meta => {
-        const values = rows
-          .map(r => r[meta.field])
-          .filter(isNum);
+        // Retain each value's day so render() can stamp per-point data-day for
+        // the cross-panel highlight. Drop non-numeric readings per metric only.
+        const points = rows
+          .map(r => ({ day: r.day, value: r[meta.field] }))
+          .filter(p => isNum(p.value));
+        const values = points.map(p => p.value);
         return {
           label: meta.label,
           unit: meta.unit,
           field: meta.field,
           stroke: meta.stroke,
+          points: points,
           values: values,
           latest: values.length ? values[values.length - 1] : null,
           min: values.length ? Math.min(...values) : null,
@@ -102,21 +111,37 @@
 
         // < 2 numeric values → no line (nothing to plot a trend with).
         let spark = '';
-        if (metric.values && metric.values.length >= 2) {
+        const points = (metric.points && metric.points.length)
+          ? metric.points
+          : (metric.values || []).map(v => ({ day: null, value: v })); // tolerate older model shape
+        if (points.length >= 2) {
           const min = metric.min;
           const max = metric.max;
           const span = (max - min) || 1; // flat series → midline (avoids /0)
-          const n = metric.values.length;
-          const pts = metric.values.map((v, i) => {
+          const n = points.length;
+          const pts = points.map((p, i) => {
             const x = dims.padL + (n === 1 ? dims.innerW / 2 : (i * dims.innerW) / (n - 1));
-            const y = dims.padT + dims.innerH - ((v - min) / span) * dims.innerH;
-            return { x: x, y: y, value: v };
+            const y = dims.padT + dims.innerH - ((p.value - min) / span) * dims.innerH;
+            return { x: x, y: y, value: p.value, day: p.day };
           });
+          // Hoverable data-point markers, drawn LAST so they sit on top of the
+          // polyline + receive pointer events. Each carries data-day (joins the
+          // shared cross-panel day-highlight — CSS strokes .rhythm-day-hi circles)
+          // and data-tip (the foundation's shared cursor tooltip).
+          const markers = pts.map(p => {
+            const cx = p.x.toFixed(1);
+            const cy = p.y.toFixed(1);
+            const tip = metric.label + ' · ' + fmt(p.value) + (p.day ? ' · ' + p.day : '');
+            const dayAttr = p.day ? ' data-day="' + escapeHtml(p.day) + '"' : '';
+            return '<circle cx="' + cx + '" cy="' + cy + '" r="1.8" fill="' + stroke + '"'
+              + dayAttr + ' data-tip="' + escapeHtml(tip) + '"/>';
+          }).join('');
           spark = '<svg class="rhythm-spark" viewBox="0 0 ' + dims.W + ' ' + dims.H + '"'
             + ' width="100%" height="' + dims.H + '" preserveAspectRatio="none" role="img"'
             + ' aria-label="' + escapeHtml(metric.label) + ' last ' + n + ' readings">'
             + '<polyline fill="none" stroke="' + stroke + '" stroke-width="1.5"'
             + ' stroke-linejoin="round" stroke-linecap="round" points="' + RI.polyline(pts) + '"/>'
+            + markers
             + '</svg>';
         }
 

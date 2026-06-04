@@ -69,6 +69,13 @@
       assertEqual(hrv.max, 70);
       assertEqual(hrv.unit, 'ms');
 
+      // points retain the per-reading day in the SAME ascending order as values,
+      // so render() can stamp data-day on each marker for the cross-panel highlight.
+      assertEqual(hrv.points.length, 3);
+      assertArrayEqual(hrv.points.map(p => p.value), [50, 62, 70]);
+      assertArrayEqual(hrv.points.map(p => p.day),
+        [dayKeyOffset(-3), dayKeyOffset(-2), dayKeyOffset(-1)]);
+
       const acwr = metric(model, 'ACWR');
       assertArrayEqual(acwr.values, [0.8, 1.0, 1.2]);
       assertClose(acwr.latest, 1.2, 0.0001);
@@ -94,8 +101,12 @@
       const model = await panel().build(deps);
       const hrv = metric(model, 'HRV');
       assertArrayEqual(hrv.values, [50, 62]); // NaN row dropped
+      // points drop the same NaN reading, so each surviving value keeps its day.
+      assertArrayEqual(hrv.points.map(p => p.value), [50, 62]);
+      assertArrayEqual(hrv.points.map(p => p.day), [dayKeyOffset(-2), dayKeyOffset(-1)]);
       const acwr = metric(model, 'ACWR');
       assertArrayEqual(acwr.values, [1.1]);   // only the last row had a numeric acwr
+      assertArrayEqual(acwr.points.map(p => p.day), [dayKeyOffset(0)]);
       const rhr = metric(model, 'RHR');
       assertArrayEqual(rhr.values, [60, 58, 55]);
     });
@@ -130,6 +141,7 @@
       const html = panel().render({ empty: true }, { state: () => ({}) });
       assert(/data-insight-panel="recovery-trends"/.test(html), 'card hook present');
       assert(/Sign in/.test(html), 'sign-in empty copy present');
+      assert(!/<circle/.test(html), 'empty state draws no hoverable markers');
     });
 
     it('render() of a populated model produces svg sparklines + formatted values', async () => {
@@ -153,6 +165,21 @@
       assert(/1\.25/.test(html), 'ACWR latest to 2 decimals');
       assert(/55 bpm/.test(html), 'RHR latest formatted with unit');
       assert(/last 14d/.test(html), 'aside present');
+
+      // Per-point hoverable markers join the shared tooltip + cross-panel highlight.
+      assert(/<circle/.test(html), 'renders hoverable circle markers');
+      // 3 rows × 3 metrics, all numeric → 9 markers, each with data-day + data-tip.
+      const circles = html.match(/<circle\b[^>]*>/g) || [];
+      assertEqual(circles.length, 9);
+      assert(circles.every(c => /\sdata-day="\d{4}-\d{2}-\d{2}"/.test(c)),
+        'every marker carries a YYYY-MM-DD data-day');
+      assert(circles.every(c => /\sdata-tip="/.test(c)),
+        'every marker carries a data-tip');
+      // The tooltip text is the label · formatted value · day for the point.
+      assert(html.indexOf('data-tip="HRV · 70 ms · ' + dayKeyOffset(0) + '"') >= 0,
+        'HRV latest marker tip = label · value · day');
+      assert(html.indexOf('data-day="' + dayKeyOffset(0) + '"') >= 0,
+        'latest day stamped on a marker');
     });
 
     it('shows an em-dash and no line for a metric with < 2 numeric values', async () => {
@@ -170,8 +197,11 @@
       assertEqual(acwr.values.length, 0);
       const html = panel().render(model, { state: () => ({}) });
       assert(/—/.test(html), 'em-dash shown for the sparse metric');
-      // HRV (2 values) still draws a polyline.
+      // HRV (2 values) still draws a polyline + 2 markers; RHR (2 values) too.
       assert(/<polyline/.test(html), 'HRV still drawn');
+      // ACWR (0 values) contributes no markers — only HRV(2) + RHR(2) = 4 circles.
+      const circles = html.match(/<circle\b[^>]*>/g) || [];
+      assertEqual(circles.length, 4);
     });
 
     it('render() never throws on a malformed model', () => {
