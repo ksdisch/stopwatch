@@ -131,5 +131,83 @@
       assert(/Phone/.test(noStrip), 'leaderboard still renders without an hour strip');
     });
 
+    // ── polish: tick labels + units + tooltip (data-tip, no title) ────────
+    it('by-hour axis emits evenly-spaced 4h tick labels (12a · 4a · 8a · 12p · 4p · 8p · 11p)', async () => {
+      const hourly = emptyHourly();
+      hourly[9] = 3;
+      const html = panel().render(await panel().build(deps({
+        total: 3,
+        top5: [{ category: 'phone', flow: 0, pomodoro: 3, total: 3 }],
+        hourly: hourly,
+      })));
+      assert(/>12a</.test(html), 'midnight tick 12a present');
+      assert(/>4a</.test(html), 'morning tick 4a present');
+      assert(/>8a</.test(html), 'morning tick 8a present');
+      assert(/>12p</.test(html), 'noon tick 12p present');
+      assert(/>4p</.test(html), 'afternoon tick 4p present');
+      assert(/>8p</.test(html), 'evening tick 8p present');
+      assert(/>11p</.test(html), 'last tick 11p present');
+    });
+
+    it('hour cells carry data-tip (with a unit) and NO title=', async () => {
+      const hourly = emptyHourly();
+      hourly[9] = 5; // plural
+      hourly[10] = 1; // singular
+      const html = panel().render(await panel().build(deps({
+        total: 6,
+        top5: [{ category: 'phone', flow: 0, pomodoro: 6, total: 6 }],
+        hourly: hourly,
+      })));
+      // strip cells use data-tip, never title=
+      assert(/analytics-distraction-hour[^>]*data-tip="/.test(html), 'hour cell has data-tip');
+      assertEqual(/analytics-distraction-hour[^>]*\stitle="/.test(html), false);
+      // unit + pluralization on the tooltip text
+      assert(/9 AM · 5 distractions/.test(html), 'plural unit on the peak cell tip');
+      assert(/10 AM · 1 distraction"/.test(html), 'singular unit on a 1-count cell tip');
+    });
+
+    it('leaderboard rows carry a data-tip with category · total · flow/pomodoro breakdown', async () => {
+      const html = panel().render(await panel().build(deps({
+        total: 7,
+        top5: [
+          { category: 'phone', flow: 4, pomodoro: 2, total: 6 },
+          { category: 'email', flow: 0, pomodoro: 1, total: 1 },
+        ],
+        hourly: [],
+      })));
+      assert(/analytics-distraction-row[^>]*data-tip="/.test(html), 'leaderboard row has data-tip');
+      assert(/Phone · 6 distractions \(4 flow \/ 2 pomodoro\)/.test(html), 'phone row tip text');
+      // singular noun at total 1
+      assert(/Email · 1 distraction \(0 flow \/ 1 pomodoro\)/.test(html), 'email row tip text (singular)');
+    });
+
+    it('card aside + subtitle carry an explicit distractions unit', async () => {
+      const many = panel().render(await panel().build(deps({
+        total: 12,
+        top5: [{ category: 'phone', flow: 6, pomodoro: 6, total: 12 }],
+        hourly: [],
+      })));
+      assert(/12 distractions · all-time/.test(many), 'aside spells out the unit (plural)');
+      assert(/12 distractions logged across Flow \+ Pomodoro · all-time/.test(many), 'subtitle spells out the unit');
+
+      const one = panel().render(await panel().build(deps({
+        total: 1,
+        top5: [{ category: 'phone', flow: 0, pomodoro: 1, total: 1 }],
+        hourly: [],
+      })));
+      assert(/1 distraction · all-time/.test(one), 'aside singular at total 1');
+    });
+
+    it('emits NO data-day attribute (organized by hour-of-day, not calendar date)', async () => {
+      const hourly = emptyHourly();
+      hourly[9] = 5;
+      const html = panel().render(await panel().build(deps({
+        total: 5,
+        top5: [{ category: 'phone', flow: 0, pomodoro: 5, total: 5 }],
+        hourly: hourly,
+      })));
+      assertEqual(/data-day=/.test(html), false);
+    });
+
   });
 })();
