@@ -96,6 +96,64 @@
     });
   });
 
+  // ── axis / gridline / niceTicks helpers ─────────────────────────────
+  describe('RhythmInsights axis helpers', () => {
+    const dims = RI.svgScaffold({ w: 200, h: 100, padL: 20, padR: 10, padT: 10, padB: 20 });
+
+    it('gridlines emits one <line.rhythm-gridline> per position', () => {
+      const s = RI.gridlines(dims, { ys: [30, 50], xs: [40] });
+      assertEqual((s.match(/<line/g) || []).length, 3);
+      assert(/class="rhythm-gridline"/.test(s), 'gridline class present');
+      assert(s.indexOf('NaN') === -1, 'no NaN coords');
+    });
+
+    it('xAxis emits a baseline + tick labels, edge-anchored to avoid clipping', () => {
+      const s = RI.xAxis(dims, [
+        { x: dims.padL, label: '12 AM' },                          // left edge
+        { x: dims.padL + dims.innerW / 2, label: '12 PM' },        // middle
+        { x: dims.padL + dims.innerW, label: '12 AM' },            // right edge
+      ]);
+      assert(/class="rhythm-axis-line"/.test(s), 'axis baseline present');
+      assert(/>12 PM<\/text>/.test(s), 'middle tick label rendered');
+      assert(/text-anchor="start"/.test(s), 'left tick anchored start');
+      assert(/text-anchor="end"/.test(s), 'right tick anchored end');
+      assert(/text-anchor="middle"/.test(s), 'middle tick anchored middle');
+    });
+
+    it('yAxis emits a left baseline + right-anchored value labels', () => {
+      const s = RI.yAxis(dims, [{ y: dims.padT, label: '8 h' }, { y: dims.padT + dims.innerH, label: '0 h' }]);
+      assert(/class="rhythm-axis-line"/.test(s), 'y baseline present');
+      assert(/text-anchor="end"/.test(s), 'labels right-anchored');
+      assert(/>8 h<\/text>/.test(s) && />0 h<\/text>/.test(s), 'both tick labels present');
+    });
+
+    it('xAxis escapes tick labels', () => {
+      const s = RI.xAxis(dims, [{ x: 50, label: '<b>x</b>' }]);
+      assert(s.indexOf('<b>x</b>') === -1, 'raw markup not injected');
+      assert(/&lt;b&gt;/.test(s), 'label escaped');
+    });
+
+    it('niceTicks covers 0..max with round 1/2/5 steps', () => {
+      assertArrayEqual(RI.niceTicks(120, 4), [0, 50, 100, 150]);
+      assertArrayEqual(RI.niceTicks(9, 4), [0, 5, 10]);
+      assertArrayEqual(RI.niceTicks(6, 3), [0, 2, 4, 6]);
+      const t = RI.niceTicks(0, 4); // degenerate max → falls back to 1
+      assertEqual(t[0], 0);
+      assert(t[t.length - 1] >= 1, 'covers the fallback max');
+    });
+
+    it('skips non-finite coords instead of emitting NaN attributes', () => {
+      const g = RI.gridlines(dims, { ys: [NaN, 50], xs: [undefined] });
+      assert(g.indexOf('NaN') === -1, 'no NaN in gridlines');
+      assertEqual((g.match(/<line/g) || []).length, 1); // only the finite y=50 survives
+      const xs = RI.xAxis(dims, [{ x: NaN, label: 'bad' }, { x: 50, label: 'ok' }]);
+      assert(xs.indexOf('NaN') === -1, 'no NaN in xAxis');
+      assert(/>ok<\/text>/.test(xs) && xs.indexOf('>bad<') === -1, 'bad tick skipped, good tick kept');
+      const ys = RI.yAxis({ padL: NaN, padT: 0, innerW: 10, innerH: 10 }, [{ y: 5, label: 'z' }]);
+      assert(ys.indexOf('NaN') === -1, 'malformed dims → no NaN, no output');
+    });
+  });
+
   // ── registry ────────────────────────────────────────────────────────
   describe('RhythmInsights registry', () => {
     it('sorts panels by order, then registration sequence', () => {
@@ -153,6 +211,124 @@
       const failCard = div.querySelector('[data-insight-panel="__ri_fail__"]');
       assert(failCard, 'fail panel still produced a fallback card');
       assert(/Could not load/.test(failCard.textContent), 'fail panel shows fallback copy');
+    });
+  });
+
+  // ── hover: shared tooltip + cross-panel day highlight ───────────────
+  describe('RhythmInsights hover interactivity', () => {
+    const emptyDeps = {
+      now: () => NOW, getMeds: () => [], getRestLog: () => ({}), getSessions: async () => [],
+      getRecoveryHistory: () => ({ rows: [] }), getBfrbEvents: () => [],
+      getBfrbTrend: async () => ({ days: 14, series: [], total: 0 }),
+      getDistractions: async () => ({ total: 0, top5: [], hourly: [] }), getDayTimeline: async () => [],
+    };
+
+    it('shows the cursor tooltip and highlights every same-day element across panels', async () => {
+      // Two panels, each with a dot for 2026-05-20, plus one for 2026-05-19.
+      RI.register({
+        key: '__ri_hov_a__', title: 'A', order: 994, build: () => ({}),
+        render: () => RI.card({ key: '__ri_hov_a__', label: 'A', body:
+          '<svg viewBox="0 0 100 20">'
+          + '<circle id="hov-a1" data-day="2026-05-20" data-tip="dose 8 AM" r="3"/>'
+          + '<circle id="hov-a2" data-day="2026-05-19" data-tip="dose 9 AM" r="3"/>'
+          + '</svg>' }),
+      });
+      RI.register({
+        key: '__ri_hov_b__', title: 'B', order: 995, build: () => ({}),
+        render: () => RI.card({ key: '__ri_hov_b__', label: 'B', body:
+          '<div id="hov-b1" data-day="2026-05-20" data-tip="120 min">x</div>' }),
+      });
+
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+      await RI.renderInto(div, { deps: emptyDeps, days: 14 });
+
+      const a1 = div.querySelector('#hov-a1');
+      a1.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 30, clientY: 30 }));
+
+      // cross-panel highlight: BOTH 05-20 elements (across panels A + B) light up;
+      // the 05-19 dot does not.
+      assert(div.querySelector('#hov-a1').classList.contains('rhythm-day-hi'), 'hovered dot highlighted');
+      assert(div.querySelector('#hov-b1').classList.contains('rhythm-day-hi'), 'same-day element in OTHER panel highlighted');
+      assert(!div.querySelector('#hov-a2').classList.contains('rhythm-day-hi'), 'different-day dot not highlighted');
+
+      // tooltip: single div on <body>, visible, showing the hovered tip text.
+      const tip = document.querySelector('.rhythm-tooltip');
+      assert(tip, 'tooltip element created');
+      assertEqual(tip.hidden, false);
+      assertEqual(tip.textContent, 'dose 8 AM');
+
+      // leaving the container clears the highlight and hides the tooltip.
+      div.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+      assert(!div.querySelector('#hov-a1').classList.contains('rhythm-day-hi'), 'highlight cleared on leave');
+      assertEqual(document.querySelector('.rhythm-tooltip').hidden, true);
+
+      document.body.removeChild(div);
+    });
+
+    it('hides the tooltip when hovering bare chart space (no data-tip ancestor)', async () => {
+      RI.register({
+        key: '__ri_hov_c__', title: 'C', order: 996, build: () => ({}),
+        render: () => RI.card({ key: '__ri_hov_c__', label: 'C', body:
+          '<svg id="hov-svg" viewBox="0 0 100 20">'
+          + '<circle id="hov-c1" data-day="2026-05-20" data-tip="hi" r="3"/></svg>' }),
+      });
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+      await RI.renderInto(div, { deps: emptyDeps, days: 14 });
+
+      div.querySelector('#hov-c1').dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 5, clientY: 5 }));
+      assertEqual(document.querySelector('.rhythm-tooltip').hidden, false);
+      // move onto the bare <svg> (no data-tip) → tooltip hides, highlight clears.
+      div.querySelector('#hov-svg').dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 60, clientY: 5 }));
+      assertEqual(document.querySelector('.rhythm-tooltip').hidden, true);
+      assert(!div.querySelector('#hov-c1').classList.contains('rhythm-day-hi'), 'highlight cleared off-point');
+
+      document.body.removeChild(div);
+    });
+
+    it('re-applies the SAME-day highlight after a re-render (no stale _hiDay short-circuit)', async () => {
+      RI.register({
+        key: '__ri_hov_d__', title: 'D', order: 997, build: () => ({}),
+        render: () => RI.card({ key: '__ri_hov_d__', label: 'D', body:
+          '<svg viewBox="0 0 100 20"><circle id="hov-d1" data-day="2026-05-20" data-tip="d" r="3"/></svg>' }),
+      });
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+      const fire = () => div.querySelector('#hov-d1')
+        .dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 10, clientY: 10 }));
+
+      await RI.renderInto(div, { deps: emptyDeps, days: 14 });
+      fire();
+      assert(div.querySelector('#hov-d1').classList.contains('rhythm-day-hi'), 'first hover highlights');
+
+      await RI.renderInto(div, { deps: emptyDeps, days: 14 }); // rebuild destroys the old node
+      assert(!div.querySelector('#hov-d1').classList.contains('rhythm-day-hi'), 'highlight cleared by rebuild');
+
+      fire(); // re-hover the SAME day — must re-apply (regression: stale _hiDay early-returned)
+      assert(div.querySelector('#hov-d1').classList.contains('rhythm-day-hi'),
+        'same-day highlight re-applies after re-render');
+
+      document.body.removeChild(div);
+    });
+
+    it('resetHover() hides the tooltip + clears highlight (consumer route-away path)', async () => {
+      RI.register({
+        key: '__ri_hov_e__', title: 'E', order: 998, build: () => ({}),
+        render: () => RI.card({ key: '__ri_hov_e__', label: 'E', body:
+          '<svg viewBox="0 0 100 20"><circle id="hov-e1" data-day="2026-05-20" data-tip="e" r="3"/></svg>' }),
+      });
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+      await RI.renderInto(div, { deps: emptyDeps, days: 14 });
+      div.querySelector('#hov-e1').dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 10, clientY: 10 }));
+      assertEqual(document.querySelector('.rhythm-tooltip').hidden, false);
+
+      RI.resetHover();
+      assertEqual(document.querySelector('.rhythm-tooltip').hidden, true);
+      assert(!div.querySelector('#hov-e1').classList.contains('rhythm-day-hi'), 'resetHover clears highlight');
+
+      document.body.removeChild(div);
     });
   });
 

@@ -198,6 +198,95 @@ const RhythmInsights = (() => {
     return (h - 12) + ' PM';
   }
 
+  // ── Axis / gridline helpers ────────────────────────────────────────
+  // Pixel-based + composable: the panel owns its data→pixel scale and passes
+  // already-projected coordinates, so these stay scale-agnostic and every SVG
+  // panel draws ticks/gridlines/labels identically. Styling lives in CSS
+  // (.rhythm-gridline / .rhythm-axis-line / .rhythm-axis-text) so themes track.
+
+  // Faint gridlines at the given inner-plot pixel positions.
+  // opts: { xs: [pxX...], ys: [pxY...] } — vertical lines at xs, horizontal at ys.
+  function gridlines(dims, opts) {
+    opts = opts || {};
+    const x0 = dims.padL, x1 = dims.padL + dims.innerW;
+    const y0 = dims.padT, y1 = dims.padT + dims.innerH;
+    let s = '';
+    (opts.ys || []).forEach(y => {
+      y = +y;
+      if (!isFinite(y) || !isFinite(x0) || !isFinite(x1)) return; // skip bad coords (→ no NaN attrs)
+      s += '<line class="rhythm-gridline" x1="' + x0.toFixed(1) + '" y1="' + y.toFixed(1)
+        + '" x2="' + x1.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
+    });
+    (opts.xs || []).forEach(x => {
+      x = +x;
+      if (!isFinite(x) || !isFinite(y0) || !isFinite(y1)) return;
+      s += '<line class="rhythm-gridline" x1="' + x.toFixed(1) + '" y1="' + y0.toFixed(1)
+        + '" x2="' + x.toFixed(1) + '" y2="' + y1.toFixed(1) + '"/>';
+    });
+    return s;
+  }
+
+  // Bottom axis: baseline + per-tick mark + label. ticks: [{ x: pxX, label }].
+  // Label anchor auto-clamps at the plot edges so end labels don't clip.
+  function xAxis(dims, ticks, opts) {
+    opts = opts || {};
+    const baseY = dims.padT + dims.innerH;
+    const x0 = dims.padL, x1 = dims.padL + dims.innerW;
+    const okExtent = isFinite(baseY) && isFinite(x0) && isFinite(x1);
+    let s = '';
+    if (opts.baseline !== false && okExtent) {
+      s += '<line class="rhythm-axis-line" x1="' + x0.toFixed(1) + '" y1="' + baseY.toFixed(1)
+        + '" x2="' + x1.toFixed(1) + '" y2="' + baseY.toFixed(1) + '"/>';
+    }
+    (ticks || []).forEach(t => {
+      const x = +t.x;
+      if (!isFinite(x) || !okExtent) return; // skip bad coords (→ no NaN attrs)
+      const anchor = x <= x0 + 0.5 ? 'start' : x >= x1 - 0.5 ? 'end' : 'middle';
+      s += '<line class="rhythm-axis-line" x1="' + x.toFixed(1) + '" y1="' + baseY.toFixed(1)
+        + '" x2="' + x.toFixed(1) + '" y2="' + (baseY + 3).toFixed(1) + '"/>';
+      s += '<text class="rhythm-axis-text" x="' + x.toFixed(1) + '" y="' + (baseY + 11).toFixed(1)
+        + '" text-anchor="' + anchor + '">' + escapeHtml(String(t.label)) + '</text>';
+    });
+    return s;
+  }
+
+  // Left axis: vertical baseline + right-anchored horizontal labels. Needs a
+  // padL wide enough to hold the labels. ticks: [{ y: pxY, label }].
+  function yAxis(dims, ticks, opts) {
+    opts = opts || {};
+    const x0 = dims.padL;
+    const y0 = dims.padT, y1 = dims.padT + dims.innerH;
+    const okExtent = isFinite(x0) && isFinite(y0) && isFinite(y1);
+    let s = '';
+    if (opts.baseline !== false && okExtent) {
+      s += '<line class="rhythm-axis-line" x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1)
+        + '" x2="' + x0.toFixed(1) + '" y2="' + y1.toFixed(1) + '"/>';
+    }
+    (ticks || []).forEach(t => {
+      const y = +t.y;
+      if (!isFinite(y) || !isFinite(x0)) return; // skip bad coords (→ no NaN attrs)
+      s += '<text class="rhythm-axis-text" x="' + (x0 - 4).toFixed(1) + '" y="' + (y + 3).toFixed(1)
+        + '" text-anchor="end">' + escapeHtml(String(t.label)) + '</text>';
+    });
+    return s;
+  }
+
+  // ~count round tick values 0..max. Steps snap to 1/2/5×10ⁿ and the last tick
+  // is the smallest nice multiple ≥ max — so a panel can use it as the axis max
+  // for clean alignment. Returns ascending numbers (always starts at 0).
+  function niceTicks(max, count) {
+    max = (typeof max === 'number' && isFinite(max) && max > 0) ? max : 1;
+    count = (count && count > 0) ? count : 4;
+    const rawStep = max / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const norm = rawStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+    const niceMax = Math.ceil(max / step) * step;
+    const out = [];
+    for (let v = 0; v <= niceMax + step * 1e-6; v += step) out.push(Math.round(v * 1e6) / 1e6);
+    return out;
+  }
+
   // ── Card chrome (reuses .analytics-card* CSS) ──────────────────────
   // label is escaped (always plain text); aside + body are trusted markup
   // built by the panel's render(). data-insight-panel is a stable hook for
@@ -220,17 +309,96 @@ const RhythmInsights = (() => {
     return '<div class="rhythm-insight-empty">' + escapeHtml(msg || 'Nothing to show yet.') + '</div>';
   }
 
+  // ── Shared hover tooltip + cross-panel day highlight ───────────────
+  // One positioned <div> on <body> (created lazily) follows the cursor and
+  // shows the hovered element's data-tip text. Separately, hovering any element
+  // carrying data-day="YYYY-MM-DD" outlines EVERY element with the same data-day
+  // across all panels (the synchronized cross-panel crosshair). Both are driven
+  // by the single delegated listener wired in renderInto — panels stay pure,
+  // emitting only inert data-tip / data-day attributes.
+  let _tipEl = null;
+  let _tipVisible = false;
+  let _hiDay = null;
+
+  function _ensureTipEl() {
+    if (_tipEl || typeof document === 'undefined' || !document.body) return _tipEl;
+    _tipEl = document.createElement('div');
+    _tipEl.className = 'rhythm-tooltip';
+    _tipEl.setAttribute('role', 'tooltip');
+    _tipEl.hidden = true;
+    document.body.appendChild(_tipEl);
+    return _tipEl;
+  }
+
+  // el null → hide. Content set via textContent (no markup), so panel-supplied
+  // data-tip text is rendered safely regardless of its characters.
+  function _showTip(el, e) {
+    if (!el) {
+      if (_tipEl) _tipEl.hidden = true;
+      _tipVisible = false;
+      return;
+    }
+    const tip = _ensureTipEl();
+    if (!tip) return;
+    tip.textContent = el.getAttribute('data-tip') || '';
+    tip.hidden = false;
+    _tipVisible = true;
+    if (e) _moveTip(e);
+  }
+
+  function _moveTip(e) {
+    if (!_tipEl) return;
+    const pad = 12;
+    const vw = window.innerWidth || 320, vh = window.innerHeight || 480;
+    const w = _tipEl.offsetWidth || 0, h = _tipEl.offsetHeight || 0;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > vw - 4) x = Math.max(4, e.clientX - w - pad);
+    if (y + h > vh - 4) y = Math.max(4, e.clientY - h - pad);
+    _tipEl.style.left = x + 'px';
+    _tipEl.style.top = y + 'px';
+  }
+
+  // Toggle .rhythm-day-hi on every element in `container` sharing `day`. Pass a
+  // falsy day to clear. No-op when the highlighted day is unchanged.
+  function _highlightDay(container, day) {
+    if (day === _hiDay) return;
+    if (_hiDay != null) {
+      container.querySelectorAll('.rhythm-day-hi')
+        .forEach(el => el.classList.remove('rhythm-day-hi'));
+    }
+    _hiDay = day || null;
+    if (day) {
+      const esc = (window.CSS && CSS.escape) ? CSS.escape(day) : String(day).replace(/"/g, '\\"');
+      container.querySelectorAll('[data-day="' + esc + '"]')
+        .forEach(el => el.classList.add('rhythm-day-hi'));
+    }
+  }
+
+  // Drop any floating tooltip + cross-panel highlight. Called by renderInto
+  // before it rebuilds the DOM (the highlighted / tooltip-described nodes are
+  // about to be destroyed, and _hiDay must reset so a same-day re-hover
+  // re-applies), and by the consumer when it hides the Insights surface (so a
+  // tooltip can't linger over another view after a keyboard / hash route away
+  // that fires no mouse event). Idempotent.
+  function resetHover() {
+    _showTip(null);
+    if (_lastRender && _lastRender.container) _highlightDay(_lastRender.container, null);
+    else _hiDay = null;
+  }
+
   // ── renderInto ─────────────────────────────────────────────────────
   // Builds every registered panel's model concurrently (Promise.allSettled so
   // one panel's failure — e.g. a cloud read — can't blank the board), then
-  // writes the container once and wires a single delegated click listener for
-  // panel toggles. Safe to call repeatedly (every route to the Insights sub).
+  // writes the container once and wires a single delegated listener for panel
+  // toggles (click) + hover tooltip / cross-panel highlight (mouse events).
+  // Safe to call repeatedly (every route to the Insights sub).
   let _lastRender = null;
 
   async function renderInto(container, opts) {
     if (!container) return;
     opts = opts || {};
     _lastRender = { container: container, opts: opts };
+    resetHover(); // the innerHTML rebuild below destroys the nodes a live tooltip/highlight points at
     const days = opts.days != null ? opts.days : 14;
 
     // Merge deps over live defaults, then memoize getSessions for THIS render
@@ -280,14 +448,30 @@ const RhythmInsights = (() => {
         panelState(parts[0])[parts[1]] = parts.slice(2).join(':');
         if (_lastRender) renderInto(_lastRender.container, _lastRender.opts);
       });
+      // Hover tooltip + cross-panel highlight. mouseover bubbles, so it fires
+      // on every entered element: a [data-tip]/[data-day] ancestor shows/
+      // highlights; entering bare chart space (no such ancestor) clears both.
+      container.addEventListener('mouseover', (e) => {
+        const tEl = e.target.closest && e.target.closest('[data-tip]');
+        _showTip(tEl && container.contains(tEl) ? tEl : null, e);
+        const dEl = e.target.closest && e.target.closest('[data-day]');
+        _highlightDay(container, (dEl && container.contains(dEl)) ? dEl.getAttribute('data-day') : null);
+      });
+      container.addEventListener('mousemove', (e) => {
+        if (_tipVisible) _moveTip(e);
+      });
+      container.addEventListener('mouseleave', () => {
+        _showTip(null);
+        _highlightDay(container, null);
+      });
     }
   }
 
   return {
-    register, getPanels, has, renderInto, _deps,
+    register, getPanels, has, renderInto, resetHover, _deps,
     windowDays, bucketByDay, sumByDay,
     svgScaffold, linePoints, polyline, area,
-    qualityColor, fmtHour, card, empty,
+    qualityColor, fmtHour, gridlines, xAxis, yAxis, niceTicks, card, empty,
     // Exposed for tests; not part of the app-facing surface.
     _internals: { panelState, _panelState },
   };

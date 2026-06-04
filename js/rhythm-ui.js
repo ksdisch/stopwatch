@@ -84,6 +84,13 @@ const RhythmUI = (() => {
     if (timelineEl) timelineEl.hidden = showInsights;
     if (insightsEl) insightsEl.hidden = !showInsights;
 
+    // Leaving Insights (incl. keyboard / hash routes that fire no mouse event)
+    // must drop any floating tooltip / cross-panel highlight so it can't linger
+    // over the Timeline view (the tooltip lives on <body>, outside this surface).
+    if (!showInsights && typeof RhythmInsights !== 'undefined' && RhythmInsights.resetHover) {
+      RhythmInsights.resetHover();
+    }
+
     if (showInsights) {
       stopTick(); // insights has no live tick
       if (typeof RhythmInsights !== 'undefined' && typeof RhythmInsights.renderInto === 'function') {
