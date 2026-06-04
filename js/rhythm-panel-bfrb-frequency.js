@@ -50,9 +50,36 @@
       }
 
       // Line-with-area chart, mirroring analytics-ui.js renderBFRBTrend. Series
-      // may not be exactly 14 long — plot as-is.
-      const dims = RI.svgScaffold({ w: 320, h: 88, padL: 4, padR: 4, padT: 6, padB: 14 });
-      const pts = RI.linePoints(series.map(d => d.count || 0), dims);
+      // may not be exactly 14 long — plot as-is. Padded for axis labels: left
+      // for the y count ticks, bottom for the x date ticks.
+      const dims = RI.svgScaffold({ w: 320, h: 96, padL: 24, padR: 6, padT: 8, padB: 18 });
+
+      // Round count ticks (0..niceMax). Use niceMax as the explicit line max so
+      // the polyline aligns exactly to the y-axis gridlines.
+      const maxCount = Math.max(1, ...series.map(d => d.count || 0));
+      const ticks = RI.niceTicks(maxCount, 3);
+      const niceMax = ticks[ticks.length - 1] || 1;
+      const pts = RI.linePoints(series.map(d => d.count || 0), dims, niceMax);
+
+      // Y-axis: project each round count value to its pixel row.
+      const yTicks = ticks.map(v => ({
+        y: dims.padT + dims.innerH - (v / niceMax) * dims.innerH,
+        label: String(v),
+      }));
+
+      // X-axis: first / middle / last day. Last is always "Today"; the others
+      // use the M/D short date. De-dupe indices so a tiny series doesn't repeat.
+      const lastI = pts.length - 1;
+      const midI = Math.floor(lastI / 2);
+      const xIdx = [...new Set([0, midI, lastI])].filter(i => i >= 0);
+      const xTicks = xIdx.map(i => ({
+        x: pts[i].x,
+        label: i === lastI ? 'Today' : shortDate(series[i].date),
+      }));
+
+      const grid = RI.gridlines(dims, { ys: yTicks.map(t => t.y) });
+      const yAxisSvg = RI.yAxis(dims, yTicks);
+      const xAxisSvg = RI.xAxis(dims, xTicks);
 
       const areaPoly = RI.area(pts, dims);
       const linePoly = RI.polyline(pts);
@@ -61,32 +88,30 @@
         .filter(x => (x.d && x.d.count) > 0)
         .map(x =>
           '<circle cx="' + x.p.x.toFixed(1) + '" cy="' + x.p.y.toFixed(1) + '" r="2"'
-          + ' fill="var(--orange)"><title>'
-          + escapeHtml(x.d.date + ': ' + x.d.count) + '</title></circle>')
+          + ' fill="var(--orange)"'
+          + ' data-day="' + escapeHtml(x.d.date) + '"'
+          + ' data-tip="' + escapeHtml(shortDate(x.d.date) + ' · ' + x.d.count
+            + ' catch' + (x.d.count === 1 ? '' : 'es')) + '"/>')
         .join('');
 
+      // Element order: gridlines + axes first, then area, polyline, dots LAST
+      // (so the chart draws on top of the grid, and dots stay hit-testable).
       const chart = '<svg class="rhythm-bfrb-chart" viewBox="0 0 ' + dims.W + ' ' + dims.H + '"'
         + ' width="100%" height="' + dims.H + '" role="img"'
         + ' aria-label="Daily BFRB catches over the last 14 days">'
+        + grid
+        + yAxisSvg
+        + xAxisSvg
         + '<polygon points="' + areaPoly + '" fill="rgba(255,159,10,0.18)"/>'
         + '<polyline points="' + linePoly + '" fill="none" stroke="var(--orange)"'
         + ' stroke-width="1.5" stroke-linejoin="round"/>'
         + dots
         + '</svg>';
 
-      // Axis: oldest series date on the left, "Today" on the right. Inline
-      // style (no new CSS rule needed) — small + secondary, justified ends.
-      const firstLabel = series.length ? shortDate(series[0].date) : '';
-      const axis = '<div class="rhythm-bfrb-axis"'
-        + ' style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-secondary)">'
-        + '<span>' + escapeHtml(firstLabel) + '</span>'
-        + '<span>Today</span>'
-        + '</div>';
-
       return RI.card({
         key: KEY, label: 'BFRB Frequency',
-        aside: total + ' · 14d',
-        body: chart + axis,
+        aside: total + ' catch' + (total === 1 ? '' : 'es') + ' · 14d',
+        body: chart,
       });
     },
   });

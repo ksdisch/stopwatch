@@ -67,18 +67,46 @@
       // Two nonzero days → exactly two <circle> dots.
       const circles = html.match(/<circle/g) || [];
       assertEqual(circles.length, 2);
-      // Titles carry "date: count" for the nonzero days.
-      assert(/2026-05-11: 2/.test(html), 'second day title present');
-      assert(/2026-05-13: 3/.test(html), 'fourth day title present');
+      // Dots carry the cross-panel highlight day + a hover tooltip (no <title>).
+      assert(/data-day="2026-05-11"/.test(html), 'second day data-day present');
+      assert(/data-day="2026-05-13"/.test(html), 'fourth day data-day present');
+      assert(/data-tip="5\/11 · 2 catches"/.test(html), 'second day tooltip present');
+      assert(/data-tip="5\/13 · 3 catches"/.test(html), 'fourth day tooltip present');
+      assert(!/<title>/.test(html), 'native <title> removed in favor of data-tip');
       // Aside reports total + window.
-      assert(/5 · 14d/.test(html), 'aside total/window present');
+      assert(/5 catches · 14d/.test(html), 'aside total/window present');
     });
 
-    it('render() escapes date text in dot titles', () => {
+    it('render() singular "catch" tooltip for a 1-count day', () => {
+      const series = [{ date: '2026-05-10', count: 1 }];
+      const html = panel().render({ series: series, total: 1, ratePerHour: 0 });
+      assert(/data-tip="5\/10 · 1 catch"/.test(html), 'singular catch (no es)');
+      assert(!/1 catches/.test(html), 'no incorrect plural for count 1');
+    });
+
+    it('render() escapes date text in dot tooltips, not <title>', () => {
       const series = [{ date: '<x>', count: 1 }];
       const html = panel().render({ series: series, total: 1, ratePerHour: 0 });
-      assert(/&lt;x&gt;: 1/.test(html), 'date escaped in title');
-      assert(!/<x>: 1/.test(html), 'no raw markup leaked');
+      // shortDate('<x>') is '' (unparseable) so the tip is " · 1 catch"; the raw
+      // date lands in data-day, escaped.
+      assert(/data-day="&lt;x&gt;"/.test(html), 'date escaped in data-day');
+      assert(!/<title>/.test(html), 'no <title> element at all');
+      assert(!/data-day="<x>"/.test(html), 'no raw markup leaked into data-day');
+    });
+
+    it('render() draws count y-axis ticks, date x-axis ticks, and gridlines', () => {
+      const trend = trendOf([0, 2, 0, 3]); // first key 2026-05-10, niceMax >= 3
+      const html = panel().render({ series: trend.series, total: trend.total, ratePerHour: 0 });
+      // Gridlines present (foundation emits .rhythm-gridline lines).
+      assert(/rhythm-gridline/.test(html), 'at least one gridline drawn');
+      // Y-axis count labels: 0 (baseline) and the niceMax top tick.
+      assert(/rhythm-axis-text[^>]*>0</.test(html), 'y-axis 0 tick label');
+      assert(/rhythm-axis-text[^>]*>3</.test(html), 'y-axis max count tick label');
+      // X-axis date ticks: first M/D and Today.
+      assert(/>5\/10</.test(html), 'first date as M/D on the x-axis');
+      assert(/>Today</.test(html), 'Today label on the x-axis');
+      // The old inline-styled axis div is gone.
+      assert(!/rhythm-bfrb-axis/.test(html), 'legacy inline axis div removed');
     });
 
     it('render() puts the first series date (M/D) left and Today right', () => {
