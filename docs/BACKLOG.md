@@ -9,6 +9,23 @@ Reordered by impact-vs-effort ROI (best return for effort first), not
 chronologically. The previous chronological numbering is preserved in the
 "Added" column so the decision history stays visible.
 
+## Candidate next milestones (2026-06-05 brainstorm)
+
+Vetted milestone menu from [`docs/brainstorm/2026-06-05-milestone-brainstorm.md`](brainstorm/2026-06-05-milestone-brainstorm.md)
+(full recon, weighted scoreboard, and deep dives there). The brainstorm's top two
+recommendations have since **shipped**: #1 BFRB Closed Loop → backlog #16, #2 Tempo Coach →
+backlog #15. The remaining ranked candidates are the live menu for the next autonomous milestone:
+
+| Board | Candidate | Verdict | One-line why |
+|------|-----------|---------|--------------|
+| — | **BFRB Closed Loop — Slice B** | Deferred from #16 | Real-time relapse-risk meter + post-countdown debrief; the framing-risky, opt-in half intentionally cut from the shipped Slice A. |
+| 8.5 | **Personal Health Hub — Weekly Review + portable doctor-ready report** | Strong, ship-soon | Cleanest autonomy (pure string-producing functions, no native/Firebase-write path); novel doctor-prep export. Docked for being a 3-feature bundle and reflective rather than forward-looking. |
+| 8.45 | **Med Runway & Adherence Loop** | Strong, split-ship | Highest concrete stakes (controlled-substance refill/dose); pure runway/streak half is a clean win, nudge half is the least self-verifiable piece. |
+| 8.45 | **Personal Health Intelligence Engine** | Right idea, overscoped | Correct long-term consolidation but bundles 5–7 deliverables incl. a 7th synced store + cross-cutting refactor; descope to the pure `insight-engine.js` core. |
+| 6.9 | **Tempo Presence — Live Activities / widgets / Siri** | Defer / split | Overlaps backlog #4 (iOS Live Activities). Four products in a trenchcoat + long Apple-paperwork tail; ship only the web-only depleting-wedge slice standalone. |
+| 6.65 | **Tempo Proving Ground — UI test harness + kit** | Sequence under, not instead | Highest-autonomy class + real velocity floor, but zero direct user payoff; ship the harness-only slice *after* a user-facing feature. |
+| 6.0 | **HealthKit two-way bridge** | Sequence later | Removes the most-forgotten manual input, but a from-scratch Swift plugin with double-write risk; best paired after the intelligence loop proves out. |
+
 ## Summary table
 
 | Priority | Feature | Impact | Effort | Added | Status |
