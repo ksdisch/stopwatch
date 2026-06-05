@@ -78,6 +78,10 @@
   <script src="../js/rhythm-panel-distraction-rollup.js"></script>
   <script src="../js/rhythm-panel-event-zoom.js"></script>
   <script src="../js/rhythm-panel-correlations.js"></script>
+  <!-- tempo-coach-daily-loop: pure coach engine (TempoCoach) must load BEFORE
+       rhythm-panel-today.js (the panel calls TempoCoach.buildTodayModel). -->
+  <script src="../js/tempo-coach.js"></script>
+  <script src="../js/rhythm-panel-today.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
   <!-- Audio engine: ambient profile registration test. The IIFE does NOT
@@ -146,6 +150,8 @@
   <script src="rhythm-panel-distraction-rollup.test.js"></script>
   <script src="rhythm-panel-event-zoom.test.js"></script>
   <script src="rhythm-panel-correlations.test.js"></script>
+  <script src="tempo-coach.test.js"></script>
+  <script src="rhythm-panel-today.test.js"></script>
   <script src="recovery-feed.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
