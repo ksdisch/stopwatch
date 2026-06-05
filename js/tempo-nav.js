@@ -318,6 +318,100 @@ const TempoNav = (() => {
 
     wireCloudSync(drawer, syncExpanded);
     initTodoistSection(drawer);
+    wireTempoCoach(drawer);
+  }
+
+  // ── Tempo Coach section (tempo-coach-daily-loop) ────────────────────
+  // Two device-local preference toggles in the settings drawer, matching
+  // the Cloud Sync toggle idiom (aria-checked-driven switch + the
+  // [data-keep-drawer-open] no-auto-close hook). Both persist to plain
+  // localStorage flags — NOT synced, never stamped via js/schema.js.
+  //
+  //   (1) Readiness suggestions — opt-OUT (default ON). Persists
+  //       `flow_readiness_suggest` ('0'/'1'). Gates the Flow pre-block
+  //       readiness-sized default (read by js/flow-ui.js).
+  //   (2) Morning readiness nudge — opt-IN (default OFF). Persists
+  //       `tempo_coach_nudge_enabled` ('0'/'1'). On enable, schedules a
+  //       descriptive heads-up at the next ~8 AM via BgNotify (title/body
+  //       from the pure TempoCoach.shouldNudge decision); on disable,
+  //       cancels it. No-signal (shouldNudge.nudge === false) → no schedule.
+  function wireTempoCoach(drawer) {
+    const NUDGE_ID = 'tempo-coach-nudge';
+    const SUGGEST_KEY = 'flow_readiness_suggest';
+    const NUDGE_KEY = 'tempo_coach_nudge_enabled';
+
+    const readinessToggle = drawer.querySelector('#coach-readiness-toggle');
+    const nudgeToggle = drawer.querySelector('#coach-nudge-toggle');
+    if (!readinessToggle && !nudgeToggle) return; // markup not present
+
+    // Default ON when the key is absent ('0' is the only "off" value).
+    const suggestEnabled = () => localStorage.getItem(SUGGEST_KEY) !== '0';
+    // Default OFF when the key is absent ('1' is the only "on" value).
+    const nudgeEnabled = () => localStorage.getItem(NUDGE_KEY) === '1';
+
+    // Ms from now until the next ~8 AM local (the morning heads-up window).
+    function msUntilNextMorning() {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(8, 0, 0, 0);
+      if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
+      }
+      return target.getTime() - now.getTime();
+    }
+
+    // Schedule (or re-schedule) the descriptive morning nudge. Pure decision
+    // from TempoCoach.shouldNudge over the live recovery row; no signal →
+    // cancel any stale schedule instead of firing an empty notification.
+    function scheduleNudge() {
+      if (typeof BgNotify === 'undefined') return;
+      let latest = null;
+      try {
+        if (typeof RecoveryFeed !== 'undefined' && typeof RecoveryFeed.getLatest === 'function') {
+          latest = RecoveryFeed.getLatest();
+        }
+      } catch (_) { latest = null; }
+
+      let decision = { nudge: false };
+      try {
+        if (typeof TempoCoach !== 'undefined') {
+          decision = TempoCoach.shouldNudge(latest, Date.now()) || { nudge: false };
+        }
+      } catch (_) { decision = { nudge: false }; }
+
+      // Always clear first so re-enabling replaces rather than stacks.
+      try { BgNotify.cancel(NUDGE_ID); } catch (_) {}
+      if (!decision.nudge) return; // no signal → nothing to say, don't fire.
+      try {
+        BgNotify.schedule(NUDGE_ID, msUntilNextMorning(), decision.title, decision.body);
+      } catch (_) {}
+    }
+
+    if (readinessToggle) {
+      readinessToggle.setAttribute('aria-checked', suggestEnabled() ? 'true' : 'false');
+      readinessToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Persist the FLIPPED state. Default-ON means writing '0' to turn off,
+        // '1' to turn on.
+        const next = !suggestEnabled();
+        localStorage.setItem(SUGGEST_KEY, next ? '1' : '0');
+        readinessToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+      });
+    }
+
+    if (nudgeToggle) {
+      nudgeToggle.setAttribute('aria-checked', nudgeEnabled() ? 'true' : 'false');
+      nudgeToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = !nudgeEnabled();
+        localStorage.setItem(NUDGE_KEY, next ? '1' : '0');
+        nudgeToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+        if (next) scheduleNudge();
+        else if (typeof BgNotify !== 'undefined') {
+          try { BgNotify.cancel(NUDGE_ID); } catch (_) {}
+        }
+      });
+    }
   }
 
   // ── Todoist section (bl-2-todoist) ──────────────────────────────────

@@ -1350,7 +1350,7 @@ describe('SyncEngine — visibilitychange + Platform.network pause/resume (E-1b)
 // isolated across cases.
 
 function _e1e_saveEnv() {
-  return {
+  const saved = {
     sync_flag_storage: localStorage.getItem('tempo_sync_enabled'),
     hydrated_all: localStorage.getItem('tempo_sync_hydrated_all'),
     stage_d: localStorage.getItem('tempo_sync_stage_d_handoff'),
@@ -1373,7 +1373,25 @@ function _e1e_saveEnv() {
     prev_console_warn: console.warn,
     real_history: window.History,
     real_recoveryUI: window.RecoveryUI,
+    // Visibility fix (mirrors _e1b_saveSteadyEnv): capture the original
+    // visibilityState descriptor. kapture/headless runs report the tab as
+    // 'hidden' whenever the test page isn't the foreground tab, and
+    // startSteadyState() short-circuits the setInterval arm on hidden
+    // (battery-saver branch). Tests #6 & #11 assert the arm fires, so they
+    // failed deterministically in a backgrounded tab. Shadow the prototype
+    // getter with a 'visible' own-property so the arming tests are
+    // tab-focus independent.
+    prev_visibilityHasOwn: Object.prototype.hasOwnProperty.call(document, 'visibilityState'),
+    prev_visibilityOwnDescriptor: Object.getOwnPropertyDescriptor(document, 'visibilityState'),
   };
+  try {
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+      writable: false,
+    });
+  } catch (_) { /* defensive — some environments lock the descriptor */ }
+  return saved;
 }
 
 function _e1e_restore(saved) {
@@ -1410,6 +1428,16 @@ function _e1e_restore(saved) {
   else window.History = saved.real_history;
   if (saved.real_recoveryUI === undefined) delete window.RecoveryUI;
   else window.RecoveryUI = saved.real_recoveryUI;
+  // Visibility fix (mirrors _e1b_restoreSteadyEnv): undo the 'visible'
+  // own-property override so the prototype getter takes over again, or
+  // re-install the prior own-descriptor exactly if one existed.
+  try {
+    if (saved.prev_visibilityHasOwn) {
+      Object.defineProperty(document, 'visibilityState', saved.prev_visibilityOwnDescriptor);
+    } else {
+      delete document.visibilityState;
+    }
+  } catch (_) { /* defensive */ }
 }
 
 // Capture every console.warn message — used to assert the dispatcher

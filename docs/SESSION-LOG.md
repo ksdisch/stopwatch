@@ -2116,3 +2116,31 @@ Browser-verified at `tests/index.html?nosw=1` (fresh port): **815 passed / 0 fai
 test(recovery-feed): stub real const singletons' methods, not window globals — fixes 4 NPE baseline failures
 (branch fix/recovery-feed-npe, stacked on PR B; squash hash assigned at PR merge)
 ```
+
+---
+
+## 2026-06-05 — Tempo Coach: readiness-aware daily loop (backlog #15, `feat/tempo-coach-daily-loop`)
+
+### What We Built
+
+Turned Tempo's already-computed correlations *forward* into a daily decision loop, shipped at full-loop scope across three user-facing surfaces — every emitted string **descriptive-first** (observational, never imperative), which is the design choice that keeps the milestone autonomously shippable (it sidesteps clinical-framing ratification). A new pure engine, `js/tempo-coach.js` (zero DOM, zero side-effects — returns decisions, callers act), holds all the logic: `readinessBand` (maps the recovery-feed signal to `well`/`strained`/`neutral`/`null`, mirroring `rhythm-panel-correlations.js`'s classification language), `suggestFocusDurationMs` (well→120m / strained→90m / neutral|null→no suggestion), `doseSleepSlope` (least-squares over dose-hour×bedtime-hour pairs with hard suppression guards — ≥5 usable pairs AND ≥1.5h x-spread AND slope stability, else "not enough data yet"; never narrates a slope on thin/noisy data), `buildTodayModel` (assembles the panel model from injected `_deps`, empty/sparse → a valid empty-state model, never NaN/throws), and `shouldNudge` (the descriptive morning-nudge decision, no scheduling side-effect). On top of that: (1) a top-of-Insights **"Today"** briefing panel (`js/rhythm-panel-today.js`, order 5 — pins atop; **empty-state is the DEFAULT-rendered path**, delivering local-only dose+sleep+focus value with no recovery feed, the recovery re-lens strictly additive; `render` returns an HTML string, all interpolated text via `escapeHtml`); (2) a **readiness-sized Flow default** (`js/flow-ui.js` pre-block pre-selects the matching duration + a one-line descriptive "why"; the user's manual tap always overrides; `ms === null` leaves the persisted default untouched; opt-out via `flow_readiness_suggest`); (3) an **opt-in morning nudge** (default OFF, `tempo_coach_nudge_enabled`; enable schedules a descriptive heads-up via `BgNotify.schedule(...)`, disable cancels it). Two new device-local prefs (`flow_readiness_suggest` default ON, `tempo_coach_nudge_enabled` default OFF) — NOT synced, NOT in `EXPORT_SETTINGS_KEYS`; no `js/schema.js` / `SYNCED_STORES` / `package.json` / `ios/*` changes (HIGH blast radius from the multi-layer surface, not from the F-invariants). `sw.js` cache bumped `v110-rhythm-insights-foundation` → `v111-tempo-coach` (the two new modules added to the precache manifest). Folded into the docs commit: corrected the stale "642/642" / "712/716 — 4 pre-existing recovery-feed failures" caveats (the suite is green and all three F18 orphaned-`wellness_meds` readers + the recovery-feed NPE are merged).
+
+### Verification result
+
+Engine suite green at **895 / 895** (two new files: `tests/tempo-coach.test.js` — `readinessBand` band mapping, `suggestFocusDurationMs` bands + `reason`, `doseSleepSlope` happy path + all three suppression paths + boundary thresholds, `buildTodayModel` populated/sparse/empty, `shouldNudge` descriptive copy + no-signal→`nudge:false`; `tests/rhythm-panel-today.test.js` — `build` over populated/sparse/signed-out `_deps`, `render` non-empty per state + empty-state card, no `document` references). UI wired with 0 console errors. Committed on the branch; **push + PR-open await the user's separate approval** (HIGH blast radius).
+
+### Suggested Next Steps
+
+- **Push + open the PR** — the commit is on `feat/tempo-coach-daily-loop` awaiting your go-ahead (HIGH blast radius gate). Smoke after push: hard-reload, confirm a "Today" card atop `#/rhythm/insights`, then sign-out → panel still renders local value; Flow pre-block pre-selection + override; both drawer toggles persist.
+- **Flag (NOT auto-closed) — three stale open PRs to triage:**
+  - **#104** (Pomodoro phase revert) — appears to be a **duplicate of already-merged work** (backlog #11 is marked shipped as PR #104; verify and close if it's a stale re-open).
+  - **#91** (iOS Live Activities) — **~30 commits behind `main`**, zero references in main; either rebase or close as superseded.
+  - **#86** (native CAS + listener parity for `@capacitor-firebase/firestore`) — **~33 commits behind**; this is backlog #3 (last unshipped cloud-sync piece) but the branch is badly stale — decide rebase-vs-restart.
+- Consider an evening "Daily Review" ritual (deferred out of this PR) and a BFRB callout in the Today panel as the next Tempo Coach increments.
+
+### Commits
+
+```
+feat(rhythm): Tempo Coach daily loop — Today panel + readiness Flow default + opt-in nudge
+(branch feat/tempo-coach-daily-loop; HIGH blast radius — committed, push/PR-open await user approval)
+```

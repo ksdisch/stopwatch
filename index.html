@@ -106,6 +106,43 @@
           </label>
           <input id="bfrb-volume-slider" type="range" min="0" max="100" step="5" value="55">
         </div>
+        <!-- Tempo Coach section (tempo-coach-daily-loop). Two device-local
+             preference toggles, wired by tempo-nav.js wireTempoCoach():
+             (1) Readiness suggestions — opt-OUT (default ON), persists
+             flow_readiness_suggest; gates the Flow pre-block readiness-sized
+             default. (2) Morning readiness nudge — opt-IN (default OFF),
+             persists tempo_coach_nudge_enabled; schedules/cancels a
+             descriptive heads-up via BgNotify. Reuses the Cloud-Sync toggle
+             switch markup; data-keep-drawer-open so flipping a toggle does
+             not auto-close the drawer. -->
+        <div class="tempo-settings-item tempo-coach-section" role="group"
+             aria-label="Tempo Coach">
+          <div class="tempo-cloud-sync-heading">Tempo Coach</div>
+          <div class="tempo-cloud-sync-row">
+            <span class="tempo-settings-item-label">Readiness suggestions</span>
+            <button id="coach-readiness-toggle" type="button"
+                    class="tempo-cloud-sync-toggle"
+                    role="switch" aria-checked="true"
+                    aria-label="Toggle readiness-sized Flow suggestions"
+                    data-keep-drawer-open>
+              <span class="tempo-cloud-sync-toggle-track">
+                <span class="tempo-cloud-sync-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+          <div class="tempo-cloud-sync-row">
+            <span class="tempo-settings-item-label">Morning readiness nudge</span>
+            <button id="coach-nudge-toggle" type="button"
+                    class="tempo-cloud-sync-toggle"
+                    role="switch" aria-checked="false"
+                    aria-label="Toggle morning readiness nudge"
+                    data-keep-drawer-open>
+              <span class="tempo-cloud-sync-toggle-track">
+                <span class="tempo-cloud-sync-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+        </div>
         <!-- Cloud Sync section (B-2). Surfaces the developer toggle for
              tempo_sync_enabled, plus Google sign-in / current-user / sign-out
              once the flag is on. Wired by tempo-nav.js. -->
@@ -363,6 +400,7 @@
           <button class="flow-dur-btn" data-flow-dur="90">90 min</button>
           <button class="flow-dur-btn" data-flow-dur="120">120 min</button>
         </div>
+        <p id="flow-readiness-why" class="flow-readiness-why hidden" role="note"></p>
         <input type="text" id="flow-goal-input" class="flow-goal-input"
                placeholder="What's the goal for this block?" maxlength="120">
         <div class="vibrate-area">
@@ -1079,6 +1117,11 @@
   <script src="js/todoist.js"></script>
   <script src="js/todoist-ui.js"></script>
   <script src="js/pomodoro-ui.js"></script>
+  <!-- tempo-coach-daily-loop: pure decision core for the daily loop. MUST load
+       BEFORE flow-ui.js (pre-block readiness default calls
+       TempoCoach.suggestFocusDurationMs) AND before rhythm-panel-today.js
+       (calls TempoCoach.buildTodayModel). Zero DOM. -->
+  <script src="js/tempo-coach.js"></script>
   <script src="js/flow-ui.js"></script>
   <script src="js/alert-ui.js"></script>
   <script src="js/bg-notify.js"></script>
@@ -1114,6 +1157,11 @@
        RhythmInsights.renderInto) loads last. Panel script order is irrelevant
        — getPanels() sorts by each panel's `order` field. -->
   <script src="js/rhythm-insights.js"></script>
+  <!-- tempo-coach-daily-loop: the "Today" briefing panel (order 5, pins atop
+       Insights). Self-registers with RhythmInsights; calls TempoCoach (loaded
+       above with flow-ui). Panel script order is irrelevant to getPanels()
+       — only load-before-rhythm-ui.js matters. -->
+  <script src="js/rhythm-panel-today.js"></script>
   <script src="js/rhythm-panel-meds-sleep.js"></script>
   <script src="js/rhythm-panel-recovery-trends.js"></script>
   <script src="js/rhythm-panel-focus-minutes.js"></script>
