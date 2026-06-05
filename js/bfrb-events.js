@@ -15,10 +15,13 @@
 // output.
 //
 // Public API (matches the auditor's affected-files table):
-//   BfrbEvents.log({ context, sessionId?, phase?, cycleIndex? })
+//   BfrbEvents.log({ context, sessionId?, phase?, cycleIndex?,
+//                    urgeLevel?, triggerZone?, takenAt? })
 //     → builds a new entry { takenAt, context, ..., deviceId, updatedAt,
 //        schemaVersion }, gates through SyncState.canWrite() (F13),
-//        persists, returns the entry.
+//        persists, returns the entry. `urgeLevel` (1..3) + `triggerZone`
+//        (short string) are the E-1g additive-nullable antecedent fields;
+//        `takenAt` overrides the catch timestamp (deferred-capture flow).
 //   BfrbEvents.getAll() → defensive-copy of all entries.
 //   BfrbEvents.getByContext(ctx) → filtered slice (by entry.context).
 //   BfrbEvents.countToday(ctx?) → entries with localDateKey(takenAt) ===
@@ -278,9 +281,15 @@ const BfrbEvents = (() => {
     const context = (opts.context === 'flow' || opts.context === 'pomodoro') ? opts.context : 'global';
 
     // Build the entry. takenAt is captured ONCE so subsequent dedup
-    // signatures are stable across the stamp() call.
+    // signatures are stable across the stamp() call. An explicit
+    // `opts.takenAt` override lets the deferred antecedent-capture flow
+    // (js/global-bfrb.js) stamp the *catch* moment rather than the later
+    // commit moment — the antecedent fields below MUST ride this single
+    // write: sync-merge-bfrb keeps the CLOUD copy on a (deviceId, takenAt)
+    // collision (js/sync-merge-bfrb.js:158-174), so a post-hoc patch of an
+    // already-synced catch is silently dropped. No LWW rescues it.
     const entry = {
-      takenAt: Date.now(),
+      takenAt: (typeof opts.takenAt === 'number' && isFinite(opts.takenAt)) ? opts.takenAt : Date.now(),
       context: context,
     };
     if (opts.sessionId !== undefined && opts.sessionId !== null) {
@@ -288,6 +297,21 @@ const BfrbEvents = (() => {
     }
     if (typeof opts.phase === 'string') entry.phase = opts.phase;
     if (typeof opts.cycleIndex === 'number') entry.cycleIndex = opts.cycleIndex;
+
+    // Antecedent capture (E-1g, additive + nullable — NO SCHEMA_VERSION bump).
+    //   urgeLevel: integer 1..3 (Mild / Medium / Strong).
+    //   triggerZone: a short UI-owned taxonomy string (trimmed, length-capped).
+    // Both are omitted entirely when absent/invalid, so a field-less one-tap
+    // catch is byte-identical to the pre-feature shape and the
+    // (deviceId, takenAt) dedup signature is provably unchanged.
+    if (typeof opts.urgeLevel === 'number' && isFinite(opts.urgeLevel)) {
+      const u = Math.round(opts.urgeLevel);
+      if (u >= 1 && u <= 3) entry.urgeLevel = u;
+    }
+    if (typeof opts.triggerZone === 'string') {
+      const tz = opts.triggerZone.trim().slice(0, 40);
+      if (tz !== '') entry.triggerZone = tz;
+    }
 
     _stampEntry(entry);
 

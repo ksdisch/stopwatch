@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v111-tempo-coach';
+const CACHE_NAME = 'stopwatch-v112-bfrb-closed-loop';
 const ASSETS = [
   './',
   './index.html',
@@ -72,6 +72,7 @@ const ASSETS = [
   './js/rhythm-panel-recovery-trends.js',
   './js/rhythm-panel-focus-minutes.js',
   './js/rhythm-panel-bfrb-frequency.js',
+  './js/rhythm-panel-bfrb-triggers.js',
   './js/rhythm-panel-distraction-rollup.js',
   './js/rhythm-panel-event-zoom.js',
   './js/rhythm-panel-correlations.js',

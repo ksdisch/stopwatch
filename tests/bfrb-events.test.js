@@ -367,3 +367,135 @@ describe('BfrbEvents — module + migration', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// E-1g — antecedent capture fields (urgeLevel / triggerZone / takenAt).
+// Additive + nullable; NO SCHEMA_VERSION bump. The load-bearing contract is
+// that the (deviceId, takenAt) dedup signature — which sync-merge-bfrb keys
+// on, keeping the cloud copy on collision — is provably UNCHANGED by the new
+// fields, so a field-rich catch can never be displaced by its field-less
+// cloud twin.
+// ────────────────────────────────────────────────────────────────────────
+
+// The dedup signature + derived Firestore doc id exactly as sync-merge-bfrb
+// computes them (js/sync-merge-bfrb.js:35-48).
+function _bfrb_sig(e) {
+  const dev = (typeof e.deviceId === 'string') ? e.deviceId : '∅';
+  return dev + '@' + e.takenAt;
+}
+function _bfrb_docId(e) {
+  const dev = (typeof e.deviceId === 'string' && e.deviceId) ? e.deviceId : 'no-device';
+  return dev + '-' + e.takenAt;
+}
+
+describe('BfrbEvents — antecedent capture (E-1g)', () => {
+
+  it('log() persists urgeLevel + triggerZone when valid', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      const entry = BfrbEvents.log({ context: 'global', urgeLevel: 2, triggerZone: 'stress' });
+      assert(entry, 'log returned an entry');
+      assertEqual(entry.urgeLevel, 2, 'urgeLevel stored');
+      assertEqual(entry.triggerZone, 'stress', 'triggerZone stored');
+      const stored = BfrbEvents.getAll();
+      assertEqual(stored.length, 1, 'one entry persisted');
+      assertEqual(stored[0].urgeLevel, 2, 'urgeLevel round-trips through localStorage');
+      assertEqual(stored[0].triggerZone, 'stress', 'triggerZone round-trips');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('log() omits the fields entirely when absent (byte-compatible shape)', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      const entry = BfrbEvents.log({ context: 'global' });
+      assert(entry, 'log returned an entry');
+      assert(!('urgeLevel' in entry), 'no urgeLevel key when absent');
+      assert(!('triggerZone' in entry), 'no triggerZone key when absent');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('log() rejects out-of-range / non-numeric urgeLevel', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      [0, 4, -1, NaN, '2', null].forEach(bad => {
+        const e = BfrbEvents.log({ context: 'global', urgeLevel: bad });
+        assert(!('urgeLevel' in e), 'urgeLevel rejected for ' + String(bad));
+      });
+      // valid integers + a roundable float survive
+      assertEqual(BfrbEvents.log({ context: 'global', urgeLevel: 1 }).urgeLevel, 1);
+      assertEqual(BfrbEvents.log({ context: 'global', urgeLevel: 3 }).urgeLevel, 3);
+      assertEqual(BfrbEvents.log({ context: 'global', urgeLevel: 2.4 }).urgeLevel, 2, 'rounds to 2');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('log() trims + length-caps triggerZone and drops empty/whitespace', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      assertEqual(BfrbEvents.log({ context: 'global', triggerZone: '  bored ' }).triggerZone, 'bored', 'trimmed');
+      assert(!('triggerZone' in BfrbEvents.log({ context: 'global', triggerZone: '   ' })), 'whitespace dropped');
+      assert(!('triggerZone' in BfrbEvents.log({ context: 'global', triggerZone: '' })), 'empty dropped');
+      assert(!('triggerZone' in BfrbEvents.log({ context: 'global', triggerZone: 42 })), 'non-string dropped');
+      const long = 'x'.repeat(80);
+      assertEqual(BfrbEvents.log({ context: 'global', triggerZone: long }).triggerZone.length, 40, 'length-capped at 40');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('log() honors an explicit takenAt override (deferred-capture flow)', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      const t = 1700000000000;
+      assertEqual(BfrbEvents.log({ context: 'global', takenAt: t }).takenAt, t, 'override applied');
+      // invalid overrides fall back to Date.now()
+      const before = Date.now();
+      const e = BfrbEvents.log({ context: 'global', takenAt: 'nope' });
+      assert(e.takenAt >= before, 'invalid override falls back to now');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('dedup signature + doc id are byte-identical with vs without the new fields', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      const t = 1700000000123;
+      const bare = BfrbEvents.log({ context: 'global', takenAt: t });
+      _bfrb_clearAll();
+      localStorage.removeItem('tempo_sync_enabled');
+      const rich = BfrbEvents.log({ context: 'global', takenAt: t, urgeLevel: 3, triggerZone: 'stress' });
+      // Same device + same takenAt → identical merge key, regardless of the
+      // additive fields. This is the invariant that keeps the new fields from
+      // changing how sync-merge-bfrb dedups.
+      assertEqual(_bfrb_sig(rich), _bfrb_sig(bare), 'dedup signature unchanged');
+      assertEqual(_bfrb_docId(rich), _bfrb_docId(bare), 'derived doc id unchanged');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+});
