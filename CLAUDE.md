@@ -288,3 +288,32 @@ explicit push approval. Sync-PR branches: `feat/sync-<pr-id>-<slug>`; commit pre
 - Backend decision → `docs/sync-review/BACKEND-SELECTION.md`
 - Session log (one entry per session) → `docs/SESSION-LOG.md`
 - Orchestrator + subagent prompts → `.claude/orchestrator-prompt.md`, `.claude/agents/`, `.claude/templates/phase-brief.md`
+
+## Claude tooling for this repo
+
+Repo-local Claude Code commands (`/<name>`) and skills, vendored into `.claude/` so they
+work in cloud/web sessions and for collaborators — not only on the machine that defined them
+globally. **💻 = local-only**: needs a browser MCP / screenshots / a running local dev server,
+so it will **not** work in a cloud/web session.
+
+**Commands** (`.claude/commands/`):
+- `/begin` — open a session: orient on branch/commits/open PRs, recap the last `/wrap` log, route into `.claude/session-start.md`.
+- `/wrap` — end-of-session wrap-up: recap + why, active-recall quiz, next moves; saves a dated log (pairs with `docs/SESSION-LOG.md`).
+- `/handoff` — generate a self-contained handoff prompt for a fresh session, then stop.
+- `/explore-plan <task>` — explore → plan → confirm before any code; proposes 2–3 ranked approaches and waits for your pick.
+- `/tdd <module + behavior>` — test-first loop: write failing tests, confirm they fail for the right reason, then code until green **without** editing the tests (engine tests run via `npm test`).
+- `/trim-context` — find + fix CLAUDE.md / memory / always-loaded token bloat, then apply the fixes.
+- `/autonomous-milestone [target]` — with a target: plan/build/test/verify end-to-end; with none: triage the backlog into ranked candidates. Uses ultracode multi-agent orchestration (higher token cost).
+- 💻 `/screenshot-iterate <mock + what to build>` — visual loop: implement → screenshot the running app → compare to a mock → iterate. Needs a browser MCP + local dev server.
+- `/new-engine-module <name + desc>` — **repo-specific.** Scaffold a `js/<name>.js` the Tempo way and wire all four touch-points in one shot: `<script>` tag at the correct load-order slot, CLAUDE.md file-map + load-order chain, `sw.js` ASSETS + `CACHE_NAME` bump, and a `tests/<name>.test.js` stub registered in `tests/index.html`.
+
+**Skills** (`.claude/skills/`, auto-trigger or invoke explicitly):
+- `artifacts-audit` — audit which engineering artifacts (READMEs, ADRs, runbooks, ERDs…) the repo should have; writes `docs/artifacts-plan.md`. Plans only, no source edits.
+- `artifacts-generate` — generate artifacts from a prior `docs/artifacts-plan.md` (one-at-a-time or batch). Companion to `artifacts-audit`.
+- 💻 `match-the-mock` — auto-triggering visual loop (paste a mock / Figma link): implement → screenshot → compare → iterate. Needs a browser MCP + local dev server.
+
+**Subagents** (`.claude/agents/`) — repo-specific, beyond the 5-subagent sync-PR pipeline:
+- `sync-invariant-reviewer` — read-only reviewer of a branch diff for the three cross-cutting invariants the pipeline doesn't mechanically gate: synced-store `schema.stamp()` coverage, reuse-over-reimplementation (`Platform.haptic`/`Platform.notify`/`escapeHtml`/`Utils.formatMs`), and new-module 4-file wiring. Reports findings; never edits.
+
+**Hooks** (`.claude/settings.json`, committed — repo-specific):
+- `pre-commit-guard` (`PreToolUse` on `Bash`, script `scripts/hooks/pre-commit-guard.mjs`) — before any `git commit`, runs `scripts/check-sw-bump.mjs` + `scripts/check-asset-integrity.mjs` and **blocks** the commit if a cached web file changed without a `CACHE_NAME` bump, or if `sw.js` ASSETS and the `index.html` `<script>` set disagree.
