@@ -41,6 +41,8 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `bfrb_volume` | `js/audio.js:43` | numeric string | no | yes | BFRB chime volume. |
 | `install_dismissed` | `js/app.js:120,146` | `'1'` | no | yes | PWA install-prompt dismissal. |
 | `tempo_device_id` | `js/history.js:6,16-29` | UUID v4 string | no | no | Stable per-device id. Generated once; reused by `meds`/`distractions`/`bfrb-events` for sync dedup signatures. Read-mirrored in `js/meds.js:70`, `js/distractions.js:74`, `js/bfrb-events.js:64`. |
+| `flow_readiness_suggest` | `js/flow-ui.js` | `'0'`/`'1'`, **default ON** when absent | no | no | #15 Tempo Coach. Opt-OUT for the Flow pre-block readiness-sized focus default. When `!== '0'`, Flow calls `TempoCoach.suggestFocusDurationMs(RecoveryFeed.getLatest())` and pre-selects the matching `.flow-dur-btn` (well→120m / strained→90m; `ms === null` leaves the persisted default untouched). User override always wins. |
+| `tempo_coach_nudge_enabled` | `js/tempo-nav.js` (settings drawer) | `'0'`/`'1'`, **default OFF** when absent | no | no | #15 Tempo Coach. Opt-IN for the descriptive morning readiness nudge. On enable, the toggle schedules a daily heads-up via `BgNotify.schedule(...)` whose title/body come from `TempoCoach.shouldNudge(...)` (descriptive copy only); on disable, `BgNotify.cancel(...)`. |
 
 ### 1b. Engine state
 
@@ -106,6 +108,8 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `tempo_sync_hydrated_<store>` | `js/sync-engine.js:78` (prefix `tempo_sync_hydrated_`) | `'1'` | no | no | Per-store hydrate-completion markers (`rest_log`/`meds`/`presets`/`history`). |
 | `tempo_sync_hydrated_all` | `js/sync-engine.js:79` | `'1'` | no | no | Short-circuit gate — once set, `hydrateFromCloud()` is a no-op. |
 | `tempo_sync_steady_interval_ms` | `js/sync-engine.js:102` | int ms, default 300000, clamp [10s,10m] | no | no | **Not in `CLAUDE.md` list.** Optional steady-state poll-interval override. |
+| `history_hide_imported` | `js/history-ui.js` (filter bar) | `'0'`/`'1'`, default `'0'` | no | no | D-1 History-panel filter toggle. `'0'` shows imported pre-sync rows; `'1'` filters them out of the rendered list. Only the chip + filter bar are gated on the presence of any imported rows. |
+| `tempo_sync_steady_state_enabled` | — (**RETIRED in E-1e**) | `'1'`/`'0'` | no | no | **Retired dev-only gate** that kept steady-state polling dormant during E-1b/c/d. After E-1e, steady-state runs by default for any user with `tempo_sync_enabled='1'`, gated on the **4-condition auto-invoke helper** (signed-in + flag-on + all-hydrated + no Stage D handoff). Any orphan entry on existing dev installs is harmless — no read sites remain. |
 
 ### 1f. Presets
 

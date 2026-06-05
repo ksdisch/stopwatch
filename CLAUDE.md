@@ -1,5 +1,14 @@
 # Stopwatch PWA — Project Reference
 
+> **This file is the always-loaded lean core.** Deep/historical detail is relocated
+> (never deleted) into linked docs that load on demand:
+> - **Architecture deep-dive + ADRs + diagrams** → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+> - **Every persisted key / store / field** → [`docs/reference/data-dictionary.md`](docs/reference/data-dictionary.md)
+> - **Full feature backlog + shipped post-mortems + resolved tech-debt** → [`docs/BACKLOG.md`](docs/BACKLOG.md)
+> - **Chronological build history** → [`docs/BUILD-HISTORY.md`](docs/BUILD-HISTORY.md)
+> - **Glossary of terms (F-numbers, stage codes)** → [`docs/reference/glossary.md`](docs/reference/glossary.md)
+> - **Cloud-sync strategy + orchestrator workflow** → `docs/CLOUD-SYNC-STRATEGY.md`, `.claude/orchestrator-prompt.md`
+
 ## What This App Is
 
 A cross-platform stopwatch PWA (Progressive Web App) that works on phone and desktop, inspired by the iPhone Clock app's stopwatch. The key differentiator is the ability to **start a stopwatch with time already elapsed** — e.g., "I took my medication ~30 minutes ago, start counting from 30:00 and count up."
@@ -13,88 +22,92 @@ Vanilla HTML + CSS + JS. No framework, no build step. The entire app is a static
 
 ## Architecture
 
+The file-map below is a terse navigation index. For module layering, the engine
+model, persistence topology, the cloud-sync component view, the platform seam, and
+the ADR/diagram set, read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ```
 index.html                      — App shell, all HTML structure
-css/styles.css (~3300 lines)    — All styling, dark/light themes, responsive, animations, a11y
+css/styles.css (~3300 lines)    — All styling: themes, responsive, animations, a11y
 js/utils.js                     — Utils.formatMs(ms) shared time formatting
 js/dom-utils.js                 — escapeHtml(str) shared HTML-escape helper
-js/platform.js                  — Platform abstraction layer. Web-vs-native (Capacitor) branches for haptic()/notify()/scheduleNotification(), plus the lazy Firebase Auth shim (Platform.auth) and network shim (Platform.network). Isolates all native calls.
-js/schema.js                    — Sync-invariant stamping seam. Schema.SCHEMA_VERSION / stamp(record) (deviceId+updatedAt+schemaVersion) / isFutureRecord(record) (F19a refuse-writeback guard). ALL synced-store writes go through here.
+js/platform.js                  — Platform abstraction (web vs Capacitor native): haptic/notify/scheduleNotification + Firebase Auth shim (Platform.auth) + network shim. Isolates all native calls.
+js/schema.js                    — Sync-invariant stamping seam: SCHEMA_VERSION / stamp(record) (deviceId+updatedAt+schemaVersion) / isFutureRecord (F19a guard). ALL synced-store writes go through here.
 js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall-clock timing. Alerts.
 js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.
-js/instance-manager.js          — InstanceManager: manages multiple stopwatch/timer instances (up to 5 each), primary tracking, persistence.
+js/instance-manager.js          — Manages multiple stopwatch/timer instances (≤5 each), primary tracking, persistence.
 js/pomodoro.js                  — Pomodoro engine. Work/break cycle state machine.
-js/flow.js                      — Flow Block engine. Single 90/120-min focus block + 15-min recovery. Ultradian rhythm.
+js/flow.js                      — Flow Block engine. 90/120-min focus block + 15-min recovery (ultradian).
 js/interval.js                  — Interval engine. Phase-based rounds (Tabata / HIIT / Custom).
-js/persistence.js               — Persistence.save()/load() delegates to InstanceManager.saveAll()/loadAll().
-js/sync-firebase-config.js      — Committed public Firebase web config (project tempo-sync-6f7b2). Public client config, not a secret — access control is enforced by firestore.rules, not by hiding the key.
-js/sync-flag.js                 — SyncFlag: `tempo_sync_enabled` localStorage flag (`isEnabled()` / `enable()` / `disable()`). Master cloud-sync feature flag, off by default.
-js/sync-firestore.js            — Firestore SDK seam (single wrapper for getDoc/setDoc/getCollection/runTransaction/subscribe). Web branch lazy-imports firebase/firestore from gstatic CDN; native branch routes to window.Capacitor.Plugins.FirebaseFirestore (runTransaction + subscribe are web-only — native throws "native parity pending", backlog #3). Errors normalized to { kind, message, isRetryable, originalError }. SYNC_DISABLED fast-path when flag is off.
-js/sync-buffer.js               — Offline write buffer. Separate IndexedDB db `tempo_sync_db v1`, store `pending_ops` (≤1000 pointer-shaped ops { store, recordId }). Drained FIFO on Platform.network online.
-js/sync-engine.js               — SyncEngine: the cloud-sync orchestrator (~2600 lines). Hardcoded `SYNCED_STORES` registry of SIX stores (meds / history / rest_log / presets / bfrb_events / distractions), each with a snapshotForSync() adapter. Lifecycle: init → auth-change → hydrateFromCloud (per-store + all-hydrated markers) → startSteadyState (300s poll / web onSnapshot listeners) → per-store merge dispatch → CAS writeback. Sync is LIVE by default (E-1e) for any signed-in user with the flag on. Event emitter for UI re-render on merge.
-js/sync-toast.js                — Toast: non-blocking sync notifications (e.g. F15 health-data multi-entry-arrival toast on meds merge).
-js/sync-manual-dedupe.js        — D-1 placeholder: `ManualDedupe.scan()` surfaces history pairs with matching `(date, duration, type)` across synced and imported buckets (1.0 exact-duration match; 0.9 for `|delta| <= 5000ms`). Pre-bucketed by `(type, YYYY-MM-DD)`.
-js/sync-merge-meds.js           — Per-store merge: meds metadata LWW + doseLog append-merge (F1 ±15-min reconcile, F16 clock-skew clamp) + F19a guard + CAS + F15 arrival emit. See docs/adr/0004-per-store-merge-strategy.md.
-js/sync-merge-history.js        — Per-store merge: sessions union by id + record-level LWW; phaseLog dedup by (deviceId, phaseStartedAt) per F6.
-js/sync-merge-rest-log.js       — Per-store merge: per-date key; sleep LWW, naps append-merge by (deviceId, startedAt).
+js/persistence.js               — Persistence.save()/load() → InstanceManager.saveAll()/loadAll(). F13 write-gate (SyncState).
+js/sync-firebase-config.js      — Committed public Firebase web config (project tempo-sync-6f7b2). Not a secret — access is enforced by firestore.rules.
+js/sync-flag.js                 — SyncFlag: master cloud-sync feature flag (`tempo_sync_enabled`), off by default.
+js/sync-firestore.js            — Firestore SDK seam (getDoc/setDoc/getCollection/runTransaction/subscribe). Web lazy-imports CDN; native routes to Capacitor plugin (runTransaction+subscribe web-only → backlog #3). Normalized errors.
+js/sync-buffer.js               — Offline write buffer. Separate IndexedDB `tempo_sync_db v1`, store `pending_ops` (≤1000 ops). Drained FIFO when network online.
+js/sync-engine.js               — SyncEngine orchestrator (~2600 lines). SYNCED_STORES = SIX stores (meds/history/rest_log/presets/bfrb_events/distractions). Lifecycle: init → auth-change → hydrateFromCloud → startSteadyState (300s poll / web onSnapshot) → per-store merge → CAS writeback. LIVE by default (E-1e).
+js/sync-toast.js                — Toast: non-blocking sync notifications (e.g. F15 meds arrival toast).
+js/sync-manual-dedupe.js        — D-1 placeholder: ManualDedupe.scan() surfaces matching history pairs across synced/imported buckets.
+js/sync-merge-meds.js           — Per-store merge: meds metadata LWW + doseLog append-merge (F1/F16) + F19a + CAS + F15. See docs/adr/0004.
+js/sync-merge-history.js        — Per-store merge: sessions union by id + record LWW; phaseLog dedup (F6).
+js/sync-merge-rest-log.js       — Per-store merge: per-date key; sleep LWW, naps append-merge.
 js/sync-merge-presets.js        — Per-store merge: full-record LWW + deletedAt tombstone propagation.
 js/sync-merge-bfrb.js           — Per-store merge: bfrb_events union-dedup by (deviceId, takenAt); deterministic doc id.
 js/sync-merge-distractions.js   — Per-store merge: distractions union-dedup by (context, sessionId, deviceId, timestamp).
-js/sync-auth.js                 — SyncAuth: signIn / signOut / getCurrentUser / onAuthChange. Delegates to Platform.auth (web vs native shim). Caches normalized user; emits 'auth-change' via SyncEngine.emit on transitions. No-op when SyncFlag.isEnabled() === false.
-js/backup.js                    — F12 mandatory local backup. Backup.exportLocal() reuses Export.buildBackupData() then offers via Web Share API (mobile) or <a download> (desktop). Backup.importLocal() ships as the D-1 restore hook. Returns { ok, bytesWritten?, error? }.
-js/audio.js                     — SFX module. Web Audio API synthetic sounds (no audio files). Multiple sound profiles.
+js/sync-auth.js                 — SyncAuth: signIn/signOut/getCurrentUser/onAuthChange → Platform.auth. No-op when flag off.
+js/backup.js                    — F12 mandatory local backup. exportLocal() reuses Export.buildBackupData(); importLocal() = D-1 restore hook.
+js/audio.js                     — SFX module. Web Audio API synthetic sounds (no files). Multiple profiles.
 js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
-js/history.js                   — History module. Session storage in IndexedDB (db: stopwatch_history_db, store: sessions). Tags, notes. Migrates legacy localStorage entries.
-js/export.js                    — Export module. Clipboard, CSV download, Web Share API, full-data JSON export/import.
-js/analog.js                    — Analog clock face. SVG with 60 ticks, numbers, rotating hands.
+js/history.js                   — History module. IndexedDB (db stopwatch_history_db, store sessions). Tags, notes. Migrates legacy localStorage.
+js/export.js                    — Export module. Clipboard, CSV, Web Share, full-data JSON export/import.
+js/analog.js                    — Analog clock face. SVG ticks/numbers/hands.
 js/offset-input.js              — "Start with time already elapsed" input UI + presets.
-js/ui.js (~490 lines)           — Main UI: render loop (RAF), button state machine, lap list, swipe-to-delete, vibration intervals, a11y announcements.
-js/cards-ui.js                  — CardsUI: compact card rendering for non-primary stopwatch/timer instances.
+js/ui.js (~490 lines)           — Main UI: RAF render loop, button state machine, lap list, swipe-to-delete, vibration, a11y.
+js/cards-ui.js                  — Compact card rendering for non-primary stopwatch/timer instances.
 js/compare-ui.js                — Compare view: split-screen two-instance comparison.
-js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm callback.
-js/bfrb-recovery.js             — BFRBRecovery helper: shared 60s in-button countdown for the competing-response routine triggered on any BFRB catch. Calls SFX.playBFRBEnd on completion (louder, separately-configurable chime).
-js/distractions.js              — Distractions data module. sessionId-keyed maps for Flow + Pomodoro distraction logs (F8). Synced as the 6th store. Owns the legacy-flat-array → keyed-map migration.
-js/bfrb-events.js               — BfrbEvents data module. F3 consolidated BFRB stream (`bfrb_events`), single source of truth replacing the 3 legacy buckets. Synced store; owns the phased migration.
-js/todoist.js                   — Todoist REST v2 client: token mgmt, getTasks/closeTask/reopenTask/createTask/updateTask, offline queue (todoist_pending_ops), normalized errors. Device-local token, never synced.
-js/todoist-ui.js                — Todoist UI: shared picker modal (openPicker) + settings-drawer panel wiring. Reused by Pomodoro saved tasks + Flow task list.
-js/global-bfrb.js               — Global BFRB FAB: always-visible floating button + keyboard shortcut (B). Writes to the consolidated bfrb_events stream (context-tagged global/flow/pomodoro). Wires the BFRB chime volume slider in the settings drawer.
-js/pomodoro-ui.js               — Pomodoro mode UI: button handlers, render loop, settings, focus/break/actual-work checklists, saved tasks, templates, distraction log, timeline.
+js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm.
+js/bfrb-recovery.js             — Shared 60s in-button competing-response countdown on a BFRB catch. Plays SFX.playBFRBEnd.
+js/distractions.js              — Distractions data module. sessionId-keyed maps (F8) for Flow+Pomo. 6th sync store. Owns the migration.
+js/bfrb-events.js               — BfrbEvents data module. F3 consolidated BFRB stream (`bfrb_events`), single source of truth. Synced; owns migration.
+js/todoist.js                   — Todoist REST v2 client: token mgmt, getTasks/close/reopen/create/updateTask, offline queue. Device-local token, never synced.
+js/todoist-ui.js                — Todoist UI: shared picker modal (openPicker) + settings panel. Reused by Pomo saved tasks + Flow task list.
+js/global-bfrb.js               — Global BFRB FAB (always-visible + shortcut B) → bfrb_events. Wires BFRB chime volume slider.
+js/pomodoro-ui.js               — Pomodoro mode UI: handlers, render loop, settings, checklists, saved tasks, templates, distractions, timeline.
 js/pomodoro-stats.js            — Pomodoro stats engine (streaks, daily/weekly aggregates).
-js/flow-ui.js                   — Flow Block UI: pre-block checklist, user-editable "Tasks for this block" list (two-way Todoist integration — import via the shared picker, check/uncheck/create write-back, delete stays local; `flow_user_tasks`), distraction log, summary card, recovery phase.
+js/flow-ui.js                   — Flow Block UI: pre-block checklist, user-editable "Tasks for this block" (two-way Todoist; `flow_user_tasks`), distractions, summary, recovery, #15 readiness default.
 js/alert-ui.js                  — Alert UI: add/remove/render threshold alerts for stopwatch.
-js/bg-notify.js                 — Background notification bridge via service worker (for backgrounded tabs).
+js/bg-notify.js                 — Background notification bridge via service worker (backgrounded tabs).
 js/interval-ui.js               — Interval mode UI: phase list, templates, rounds, run info.
 js/cooking-ui.js                — Cooking mode UI: multiple named short timers with suggestions.
 js/sequence.js                  — Sequence engine (linear phase chain, sub-mode of Timer).
 js/sequence-ui.js               — Sequence UI: phase setup, run info.
 js/analytics.js                 — Analytics engine: aggregates history sessions by day/type.
 js/analytics-ui.js              — Analytics dashboard UI panel.
-js/focus-ui.js                  — Focus / ambient display mode (distraction-free full-screen view).
+js/focus-ui.js                  — Focus / ambient display mode (distraction-free full-screen).
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
-js/meds.js                      — Medications engine. createMed(id) factory + MedsManager singleton. Interval or time-of-day schedules. Dose logging with optional offset ("took it ~30 min ago"). Prescription supply tracking (opt-in per med): `setSupply(count)` ("New prescription" — stamps `supplyStartCount` + `supplyResetAt`, resets `supplyAdjustment` to 0), `clearSupply()` (stop tracking → both null, adjustment 0), derived `getSupplyRemaining()` (= startCount − doses logged on/after the refill + `supplyAdjustment`, clamped at 0; null when not tracked — which doubles as the "is tracked" flag), and `adjustSupply(delta)` (manual ±1 correction — solves for the `supplyAdjustment` offset that lands the *displayed* remaining exactly on the new target, so steppers stay responsive even when consumed > startCount; clamped at 0, capped at 1000, allowed to exceed startCount). Additive nullable fields, no SCHEMA_VERSION bump. D-2 live: `MedsManager.reconcileDoseLog(med, incomingEntries)` (F1 ±15-min cross-device collapse + F16 ±15-min clock-skew clamp + F14 1000-entry cap + F19a future-schema skip) and `MedsManager.onMergeComplete(medId)` (calls `recomputeLastTakenAt` per F4, persists, emits on SyncEngine bus).
-js/meds-ui.js                   — Wellness › Meds UI: med cards with live countdown + "since last dose", add/edit form, dose logging, due-time notifications. Supply tracking is opt-in via a "Track prescription supply" checkbox in the add/edit form (+ pills-per-prescription qty); only opted-in cards render the prominent supply badge ("N left" of M, low/empty color states) with inline ▲/▼ steppers for a manual ±1 correction (down-arrow disabled at 0; calls `adjustSupply`, persists, light 15ms haptic) + "New prescription" inline refill input.
-js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards (Tabata, HIIT 30/30, HIIT 40/20, EMOM 12, AMRAP 15, Steady 20). Tap applies to the Interval engine and routes to Timers › Interval. Recent Activity reads from History filtered by type='interval'.
-js/mindful-ui.js                — Wellness › Mindful UI. Breathing exercises (Box / 4-7-8 / Coherence 5-5 / Calm 6-2-6) with an inline animated circle (per-step CSS transition). Meditation duration presets (3/5/10/15/20 min) that apply to the Timer engine and auto-start on Timers › Timer.
-js/wellness-cooking-ui.js       — Wellness › Cooking UI: 8 named cooking presets (Pasta 10m, Rice 20m, Eggs 7m, Steak rest 5m, Oven preheat 10m, Tea steep 3m, Toast 3m, Chicken 25m). Tapping a preset spins up a named timer via the existing Cook mode (`createTimer` + `cookingTimers.push` + `cookingTimerAlarm`), auto-starts it, and routes to Timers › Cook. Recent Activity reads History filtered by type='cooking'. Cap at 8 concurrent timers matches the existing Cook mode.
-js/recovery-ui.js               — Wellness › Recovery UI: rest tracking dashboard. Daily sleep log (hours + 1–5 quality), nap tracker (20/30/60/90m presets with inline countdown that plays the BFRB chime on completion), derived "Last focus block: N hours ago" status line + "Focus today: N min" total (from History). Persists to `wellness_rest_log` in localStorage as an object keyed by YYYY-MM-DD.
-js/recovery-feed.js             — RecoveryFeed: READ-ONLY consumer of the external personal-health-elt pipeline. Reads users/{uid}/recovery_state/{latest,history} from Firestore (written by an Admin-SDK pipeline in a separate repo), caches to localStorage for offline render. No write path. See docs/reference/recovery-state-contract.md (planned).
-js/tempo-coach.js               — Tempo Coach engine (#15): pure IIFE singleton, zero DOM / zero side-effects (returns decisions; callers act). `readinessBand(recoveryState)` → `'well'|'strained'|'neutral'|null` (mirrors the well/strained classification in rhythm-panel-correlations.js); `suggestFocusDurationMs(recoveryState)` → `{ ms: 5400000|7200000|null, band, reason }` (well→120m / strained→90m / neutral|null→null); `doseSleepSlope(pairs)` → `{ usable, slope, intercept, nPoints, deltaMinutes, reason }` (least-squares with suppression guards: ≥5 usable pairs AND ≥1.5h x-spread AND slope stability, else `usable:false` + "not enough data yet"); `buildTodayModel(deps)` → assembled descriptive model from injected `_deps`; `shouldNudge(recoveryState, now)` → `{ nudge, title, body }` (descriptive copy, no scheduling side-effect). Descriptive-first: every emitted string is observational, never imperative. Consumed by rhythm-panel-today.js + flow-ui.js — MUST load before both.
-js/rhythm-engine.js             — Rhythm aggregation engine: assembles the daily event timeline + readiness band from History / bfrb_events / distractions / RecoveryFeed.
-js/rhythm-insights.js           — Rhythm Insights foundation (#12): panel registry (register/getPanels sorted by `order`), dependency-injected data layer (_deps, overridable for tests), shared inline-SVG chart helpers (windowDays/bucketByDay/sumByDay/svgScaffold/linePoints/polyline/area/qualityColor/fmtHour/card/empty), and renderInto() which paints all registered panels (Promise.allSettled per-panel failure isolation + one delegated toggle listener; per-render getSessions once-cache).
-js/rhythm-panel-today.js        — Insights panel (order 5 — pins ATOP Insights): Tempo Coach "Today" briefing. `build(deps)` calls `TempoCoach.buildTodayModel` over `_deps`; `render(model)` returns a descriptive HTML string (never touches `document`) reusing the shared card/empty/SVG helpers. Empty-state is the DEFAULT path — delivers local-only value (dose+sleep+focus) when there is no recovery feed; the recovery re-lens is strictly additive. All interpolated text via escapeHtml.
-js/rhythm-panel-meds-sleep.js   — Insights panel (order 10): Meds-vs-Sleep scatter. x=first-dose hour of the selected med, Onset|Duration toggle (Onset y=bedtime via #11, Duration y=hours slept), dot color=quality. Pairs dose[D] with the FOLLOWING night's sleep (restLog[D+1]).
-js/rhythm-panel-recovery-trends.js — Insights panel (order 20): 14-day HRV/ACWR/RHR sparklines from RecoveryFeed.getHistory().rows (per-metric min..max scaling; empty-state when signed out / no cloud rows).
-js/rhythm-panel-focus-minutes.js — Insights panel (order 30): 14-day focus-minutes bar chart (flow+pomodoro) from History via sumByDay; reuses .analytics-bar-*.
-js/rhythm-panel-bfrb-frequency.js — Insights panel (order 40): 14-day daily BFRB line+area chart from Analytics.getBFRBTrend(14).series (reuses the de-duped engine — no double-count).
-js/rhythm-panel-bfrb-triggers.js — Insights panel (order 45): antecedent breakdown (trigger leaderboard + urge mix over 14d) + a forgiving clean-streak hero, read from the LIVE BfrbEvents.getAll() stream via deps.getBfrbEvents (NOT the snapshot path). Streak = a fixed no-catch window of elapsed time.
-js/rhythm-panel-distraction-rollup.js — Insights panel (order 50): all-time distraction category leaderboard + by-hour strip from Analytics.getDistractions().
-js/rhythm-panel-event-zoom.js   — Insights panel (order 60): condensed 14-day activity strip (productivity vs wellness stacked mini-bars) from a single History read bucketed locally (no per-day getDayTimeline).
-js/rhythm-panel-correlations.js — Insights panel (order 70): plain-language cross-stream callouts (focus vs recovery_signal, BFRB vs recovery, sleep vs focus); conservative — only emits a callout when both compared groups have data (never NaN).
-js/rhythm-ui.js                 — Rhythm pillar UI: Timeline | Insights sub-nav (tempo-nav is the single router). Timeline = daily event timeline + recovery-readiness band; Insights = RhythmInsights.renderInto() into a sibling `.rhythm-insights-surface` inside `.rhythm-root`.
+js/meds.js                      — Medications engine. createMed(id) + MedsManager singleton. Dose logging w/ offset; opt-in prescription supply tracking (derived remaining); D-2 reconcileDoseLog (F1/F16/F14/F19a) + onMergeComplete (F4). Detail → ARCHITECTURE.md / data-dictionary.md.
+js/meds-ui.js                   — Wellness › Meds UI: med cards, add/edit, dose logging, due-time notifications, opt-in supply badge + ▲/▼ steppers + refill.
+js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards → Interval engine. Recent Activity from History (type=interval).
+js/mindful-ui.js                — Wellness › Mindful UI: breathing exercises (animated circle) + meditation duration presets → Timer.
+js/wellness-cooking-ui.js       — Wellness › Cooking UI: 8 named cooking presets → Cook mode (createTimer). Recent Activity from History (type=cooking). ≤8 timers.
+js/recovery-ui.js               — Wellness › Recovery UI: daily sleep log (hours+quality+bedtime/wake), nap tracker, derived focus status. Persists `wellness_rest_log`.
+js/recovery-feed.js             — RecoveryFeed: READ-ONLY consumer of external personal-health-elt pipeline (Firestore recovery_state). No write path. See docs/reference/recovery-state-contract.md.
+js/tempo-coach.js               — Tempo Coach engine (#15): pure singleton, zero DOM/side-effects. readinessBand / suggestFocusDurationMs / doseSleepSlope (suppression-guarded) / buildTodayModel / shouldNudge. Descriptive-first. MUST load before rhythm-panel-today + flow-ui.
+js/rhythm-engine.js             — Rhythm aggregation: daily event timeline + readiness band from History / bfrb_events / distractions / RecoveryFeed.
+js/rhythm-insights.js           — Rhythm Insights foundation (#12): panel registry (sorted by `order`), DI data layer (_deps), shared inline-SVG helpers, renderInto() (Promise.allSettled per-panel isolation).
+js/rhythm-panel-today.js        — Insights panel (order 5, pins atop): Tempo Coach "Today" briefing. Descriptive HTML string, never touches document. Empty-state is DEFAULT path.
+js/rhythm-panel-meds-sleep.js   — Insights panel (order 10): Meds-vs-Sleep scatter. Onset|Duration toggle; dot color=quality. Pairs dose[D] with sleep[D+1].
+js/rhythm-panel-recovery-trends.js — Insights panel (order 20): 14-day HRV/ACWR/RHR sparklines from RecoveryFeed.
+js/rhythm-panel-focus-minutes.js — Insights panel (order 30): 14-day focus-minutes bar chart (flow+pomodoro) from History.
+js/rhythm-panel-bfrb-frequency.js — Insights panel (order 40): 14-day daily BFRB line+area from Analytics.getBFRBTrend (de-duped).
+js/rhythm-panel-bfrb-triggers.js — Insights panel (order 45): antecedent breakdown (trigger leaderboard + urge mix 14d) + forgiving clean-streak hero, from LIVE BfrbEvents.getAll().
+js/rhythm-panel-distraction-rollup.js — Insights panel (order 50): all-time distraction leaderboard + by-hour strip from Analytics.getDistractions().
+js/rhythm-panel-event-zoom.js   — Insights panel (order 60): condensed 14-day activity strip (productivity vs wellness mini-bars).
+js/rhythm-panel-correlations.js — Insights panel (order 70): plain-language cross-stream callouts. Conservative — only when both groups have data.
+js/rhythm-ui.js                 — Rhythm pillar UI: Timeline | Insights sub-nav. Insights = RhythmInsights.renderInto().
 js/tempo-nav.js                 — Tempo shell: pillar tabs, sub-nav, hash routing, settings drawer.
-js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound toggle, theme picker, export button, PWA install.
+js/app.js (~350 lines)          — Entry point. Wires all modules. Mode switching, sound/theme/export, PWA install.
 sw.js                           — Service worker, cache-first, version-bumped on deploys.
 manifest.json                   — PWA manifest, standalone display, shortcuts.
 icons/                          — 192px and 512px PNG icons.
@@ -108,60 +121,41 @@ utils → dom-utils → platform → schema → stopwatch → timer → instance
 
 ### Key Design Decisions
 
-- **Drift-free timing:** `elapsed = offsetMs + accumulatedMs + (Date.now() - startedAt)`. Never uses setInterval to increment. Always derives from wall clock.
-- **Mutable global proxy pattern:** `let Stopwatch = createStopwatch('sw-default')`. When the primary instance is swapped, `Stopwatch` is reassigned — all existing code in ui.js, offset-input.js, etc. automatically operates on the new primary without changes.
-- **Persistence across tab close:** On page load, if status was 'running', `getElapsedMs()` auto-corrects because it reads `Date.now() - startedAt`.
-- **RAF render loop:** `requestAnimationFrame` for smooth 60fps updates. Only updates the current in-progress lap's text node (not full DOM rebuild). Self-starts on start(), self-stops on pause()/reset(). Mode guards prevent cross-mode interference.
+(ADR set with full rationale: [`docs/ARCHITECTURE.md` § Decision index](docs/ARCHITECTURE.md#decision-index).)
+
+- **Drift-free timing:** `elapsed = offsetMs + accumulatedMs + (Date.now() - startedAt)`. Never `setInterval` to increment — always derived from wall clock.
+- **Mutable global proxy pattern:** `let Stopwatch = createStopwatch('sw-default')`. When the primary instance is swapped, `Stopwatch` is reassigned — all existing code automatically operates on the new primary without changes.
+- **Persistence across tab close:** On load, if status was 'running', `getElapsedMs()` auto-corrects because it reads `Date.now() - startedAt`.
+- **RAF render loop:** `requestAnimationFrame` for 60fps. Only updates the current in-progress lap's text node. Self-starts on start(), self-stops on pause()/reset(). Mode guards prevent cross-mode interference.
 - **Module naming:** `SFX` (not `Audio`) to avoid conflicting with the browser's native `Audio` constructor.
-- **No build step:** Script load order in index.html is the dependency graph. Engine modules must load before UI modules which must load before app.js.
-- **Shared button handlers:** All modes (stopwatch, timer, pomodoro, flow, interval, cooking) register addEventListener on the same btn-left/btn-right elements. Each handler has an `appMode` guard to short-circuit when not active. Pomodoro also has a click debounce lock.
-- **Collapsed panels:** `.offset-input[data-collapsed]` uses a data attribute (not `.hidden` class) to enable CSS max-height transitions.
+- **No build step:** Script load order in index.html is the dependency graph. Engine modules load before UI modules load before app.js.
+- **Shared button handlers:** All modes register on the same btn-left/btn-right elements; each handler has an `appMode` guard. Pomodoro also has a click debounce lock.
+- **Collapsed panels:** `.offset-input[data-collapsed]` uses a data attribute (not `.hidden`) to enable CSS max-height transitions.
 
 ### State Model
 
-**Stopwatch:** `{ id, name, status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs, alerts[] }`
-**Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
-**Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs, previousPhaseSnapshot: { phase, cycleIndex, accumulatedMs }|null }`. `previousPhaseSnapshot` is captured at the top of every `nextPhase()` call (before reset), enabling one-level undo via `revertPhase()`. Null by default; cleared on `reset()`; overwritten (not stacked) on each subsequent transition.
-**Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
-**Medication:** `{ id, name, dose (e.g. "60 mg"), frequency: 'once-daily'|'twice-daily'|'as-needed', lastTakenAt, doseLog[{takenAt}], supplyStartCount?, supplyResetAt? }`. `supplyStartCount` / `supplyResetAt` are the optional prescription-supply fields (null when not tracking); remaining is **derived** from doses on/after `supplyResetAt`, never stored. Managed by `MedsManager` singleton; all meds persist to localStorage under `wellness_meds`. No schedule / no notifications in V2 — logging is always the user's explicit action via "Took it now" or "Took it ~X ago". Status derived from doseLog (`getDosesToday()` / `getStatusToday()`). `loadState` migrates V1 records (schedule-based) to `frequency: 'as-needed'` and drops legacy schedule fields.
-**Rest log (Recovery):** localStorage `wellness_rest_log`, an object keyed by `YYYY-MM-DD`. Each day entry has `sleep: { hours, quality?, bedtime?, wakeTime? }` (optional; `bedtime`/`wakeTime` are #11 additive-nullable `"HH:MM"` strings, no migration — they feed the Rhythm Insights Meds-vs-Sleep "onset" view and sync for free via the existing `rest_log` store) and `naps: [{ startedAt, durationMs, endedEarly? }]`. No engine — `RecoveryUI` reads/writes the log directly and derives "last focus" / "focus today" from `History.getSessions()`.
+(Full persisted-datum table — every key, store, shape, synced?/export? flag — in
+[`docs/reference/data-dictionary.md`](docs/reference/data-dictionary.md).)
 
-All stopwatch/timer instances persist to localStorage via `InstanceManager.saveAll()` under key `multi_state`. Pomodoro persists separately under `pomodoro_state` / `pomodoro_config`. Flow Block persists under `flow_state` / `flow_config`. Interval persists under `interval_state`. Sequence persists under `sequence_state` / `sequence_templates`. Cooking timers under `cooking_timers`. Legacy single-instance keys (`stopwatch_state`, `timer_state`) are auto-migrated.
+- **Stopwatch:** `{ id, name, status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs, alerts[] }`
+- **Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
+- **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs, previousPhaseSnapshot: {phase,cycleIndex,accumulatedMs}|null }`. Snapshot captured at top of every `nextPhase()` → one-level undo via `revertPhase()`; cleared on `reset()`, overwritten each transition.
+- **Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
+- **Medication:** `{ id, name, dose, frequency: 'once-daily'|'twice-daily'|'as-needed', lastTakenAt, doseLog[{takenAt}], supplyStartCount?, supplyResetAt? }`. Supply fields nullable (null when not tracking); remaining is **derived** from doses on/after `supplyResetAt`, never stored. `MedsManager` singleton; persists to `wellness_meds`. No schedule/notifications in V2 — logging is always explicit. `loadState` migrates V1 schedule-based records to `frequency:'as-needed'`.
+- **Rest log:** `wellness_rest_log`, object keyed by `YYYY-MM-DD`. Each day: `sleep: {hours, quality?, bedtime?, wakeTime?}` (bedtime/wakeTime = #11 additive-nullable `"HH:MM"`) + `naps: [{startedAt, durationMs, endedEarly?}]`. No engine — `RecoveryUI` reads/writes directly; derives focus stats from `History.getSessions()`.
 
-Session history persists to IndexedDB (db `stopwatch_history_db`, store `sessions`). Legacy `stopwatch_history` localStorage entries are migrated into IndexedDB on first load.
+### Persistence topology
 
-The cloud-sync offline buffer (E-2) lives in a **separate** IndexedDB database `tempo_sync_db v1`, owned by `js/sync-buffer.js`. Single object store `pending_ops` (keyPath `id` autoincrement, `enqueuedAt` index) holds at most 1000 buffered pointer-shaped ops (`{ store, recordId }`) captured at user-action time while offline; drained FIFO on `Platform.network.onChange(online)`. Two distinct IDB DBs by design — sessions and pending-ops have orthogonal lifecycles (history is canonical user data, the buffer is transient sync infrastructure).
-
-Additional localStorage keys used for UI/config preferences:
-- `app_mode`, `display_mode`, `lap_display_mode`, `vibrate_interval`, `install_dismissed`
-- `sound_muted`, `sound_profile`, `theme`, `bfrb_volume`, `bfrbs_global`, `wellness_rest_log`
-- `offset_presets`, `quick_presets`, `presets_seeded`
-- `pomo_auto_advance`, `pomodoro_checklist`, `pomodoro_break_checklist`, `pomodoro_actual_work`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `pomodoro_distractions`, `pomodoro_bfrbs`
-- `flow_distractions`, `flow_bfrbs`, `flow_checklist_state`, `flow_checklist_skipped`, `flow_last_saved_session`
-- `tempo_sync_enabled` (B-1; cloud-sync feature flag, off by default — separate from `tempo_sync_state` which gates writes in `persistence.js`)
-- `tempo_sync_partial_upload_uid` (B-3; mid-upload marker — set on push failure, cleared on success. On retry, if marker matches current user's UID, resume upload instead of routing to Stage D handoff.)
-- `tempo_sync_stage_d_handoff` (B-3; flag set when B-3's read-cloud-first guard detects existing cloud data from another device. D-1 will consume this to trigger the imported-bucket migration UI.)
-- `tempo_sync_hydrated_rest_log` / `tempo_sync_hydrated_meds` / `tempo_sync_hydrated_presets` / `tempo_sync_hydrated_history` (C-1; per-store hydrate completion markers, set to `'1'` after each cloud-pull store finishes; missing markers trigger re-pull on next boot.)
-- `tempo_sync_hydrated_all` (C-1; set to `'1'` after all 4 per-store markers complete. Acts as the short-circuit gate — once set, `SyncEngine.hydrateFromCloud()` is a no-op.)
-- `history_hide_imported` (D-1; UI toggle in the History panel filter bar. `'0'` (default) shows imported pre-sync rows; `'1'` filters them out of the rendered list. Only the chip + filter bar are gated on the presence of any imported rows.)
-- `bfrb_events` (E-1d-f3; F3 consolidated BFRB stream. Replaces the three legacy buckets (`bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs`) as the single source of truth for BFRB sync. Each entry: `{ takenAt, context, sessionId?, phase?, cycleIndex?, deviceId, updatedAt, schemaVersion }`. `context` ∈ `'global'|'flow'|'pomodoro'`. Legacy 3 keys retained for one release pending a deferred cleanup PR — no scheduled removal yet (Pick C on TODO #5).)
-- `tempo_bfrb_events_migration_v1` (E-1d-f3; phased-migration idempotency marker. Set to `'1'` once the union+write of legacy buckets into `bfrb_events` completes on first load post-upgrade. Module skips migration on subsequent loads.)
-- `flow_distractions` (E-1d-f8; F8 sessionId-keyed map `{ [sessionId]: [entries] }` where each entry is `{ category, note?, timestamp, deviceId, updatedAt, schemaVersion }`. Was a flat array pre-E-1d-f8 — migrated in place under a stable orphan-key fallback for entries without a sessionId. Synced as the 6th store via `js/sync-merge-distractions.js`.)
-- `pomodoro_distractions` (E-1d-f8; same shape as `flow_distractions` — sessionId-keyed map. Migrated in place by `js/distractions.js`. Synced as part of the 6th sync store.)
-- `tempo_distractions_migration_v1` (E-1d-f8; F8 phased-migration idempotency marker. Set to `'1'` once the legacy-flat-array → sessionId-keyed-map migration completes for both Flow + Pomo on first load post-upgrade. Module skips migration on subsequent loads.)
-- `tempo_sync_steady_state_enabled` (**REMOVED in E-1e** — was the dev-only gate that kept steady-state polling dormant during E-1b/c/d. After E-1e, steady-state runs by default for any user with the master flag `tempo_sync_enabled='1'` set, gated on the 4-condition auto-invoke helper (signed-in + flag-on + all-hydrated + no Stage D handoff). Any orphan entry on existing dev installs is harmless — no read sites remain.)
-- `todoist_api_token` (bl-2-todoist; Todoist personal API token. Device-local — never synced, never in exports/backups. Excluded from `EXPORT_SETTINGS_KEYS`.)
-- `todoist_default_project_id` (bl-2-todoist; default Todoist project id for new tasks. Device-local.)
-- `todoist_default_filter` (bl-2-todoist; Todoist filter string for the picker; default `'today'`. Device-local.)
-- `todoist_pending_ops` (bl-2-todoist; offline queue of pending Todoist write ops [`close`/`reopen`/`create`/`update`]. 200-op FIFO cap. Device-local; auto-drains on `online` + `visibilitychange:visible`. The `update` op kind landed in #10-B — same key, no schema change.)
-- `flow_user_tasks` (bl-flow-tasks; Flow Block user-task list. Shape `Array<{ text, todoistId?, done, localTag? }>`. **NOT** Firestore-synced (absent from `SYNCED_STORES` — Todoist itself is the cross-device source of truth); **IS** in local backup/export (`EXPORT_SETTINGS_KEYS`) with Todoist linkage stripped via `_stripTodoistLinkage`, exact parity with `pomodoro_saved_tasks` (DECISION 8). `done` resets on each `Flow.start()`; `text` survives across blocks.)
-- `flow_readiness_suggest` (#15 tempo-coach-daily-loop; `'0'`/`'1'`, **default ON** when absent. Opt-OUT for the Flow pre-block readiness-sized focus default. When `!== '0'`, `js/flow-ui.js` calls `TempoCoach.suggestFocusDurationMs(RecoveryFeed.getLatest())` and pre-selects the matching `.flow-dur-btn` (well→120m / strained→90m; `ms === null` leaves the persisted default untouched). User override always wins. Device-local, NOT synced (absent from `SYNCED_STORES`), NOT in `EXPORT_SETTINGS_KEYS`.)
-- `tempo_coach_nudge_enabled` (#15 tempo-coach-daily-loop; `'0'`/`'1'`, **default OFF** when absent. Opt-IN for the descriptive morning readiness nudge. On enable, the settings-drawer toggle schedules a daily heads-up via `BgNotify.schedule(...)` whose title/body come from `TempoCoach.shouldNudge(...)` (descriptive copy only); on disable, `BgNotify.cancel(...)`. Device-local, NOT synced, NOT in `EXPORT_SETTINGS_KEYS`.)
+- Stopwatch/timer instances → localStorage `multi_state` (via `InstanceManager.saveAll()`). Pomodoro → `pomodoro_state`/`pomodoro_config`. Flow → `flow_state`/`flow_config`. Interval → `interval_state`. Sequence → `sequence_state`/`sequence_templates`. Cooking → `cooking_timers`. Legacy single-instance keys auto-migrated.
+- Session history → IndexedDB (`stopwatch_history_db`/`sessions`); legacy `stopwatch_history` localStorage migrated in on first load.
+- Cloud-sync offline buffer → a **separate** IndexedDB `tempo_sync_db v1`, store `pending_ops`. Two distinct IDB DBs by design (canonical history vs transient sync infra).
+- **The 6 synced stores:** `meds`, `history`, `rest_log`, `presets`, `bfrb_events`, `distractions`. ALL writes to these stamp `deviceId`+`updatedAt`+`schemaVersion` via `js/schema.js`.
+- **Device-local, NEVER synced and NEVER exported (credentials):** `todoist_api_token` (+ other `todoist_*`). **NOT synced** (Todoist itself is cross-device truth): `flow_user_tasks`, `pomodoro_saved_tasks`. **Device-local, not synced, not exported:** `flow_readiness_suggest`, `tempo_coach_nudge_enabled` (#15).
+- Full enumeration of every localStorage/IndexedDB/Firestore key + the sync envelope + derived-vs-stored notes: [`docs/reference/data-dictionary.md`](docs/reference/data-dictionary.md).
 
 ## What Has Been Built
 
-Full chronological detail lives in **`docs/BUILD-HISTORY.md`** (extracted to keep
-this file under the context-load threshold). Capability summary by phase:
+Full chronological detail lives in [`docs/BUILD-HISTORY.md`](docs/BUILD-HISTORY.md). Capability summary by phase:
 
 - **Phases 1–2** — Polish + Enhanced UX (shortcuts, haptics, analog face, lap chart, PWA install)
 - **Phase 3** — Timer mode, session history, export, themes, sound effects
@@ -171,109 +165,79 @@ this file under the context-load threshold). Capability summary by phase:
 - **Phase 8** — Tempo rebrand + Wellness suite (Meds, Exercise, Mindful, Cooking, Recovery)
 - **Phase 9** — Cloud Sync (Firebase/Firestore, 6 stores, 28 PRs)
 - **Phase 10** — Post-sync burndown (Flow vibration, ambient noise, Rhythm timeline)
+- **Phase 11+** — Todoist integration, Rhythm Insights dashboard (7 panels), Tempo Coach daily loop (#15), BFRB Closed Loop (#16)
 
-The architecture file-map and state model above describe the *current* surface;
-read BUILD-HISTORY.md only when you need the backstory of how it got there.
+## Feature Backlog
 
-## What's Next — Planned Improvements
+Lean summary — **full scope, shipped post-mortems, risks, and resolved tech-debt are in
+[`docs/BACKLOG.md`](docs/BACKLOG.md).** Ordered by impact-vs-effort ROI; the "Added" column
+preserves the original chronological numbering.
 
-### Feature Backlog
+| Priority | Feature | Impact | Effort | Added | Status |
+|----------|---------|--------|--------|-------|--------|
+| 1 | Native iOS app via Capacitor — App Store distribution | High | Medium | #8 | Shipped to personal device; App Store paperwork remaining |
+| 2 | Todoist integration — two-way Todoist ↔ Flow/Pomodoro task lists | High | Medium | #10 | Pomo V1 shipped; Flow + rename done (rows #9/#10) |
+| 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
+| 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Unshipped** — unlocked by #1 |
+| 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
+| 6 | Split-screen timer comparison | Medium | High | #2 | **Unshipped** |
+| 7 | Voice control (Web Speech API) | Low | Medium | #3 | **Unshipped** |
+| 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
+| 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102) |
+| 10 | Todoist follow-up B — Pomo inline-rename + `updateTask` | Low | Low | #10-B | Shipped (PR #103) |
+| 11 | Sleep log bedtime/wake-time schema extension | Medium | Low | #12 | Shipped 2026-06-01 |
+| 12 | Rhythm insights section — multi-chart dashboard (7 panels) | High | Medium | #13 | Shipped 2026-06-01 |
+| 13 | Bugfix: Rhythm Timeline dose dots read deleted `wellness_meds` blob | Medium | Low | #14 | Shipped 2026-06-03 |
+| 15 | Tempo Coach — readiness-aware daily decision loop | High | Medium | #15 | Shipped 2026-06-05 |
+| 16 | BFRB Closed Loop — antecedent capture + Triggers panel | High | Medium | #16 | Shipped 2026-06-05 (PR #126) |
 
-Reordered by impact-vs-effort ROI (best return for effort first), not chronologically. The previous chronological numbering is preserved in the "Added" column so the decision history stays visible.
+## Remaining Tech Debt
 
-| Priority | Feature | Impact | Effort | Added | Notes |
-|----------|---------|--------|--------|-------|-------|
-| 1 | **Native iOS app via Capacitor — App Store distribution** | High | Medium | #8 | **Status: shipped to personal device; App Store paperwork remaining.** Capacitor wrapper landed in #45 (commit `72eb338`): `capacitor.config.json` (appId `com.ksdisch.tempo`, appName "Tempo"), committed Xcode project at `ios/`, `js/platform.js` abstraction layer wrapping all 23 haptic call sites + 6 notification sites (web → `navigator.vibrate` / `new Notification`; native → `@capacitor/haptics` + `@capacitor/local-notifications`), `scripts/sync-www.mjs` mirrors repo root → `www/` for `cap copy`. Web build is byte-equivalent — same `git push` → GitHub Pages flow. Daily workflow + 7-day free-cert refresh playbook lives in `iOS-BUILD.md`. **Remaining for App Store distribution:** $99/yr Apple Developer Program enrollment, App Store Connect record, TestFlight or App Store submission, privacy nutrition labels (meds + BFRB are health data), App Review screenshots, age rating, 1024×1024 app icon polish. **Explicitly out of scope:** `BGTaskScheduler` (not needed — `LocalNotifications` schedules at OS level + engines are drift-free), Capacitor Preferences migration (`localStorage` survives in `WKWebView`). **Background ambient audio (addressed 2026-05-26):** ambient noise used to stop the instant Tempo was backgrounded because iOS suspends WKWebView Web Audio. Fixed natively — `Info.plist` `UIBackgroundModes`=`audio` + `AVAudioSession` `.playback` (no `.mixWithOthers`, so noise takes over the now-playing session) set in `AppDelegate.didFinishLaunchingWithOptions`. Category-only (no `setActive`) so the WebView activates the session on play rather than grabbing audio focus at launch. **Needs on-device verification** (couldn't be tested in the web-only session that shipped it); if background playback still cuts out, the follow-up is explicit session activation tied to `SFX.startAmbient` (likely a tiny Capacitor plugin). |
-| 2 | **Todoist integration — two-way sync between Todoist and Flow / Pomodoro task lists** | High | Medium | #10 | **Status: Pomo V1 shipped (PR #bl-2-todoist, 2026-05-28). Flow integration + Pomo inline-rename deferred to follow-up rows below.** Pull tasks from Todoist directly into the Flow pre-block checklist and the Pomodoro saved-task list, with completion / rename / create propagating back to Todoist. **Scope:** (1) Settings drawer "Todoist" section — paste personal API token (from Todoist › Settings › Integrations), "Test connection" button, default project picker for new tasks (defaults to Inbox), editable default filter (defaults to `today`). (2) Shared picker modal (`js/todoist-ui.js`) — opened by an "Import from Todoist" button in both Flow pre-block + Pomodoro saved tasks; lists tasks matching the user's filter, multi-select, "Add to focus". (3) Imported tasks store the Todoist `id` on the local task object (additive nullable `todoistId?` on Pomodoro saved tasks + Flow checklist items — no `SCHEMA_VERSION` bump). (4) **Write-back surface:** check off in Tempo → `POST /tasks/{id}/close`; uncheck → `POST /tasks/{id}/reopen`; new task in Tempo → `POST /tasks` with `content` + configured `project_id`; rename in Tempo → `POST /tasks/{id}` with new `content`. **Hard guard:** delete in Tempo does NOT delete in Todoist — just unlinks locally (an oops in Tempo must not nuke the user's real task list). (5) **Refresh policy:** re-pull on import-modal open AND on tab refocus (`visibilitychange:visible`); reconciles imported-but-still-active session tasks against any closures the user did in the Todoist app itself. No polling. (6) **Offline writes** queue in `todoist_pending_ops` localStorage; drained on `online` + visibility-visible. Idempotent close/reopen makes retries safe. **Files:** `js/todoist.js` (REST v2 client — token mgmt, getTasks/closeTask/reopenTask/createTask/updateTask, offline queue, normalized errors); `js/todoist-ui.js` (picker modal + settings panel wiring); edits to `js/pomodoro-ui.js`, `js/flow-ui.js`, `js/tempo-nav.js`, `index.html`, `css/styles.css`; sw.js cache bump. **iOS:** zero extra work — pure REST/CORS via `fetch`, WKWebView handles it. **Token storage:** localStorage `todoist_api_token` — **device-local, NOT synced via Firestore** (don't sync credentials). User re-pastes on each device. **Cloud sync interaction:** Pomodoro task lists + Flow checklist remain outside the Firestore sync set (unchanged); two devices reconcile via Todoist itself as the source of truth on next refresh. **Risks:** (a) deletion guard above; (b) text-edit last-write-wins — Todoist refresh wins ties (unlikely to edit both within the same second in practice); (c) task deleted in Todoist mid-session → show "Removed from Todoist" tooltip on next refresh, don't auto-remove from active session; (d) rate limit (Todoist: 1000 req / 15 min / token — single-user app is nowhere near). **Tests:** mock-fetch coverage of API client, offline-queue drain, idempotent retry. **Auth alternative considered:** OAuth 2.0 — rejected because Tempo has no backend to hold the OAuth client secret; personal API token is the standard pattern for PWAs against Todoist. |
-| 3 | **Cloud sync — native CAS + listener parity for `@capacitor-firebase/firestore`** | Medium | Medium | #7 | **Last unshipped piece of the cloud-sync initiative.** `SyncFirestore.runTransaction` (queued from E-1b) and `SyncFirestore.subscribe` (queued from E-3) are both web-only — the native branches throw an explicit "native parity pending" normalized error. Single follow-up PR should pair `addSnapshotListener` + `runTransaction` for `@capacitor-firebase/firestore` so iOS sync uses real-time listeners + atomic CAS like the web build does. Currently on native, sync still works through the 5-min defensive polling path + per-record `setDoc` fallback — fully functional but degraded. Requires Xcode + device for verification. |
-| 4 | **iOS Live Activities — running timers on the lock screen + Dynamic Island** | High | High | #9 | iOS-only via ActivityKit (iOS 16.1+). User wants the active timer / stopwatch glanceable on the lock screen without unlocking — Dynamic Island support comes free with the same activity. Setting in the Tempo drawer to toggle on/off (default ON, since iOS prompts for permission on first activity anyway). **Scope to confirm at implementation:** which engines start an activity — minimum ask is `Timer` + `Stopwatch`; `Pomodoro` / `Flow Block` / `Interval` / `Cooking` all plausibly benefit from lock-screen presence. One activity at a time (when the primary instance changes, swap) vs concurrent (iOS allows multiple but gets noisy — recommend one). **Implementation outline:** new Widget Extension target in `ios/App/App.xcodeproj`, SwiftUI views for lock-screen + compact/expanded Dynamic Island layouts, `NSSupportsLiveActivities = true` in `Info.plist`. JS-side bridge: custom Capacitor plugin (preferred for control) or `@capacitor-community/live-activity` (community, spotty). Engines emit start/end via `Platform.liveActivity.{start,update,end}` keyed by instance id. Drift-free engines make this cheap — the activity stores `endsAt` (timer) or `startedAt + accumulatedMs` (stopwatch) and the lock-screen UI renders `(endsAt - now)` locally, no per-tick push needed. **Out of scope first pass:** APNs Push-to-Update (local ActivityKit updates suffice for drift-free engines), Android "ongoing notification" equivalent (separate effort). **Unlocked by:** item #1 (Capacitor wrapper already shipped). |
-| 5 | **Pomodoro phase revert — "Go back" to previous work or break phase** | Medium | Low | #11 | **Status: shipped (PR #104, 2026-05-29).** Single-level undo for Pomodoro phase transitions. `js/pomodoro.js` captures `previousPhaseSnapshot = { phase, cycleIndex, accumulatedMs }` at the top of every `nextPhase()` call; `revertPhase()` folds elapsed time from the new phase back into the restored phase's accumulated total. "← Go back" link in the `pomo-action-links` row — visible only when snapshot exists AND status is `'running'`\|`'paused'`. Click handler calls `cancelAutoAdvance()` → `revertPhase()` → `savePomodoroState()` → `updatePomodoroUI()`. One-level undo; snapshot clears on `reset()` and on each subsequent `nextPhase()`. 9 new engine tests in `tests/pomodoro.test.js` (the recovery-feed failures noted at ship time were since fixed 2026-06-03 — suite is now fully green). **Shipped files:** `js/pomodoro.js`, `js/pomodoro-ui.js`, `index.html`, `tests/pomodoro.test.js`, sw.js cache bump (`v103-pomo-rename` → `v104-pomo-revert`). |
-| 6 | **Split-screen timer comparison** | Medium | High | #2 | Side-by-side two timers. Requires significant layout rework. |
-| 7 | **Voice control** | Low | Medium | #3 | Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset". |
-| 8 | **Group/team timing** | Low | High | #5 | WebRTC or shared URL with server sync. Major scope expansion — would need a backend. |
-| 9 | **Todoist integration follow-up A — Flow user-task list + Todoist integration** | High | Medium | #10-A | **Status: shipped (PR #102, 2026-05-29).** Deferred half of backlog row #2. Tempo's Flow pre-block "checklist" is a hardcoded 5-item ritual (`FLOW_CHECKLIST_ITEMS` in `js/flow-ui.js`), not a user-editable list — so the Pomo V1 PR (#bl-2-todoist, 2026-05-28) couldn't add Todoist imports there directly. This follow-up added a user-editable "Tasks for this block" section to the Flow setup + running views alongside the ritual checklist (new localStorage key `flow_user_tasks` — shape `Array<{ text, todoistId?, done, localTag? }>`, non-synced), wired it into the Flow active session UI (per-block "Tasks: N/M done" count + a "Tasks N/M" summary-card row + conditional history capture), and reused `TodoistUI.openPicker({ onImport })` from PR #bl-2-todoist unchanged (no engine changes — `js/todoist.js` already shipped everything required). Two-way write-back: check/uncheck → `closeTask`/`reopenTask`; add → `createTask`; **delete stays local (hard guard — never deletes in Todoist).** Per RATIFIED DECISION 8, `flow_user_tasks` is included in `EXPORT_SETTINGS_KEYS` with Todoist linkage stripped (backup parity with `pomodoro_saved_tasks`) while staying OUT of Firestore `SYNCED_STORES`. **Shipped files:** `js/flow-ui.js`, `index.html`, `css/styles.css`, `js/export.js` (+`tests/export.test.js` — 6 new cases), sw.js cache bump (`v101` → `v102-flow-tasks`). |
-| 10 | **Todoist integration follow-up B — Pomo inline-rename + Todoist updateTask** | Low | Low | #10-B | **Status: shipped (PR #103, 2026-05-29).** Deferred from backlog row #2 V1. Added click-to-edit on Pomodoro saved-task rows scoped to `#pomo-saved-tasks-items` via a `data-saved-rename-idx` hook (NOT the shared `.pomo-checklist-item-text` class — audit drift correction: the real markup is `<span class="pomo-checklist-item-text">`, and saved rows have no drag-reorder handle): click → `contentEditable` + select-all, Enter commits, Escape cancels, blur commits with trim/newline-strip + empty-or-unchanged revert. On commit, persists locally + fire-and-forget `Todoist.updateTask(todoistId, { content })` guarded by `todoistId && !localTag`. Added `Todoist.updateTask(id, { content })` to `js/todoist.js` (V1 shipped `closeTask`/`reopenTask`/`createTask` only) + a new idempotent offline-queue op kind `'update'` (same `todoist_pending_ops` key, no schema bump). `deleteTask` stays absent (hard guard). **Shipped files:** `js/todoist.js`, `js/pomodoro-ui.js`, `css/styles.css`, `tests/todoist.test.js` (8 new cases), sw.js cache bump (`v102-flow-tasks` → `v103-pomo-rename`). |
-| 11 | **Sleep log bedtime/wake-time schema extension** | Medium | Low | #12 | **Status: shipped 2026-06-01 (Rhythm Insights dashboard PR — bundled with #12).** Shipped in `js/recovery-ui.js`: optional Bedtime + Wake `<input type="time">` on the sleep form (additive nullable `"HH:MM"`, no migration), captured only when filled, with a `wake−bed mod 24` "in bed Nh" cross-check line in the logged view. `setSleep` unchanged (Object.assign carries the new keys; `rest_log` already syncs). Prerequisite for backlog row #12 (Rhythm insights). Adds optional `bedtime` and `wakeTime` timestamp fields to each day's `sleep` entry in `wellness_rest_log` (shape becomes `sleep: { hours, quality?, bedtime?, wakeTime? }`). Additive nullable — no migration needed, existing hours+quality logging is unchanged. **UI:** two optional time-picker inputs ("Bedtime" + "Wake time") in the Recovery sleep log form; if both are filled, `wakeTime - bedtime` is shown as a cross-check against the manually entered `hours`. **Why this is its own row:** the Meds vs. Sleep chart in row #12 needs sleep *onset timing* (not just duration/quality) to show whether earlier Vyvanse doses correlate with earlier sleep; without these timestamps the correlation is blind to when sleep actually happened. **Sync:** `wellness_rest_log` is already in `SYNCED_STORES` (`rest_log`) — the new fields sync automatically with no registry change. **Files:** `js/recovery-ui.js` (form inputs + persist), `css/styles.css`. |
-| 12 | **Rhythm insights section — multi-chart dashboard** | High | Medium | #13 | **Status: shipped 2026-06-01 (Rhythm Insights dashboard PR — all 7 panels).** Built via a registry pattern: a `js/rhythm-insights.js` foundation (registry + DI data layer + shared inline-SVG helpers + `renderInto` with per-panel `Promise.allSettled` isolation) plus seven self-registering `js/rhythm-panel-*.js` modules (meds-sleep / recovery-trends / focus-minutes / bfrb-frequency / distraction-rollup / event-zoom / correlations). `RhythmUI.render(sub)` gained a Timeline\|Insights sub-nav (tempo-nav single-router). The foundation + flagship Meds-vs-Sleep panel were built in-session; the other 6 panels by parallel subagents (1 new JS + 1 test file each, zero shared-file edits — wired centrally). Tests: +59 cases (`tests/rhythm-insights.test.js` + 6 `tests/rhythm-panel-*.test.js`), browser-verified 808 total / 802 pass (the 6 failures are the pre-existing recovery-feed + time-of-day rhythm-engine flakies). All 7 panels visually verified at 390px. sw.js `v105→v106-rhythm-insights`. Overhaul the Rhythm tab from a single-day event list into a multi-panel insights dashboard with trend charts and correlation callouts. **Panels (in ship-priority order):** (1) **Meds vs. Sleep chart** *(requires row #11 first)* — scatter/overlay over 14 days: x-axis = Vyvanse dose time (hour of day), y-axis = sleep onset (bedtime), dot size = sleep duration, dot color = quality score (1–5, red→green gradient). Goal: visually surface whether earlier doses correlate with earlier sleep onset, so the user can fine-tune dosing timing to improve sleep. (2) **Recovery trends** — 14-day sparklines for HRV (ms), ACWR, and RHR already cached in `recovery-feed.js`; just need rendering. (3) **Focus minutes per day** — bar chart from `History.getSessions()` aggregated by day, filtered to productivity types (flow/pomodoro). (4) **BFRB frequency** — line chart from `bfrb_events` by day, 14-day window. (5) **Distraction rollup** — category breakdown from `flow_distractions` + `pomodoro_distractions` (top categories, trends over time). (6) **Multi-day event zoom-out** — week/month condensed view of the existing event timeline. (7) **Correlation callouts** — derived plain-language insights cross-referencing data streams (e.g., "avg focus +40% on well-recovered days", "BFRB catches 2× higher on strained days"). **Architecture:** new `js/rhythm-insights.js` aggregation engine + new insights panel section inside `js/rhythm-ui.js`. All data already available locally — no new network calls. Charts via vanilla SVG (inline, no charting library — consistent with no-build-step constraint). Sub-nav toggle between "Timeline" (current daily view) and "Insights" (new panel). |
-| 13 | **Bugfix: Rhythm Timeline dose dots read the deleted legacy `wellness_meds` blob** | Medium | Low | #14 | **Status: shipped 2026-06-03 (`fix(rhythm)` PR, branch `fix/rhythm-timeline-meds-source`).** `js/rhythm-engine.js` `getDoseEntries()` now reads the live `MedsManager.all()` + each med's `getDoseLog()` (mirroring the Insights Meds-vs-Sleep panel + `js/rhythm-insights.js` `_deps`) instead of `localStorage['wellness_meds']`, which `js/meds.js`'s F18 per-record migration (`_migrateLegacyBlob`, `meds.js:549`) deletes after migrating to `meds/{medId}`. Pre-fix, the Rhythm **Timeline** view silently rendered **no medication dose events** post-migration; the Insights panel was already unaffected. Emitted entry shape is unchanged (`{ time, type:'dose-logged', module:'meds', pillar:'wellness', summary, metadata:{ medId, medName, dose } }`). `tests/rhythm.test.js` re-seeds the dose cases via the live manager (`MedsManager.clear()` → `add()` → `med.logDose()`) and adds a regression-lock test that proves the engine ignores a lingering `wellness_meds` blob; browser-verified green (the recovery-feed NPE failures were fixed 2026-06-03 — suite is now fully green), plus a live smoke (logged dose → ◆ dose dot on Timeline). **Follow-up (all three FIXED 2026-06-03):** the two *other* readers of the same deleted blob — `js/analytics.js` `getMedAdherence()` and `js/export.js` (`buildBackupData` + restore `meds/*` sweep) — are now both fixed and merged; see "Remaining Tech Debt" below. |
-| 15 | **Tempo Coach — readiness-aware daily decision loop (Today panel + readiness Flow default + opt-in morning nudge)** | High | Medium | #15 | **Status: shipped-pending-push 2026-06-05 (`feat(rhythm)` PR, branch `feat/tempo-coach-daily-loop`; HIGH blast radius — committed, awaiting the user's push/PR-open approval).** Turns Tempo's already-computed correlations *forward* into a daily loop, all strings **descriptive-first** (observational, never imperative — sidesteps clinical-framing ratification). Three surfaces: (1) a top-of-Insights **"Today"** briefing panel (`js/rhythm-panel-today.js`, order 5 — pins atop; empty-state is the DEFAULT path, delivering local-only dose+sleep+focus value when there's no recovery feed, recovery re-lens strictly additive); (2) a **readiness-sized Flow focus default** (`js/flow-ui.js` pre-block pre-selects 120m on a `well` signal / 90m on `strained` with a one-line descriptive "why"; user override always wins; `ms === null` leaves the persisted default untouched; opt-out via `flow_readiness_suggest`); (3) an **opt-in morning nudge** (default OFF, `tempo_coach_nudge_enabled`; schedules a descriptive heads-up via `BgNotify.schedule(...)`, cancels on disable). All pure logic lives in the new `js/tempo-coach.js` engine (`readinessBand` / `suggestFocusDurationMs` / `doseSleepSlope` with ≥5-pairs + ≥1.5h-x-spread + slope-stability suppression guards / `buildTodayModel` / `shouldNudge` — zero DOM, zero side-effects). No sync-store / `js/schema.js` / `SYNCED_STORES` / `package.json` / `ios/*` changes (new keys are device-local, NOT synced, NOT in `EXPORT_SETTINGS_KEYS`). **Shipped files:** `js/tempo-coach.js`, `js/rhythm-panel-today.js`, `js/flow-ui.js`, `js/tempo-nav.js`, `index.html`, `css/styles.css`, `tests/tempo-coach.test.js`, `tests/rhythm-panel-today.test.js`, `tests/index.html`, sw.js cache bump (`v110-rhythm-insights-foundation` → `v111-tempo-coach`). **Tests:** all 46 new Tempo Coach cases pass; suite **895/895 green** (foreground tab). Independently browser-verified 2026-06-05 incl. live Today panel + Flow readiness pre-select. (2 sync-engine `startSteadyState` tests fail ONLY when `tests/index.html` runs in a *backgrounded* tab — a pre-existing `visibilityState` test-isolation gap, NOT this PR; root-caused + fixed in PR #125.) |
-| 16 | **BFRB Closed Loop — antecedent capture + Triggers panel + forgiving clean-streak** | High | Medium | #16 | **Status: shipped-in-review 2026-06-05 (`feat(bfrb)` PR #126, branch `feat/bfrb-closed-loop`).** Turns every BFRB catch from a bare count into a Habit-Reversal-Training loop — captures *why* (urge 1–3 + one trigger chip) and surfaces the patterns + a forgiving clean-streak. **Slice A only** (the risk-meter + post-countdown debrief are a deferred Slice B). **Engine** (`js/bfrb-events.js`): nullable additive `urgeLevel` (1–3) + `triggerZone` (short string) + an optional `takenAt` override, all folded into the SAME `log()` call — **no `SCHEMA_VERSION` bump**, `(deviceId, takenAt)` dedup sig provably unchanged (test-locked). The single-call rule is load-bearing: `sync-merge-bfrb` keeps the CLOUD copy on a sig collision (no LWW), so a post-hoc patch of an already-synced catch is silently dropped — forcing a **deferred-single-commit** capture. **Capture UI** (`js/global-bfrb.js`): an optional 1–2 tap urge+trigger popover above the FAB; the catch is held as one `pending` entry and committed once on Done / click-outside / a new catch / any app-lifecycle exit (`pagehide`/`visibilitychange`/`beforeunload`/route) / a 30s idle backstop — never lost, never racing the user; the 60s competing-response countdown + haptic still fire instantly. `TRIGGER_CHIPS` (`stress·bored·tired·focused·idle`) is the single human-ratification surface. **Panel** (`js/rhythm-panel-bfrb-triggers.js`, order 45): reads the LIVE `BfrbEvents.getAll()` stream via `deps.getBfrbEvents`; a forgiving clean-streak hero (**a fixed no-catch WINDOW of elapsed time** — never "days with no catch logged", which would reward not-logging), a 14d trigger leaderboard + untagged bucket, and an urge mix. Reuses `.analytics-streak-*` + `.analytics-distraction-*` CSS; catch days get an amber dot. **Shipped files:** `js/bfrb-events.js`, `js/global-bfrb.js`, `js/rhythm-panel-bfrb-triggers.js`, `css/styles.css`, `index.html`, `tests/index.html`, `CLAUDE.md`, `tests/bfrb-events.test.js` (+6), `tests/bfrb-triggers.test.js` (+17, new), sw.js cache bump (`→ v112-bfrb-closed-loop`). **Tests:** suite **918/918 green** after merging main. Live-verified at 390px: all commit paths (chips+Done, click-outside, new-catch flush), populated/empty panel states, no console errors. |
+Open items only. Resolved entries (the F18 `wellness_meds` orphaned-readers fixes, the
+2026-05-26 browser-verification notes) are archived in
+[`docs/BACKLOG.md` § Resolved tech debt](docs/BACKLOG.md#resolved-tech-debt-kept-as-migration-pattern-reference).
 
-### Remaining Tech Debt
+- **iOS sign-out doesn't fully sign out (pre-existing, surfaced 2026-05-20):** Tapping "Sign out" on iOS dismisses the popup but `SyncAuth.getCurrentUser()` still returns the account (web works). Likely the `authStateChange` listener (`js/platform.js:297-302`) races back the still-cached user because `@capacitor-firebase/authentication`'s `signOut()` returns before the Firebase iOS SDK clears its Keychain-cached state. Fix lives in the native `authSignOut` branch (await a deauth+keychain-clear, or a guard flag suppressing the next re-emit). Workaround: toggle "Enable cloud sync" off.
+- **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` (timer-ui.js) duplicate ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
+- **Engine tests only (~918 `it()` cases across 35 `tests/*.test.js`):** run via `tests/index.html` in a real browser (curl-grepping the shell does NOT execute them). Covers every timing engine, meds, analytics, Todoist client, schema helpers, distractions, bfrb-events, Tempo Coach, and the full cloud-sync stack. Suite is green in a **foreground** tab. (A `visibilityState` test-isolation gap that failed 2 sync-engine `startSteadyState` tests only in a *backgrounded* tab was fixed in PR #125.) Still no UI/integration tests.
+- **renderLaps does full innerHTML on lap events:** the `updateCurrentLap` perf path only applies to the RAF tick; recording a new lap rebuilds the whole list. Low impact for typical lap counts.
 
-- **Browser-verified 2026-05-26 (Playwright MCP at 390px + 360px):** The Pomodoro Actions-always-visible change and the Meds prescription-supply counter (incl. opt-in) were all confirmed in a real browser. Canonical engine run `tests/index.html` was green at the time (the suite has since grown to **895 cases, 895/895 green** as of #15 when run in a foreground tab; 2 sync-engine `startSteadyState` tests #6 & #11 fail ONLY in a backgrounded tab — a `visibilityState` test-isolation gap root-caused + fixed in PR #125, not a product/feature regression — see Engine-tests note below). Pomodoro: Actions link visible + drawer opens/usable while idle; the 5-link row was caught **overflowing into the fixed bottom tab bar** (the added 5th link forced a wrap) and fixed by keeping the row to one non-wrapping line (`flex-wrap:nowrap` + `overflow-x:auto` safety + smaller font/padding) and shortening the "Auto-advance: Off" label to "Auto: Off". Meds: untracked meds render no supply UI; tracked med shows the prominent badge + New prescription refill; dose logging decrements 30→29; low (≤5) paints amber, empty (0) paints red. **Pre-existing (NOT caused by these changes, visible in original screenshots):** the global BFRB FAB partially overlaps the rightmost Pomodoro action link ("Saved Tasks") at the bottom-right — left as-is.
-- **iOS sign-out button doesn't actually sign user out (pre-existing, surfaced 2026-05-20 during PR #86 smoke):** Tapping "Sign out" in the Cloud Sync settings drawer on iOS dismisses the popup but leaves `SyncAuth.getCurrentUser()` still returning the signed-in account. Web sign-out works. Code path is structurally correct (`tempo-nav.js:485` → `SyncAuth.signOut()` always calls `_setUser(null)` → `Platform.auth.signOut()` native branch always calls `_emitAuth(null)` even on plugin error). Most likely root cause: the `authStateChange` listener at `js/platform.js:297-302` races back with the still-cached user a moment after signOut, because `@capacitor-firebase/authentication`'s `signOut()` may complete on the JS side without fully tearing down the Firebase iOS SDK's Keychain-cached auth state. Bug predates PR #86 (zero auth-code diff in that PR); likely present since B-2 (1db244c, 2026-04). Diagnose via Safari Web Inspector → iPhone Tempo → tap Sign Out → watch `_emitAuth` call order. Fix likely lives in `js/platform.js` native branch of `authSignOut` (await both `fa.signOut()` AND a deauth+keychain-clear, OR install a guard flag that suppresses the next `authStateChange` re-emit after manual signOut). Workaround in the meantime: toggle "Enable cloud sync" off in the drawer — pauses sync without needing auth tear-down.
-- **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` in timer-ui.js duplicate the button-handling pattern from ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
-- **Engine tests only:** ~895 `it()` cases across **34 `tests/*.test.js` files** (run via `tests/index.html` in a browser — `curl`-grepping the shell does NOT execute them; the page title self-reports the live PASS/FAIL count). Coverage spans every timing engine (stopwatch/timer/pomodoro/interval), meds, analytics, the Todoist client, schema-stamp helpers, distractions, bfrb-events, the Tempo Coach decision core (`tempo-coach.test.js` + `rhythm-panel-today.test.js`, #15), and the full cloud-sync stack (engine + uploader + hydrate + 6 per-store merges + auth/buffer/toast/listeners). **Interval (59 cases) IS merged to main** — only the *broad* Flow engine suite remains on a feature branch (`flow.test.js` on main is the narrow F20 set, 7 cases). The 4 long-standing `recovery-feed.test.js` failures were fixed 2026-06-03 (`fix/recovery-feed-npe`): the tests stubbed `window.SyncFlag`/`SyncAuth`/`SyncFirestore`, but `recovery-feed.js` reads those `const` singletons **lexically** (all loaded in the test page), so the window stubs never applied — the gate stayed closed and `refresh()` returned null, NPE-ing the happy-path cases on `out.day`. Rewritten to overwrite the real objects' methods (the `sync-hydrate.test.js` idiom), which fixed those 4. **As of 2026-06-05 the suite is 895/895 green when `tests/index.html` runs in a foreground browser tab.** Two sync-engine `startSteadyState` tests (#6 & #11) failed ONLY when the test page ran in a *backgrounded* tab: `startSteadyState()` correctly defers arming the 5-min poll timer while `document.visibilityState === 'hidden'` (battery-saver branch), but the E-1e test helper `_e1e_saveEnv` (unlike the E-1b helper `_e1b_saveSteadyEnv`) never pinned `visibilityState` to `'visible'`, so the spy never saw `setInterval`. **Root-caused + fixed in PR #125 (`fix/sync-engine-steadystate-visibility-tests`) — a test-isolation gap, NOT a product bug and NOT a regression.** Still no UI/integration tests.
-- **renderLaps still does full innerHTML on lap events:** The perf optimization (updateCurrentLap) only applies to the RAF tick. When a new lap is recorded, the entire list is still rebuilt. Low impact for typical lap counts.
-- **Orphaned readers of the deleted `wellness_meds` blob after the F18 meds migration (ALL 3 FIXED 2026-06-03 — kept as a migration-pattern reference; remove once the stack merges):** `js/meds.js`'s F18 per-record migration (`_migrateLegacyBlob`, `meds.js:549`) deletes the legacy `localStorage['wellness_meds']` key after moving each med to its own `meds/{medId}` key — three consumers read the old blob. **(1) `js/rhythm-engine.js` `getDoseEntries()` — FIXED** (backlog #13, `fix/rhythm-timeline-meds-source`): reads `MedsManager.all()` + per-med `getDoseLog()`, so the Rhythm *Timeline* dose dots render again. **(2) `js/analytics.js` `getMedAdherence()` — FIXED** (`fix/analytics-meds-adherence-source`): now reads `MedsManager.all()` + `getDoseLog()`/`getFrequency()`/`getName()`/`getDose()` (MedsManager is loaded at startup via `MedsUI.init`→`loadAll`, `app.js:92`, so the adherence card is populated before any tab requests it); stale "reads localStorage directly" comment rewritten; `tests/analytics.test.js` re-seeds via the manager. **(3) `js/export.js` `buildBackupData()` + `importAllData()` — FIXED** (`fix/export-meds-records`): added a `collectMedRecords()` sweep that enumerates `meds/{id}` localStorage keys into a new `payload.meds` array on export, and a restore path that clears stale `meds/*` keys then writes each backed-up record (picked up by `loadAll` on the post-import reload). `wellness_meds` stays in `EXPORT_SETTINGS_KEYS` so **pre-F18 backups still restore** (the blob is written back and re-migrated on reload). This also fixes the F12 mandatory pre-push backup (`sync-engine.js:666` reuses `buildBackupData`). Pre-fix, local backups/exports silently omitted all medications post-migration — data-loss for users not on cloud sync.
+## Operations
 
-### If Migrating to ES Modules
+### Deployment (web → GitHub Pages)
 
-If the file count keeps growing, consider migrating from IIFEs/globals to ES modules:
-```html
-<script type="module" src="js/app.js"></script>
-```
-Then each module uses `import`/`export`. No bundler needed — browsers support this natively. Benefits: proper dependency graph, tree shaking if you add a bundler later, easier testing.
-
-### Deployment
-
-The app is deployed via GitHub Pages from the `main` branch root. Push to `main` → auto-deploys in ~1 minute.
+Deployed from the `main` branch root. Push to `main` → auto-deploys in ~1 minute.
 
 ```bash
 git push  # deploys to https://ksdisch.github.io/stopwatch/
 ```
 
-Service worker cache must be version-bumped (`CACHE_NAME` in sw.js) on every deploy that changes cached files, or users will see stale content until the old SW expires.
+**Service-worker cache bump rule:** `sw.js` has a `CACHE_NAME` constant. **Any change to a
+cached web file (`index.html`, `css/styles.css`, `css/tempo-shell.css`, `manifest.json`, or
+any `js/*.js`) must bump that version string in the same PR**, or users see stale content
+until the old SW expires.
 
 ### iOS build (Capacitor)
 
-The same web codebase wraps in a Capacitor iOS shell so haptics + scheduled notifications work properly on iPhone. The web build keeps deploying via GitHub Pages unchanged; iOS is a separate target.
+Same web codebase wraps in a Capacitor iOS shell (haptics + scheduled notifications work
+natively). Web keeps deploying via GitHub Pages unchanged; iOS is a separate target. Daily
+workflow + 7-day free-cert refresh playbook: [`iOS-BUILD.md`](iOS-BUILD.md).
 
 ```bash
-npm install              # one-time: pulls Capacitor + plugins
-brew install cocoapods   # one-time: required by `cap add ios`
-npx cap add ios          # one-time: scaffolds ios/ Xcode project
+npm install              # one-time: Capacitor + plugins
+brew install cocoapods   # one-time
+npx cap add ios          # one-time: scaffolds ios/
 npm run ios:open         # everyday: sync www/ → cap copy → open Xcode
 ```
 
-`scripts/sync-www.mjs` mirrors the static files (`index.html`, `manifest.json`, `sw.js`, `css/`, `js/`, `icons/`) into `www/`, which is what Capacitor copies into the iOS bundle. `www/` is gitignored.
+`scripts/sync-www.mjs` mirrors static files (`index.html`, `manifest.json`, `sw.js`, `css/`,
+`js/`, `icons/`) into `www/` (gitignored), which Capacitor copies into the iOS bundle.
+`js/platform.js` is the web/native seam; `sw.js` is web-only (`js/app.js` skips registration
+when `Platform.isNative` — on native, iOS schedules notifications even when the WebView is
+suspended). Bundle ID `com.ksdisch.tempo`, app name `Tempo` (`capacitor.config.json`). App
+Store paperwork (developer account, privacy nutrition labels for meds + BFRB, screenshots) not yet done.
 
-`js/platform.js` is the abstraction layer — `Platform.haptic(pattern)` and `Platform.notify(title, opts)` route to `navigator.vibrate` + `Notification` on web, and to `@capacitor/haptics` + `@capacitor/local-notifications` on native (Capacitor injects `window.Capacitor.Plugins.*` into the WebView, so no bundler is required). All 23 haptic call sites + 6 immediate-notification call sites now go through `Platform`. `BgNotify.schedule` / `BgNotify.cancel` feature-detect internally and route to `LocalNotifications` on native, so existing call sites in `app.js` / `cooking-ui.js` / etc. don't change.
-
-The SW (`sw.js`) is web-only — `js/app.js` skips registration when `Platform.isNative`. On native, scheduled notifications are handled by iOS itself even when the WebView is suspended (this is the whole reason for the wrapper).
-
-Bundle ID is `com.ksdisch.tempo`. App name is `Tempo`. Configured in `capacitor.config.json`. App Store paperwork (developer account, privacy nutrition labels for meds + BFRB, screenshots) is not yet done.
-
----
-
-## Subagent conventions (orchestrator workflow)
-
-The orchestrator at `.claude/orchestrator-prompt.md` coordinates a sync PR across five specialist subagents in `.claude/agents/` (`sync-auditor`, `engine-implementer`, `engine-tester`, `ui-wirer`, `pr-shipper`). The `ui-wirer` phase (Phase 4) fires only when the audit's affected-files table includes UI surface files (`js/*-ui.js`, `index.html`, `css/*.css`, `js/tempo-nav.js`); otherwise it is skipped and the workflow jumps from tests directly to PR ship. When subagents are dispatched, the following are enforceable rules in addition to everything above.
-
-### Test commands
-
-There is no Node-based test runner. Engine tests live in `tests/*.test.js` and are executed by opening `tests/index.html` in a real browser.
-
-```bash
-# from repo root
-python3 -m http.server 8765 &
-# then open http://localhost:8765/tests/index.html in any browser
-# read the pass/fail counts in the rendered output
-# stop the server when done:
-pkill -f "python3 -m http.server 8765"
-```
-
-`curl`-grepping the HTML does NOT execute the tests — it only returns the empty shell. A real browser load is the canonical answer. If a subagent has no browser tool available, it must ask the user to open the URL and paste the pass/fail counts back.
-
-The in-repo test API is `describe(...)`, `it(...)`, `assert(...)`, `assertEqual(...)`, `assertClose(...)`, `assertArrayEqual(...)` — defined in `tests/test-runner.js`.
-
-### Lint / typecheck / build
-
-- **Lint:** none. Vanilla JS, no toolchain.
-- **Typecheck:** none.
-- **Web build:** none. `index.html` loads `js/*.js` in script order; the script order in `index.html` IS the dependency graph.
-- **iOS build:** `npm run sync-www` mirrors repo root → `www/`; `npm run ios:open` runs `cap copy ios && cap open ios`. Subagents should only touch `www/` indirectly via the script.
+## Conventions (always apply)
 
 ### Reuse over re-implementation
 
@@ -281,31 +245,46 @@ The in-repo test API is `describe(...)`, `it(...)`, `assert(...)`, `assertEqual(
 - Time formatting: `Utils.formatMs(ms)` from `js/utils.js`. Do NOT re-implement.
 - Haptics: `Platform.haptic(pattern)` from `js/platform.js`. Do NOT call `navigator.vibrate` directly.
 - Notifications: `Platform.notify(title, opts)` / `BgNotify.schedule(...)`. Do NOT call `new Notification(...)` directly.
-- Sync invariant stamping: helpers in `js/schema.js`. ALL writes to synced stores (`meds`, `history`, `rest_log`, `presets`) stamp `deviceId` + `updatedAt` + `schemaVersion` through these helpers.
+- Sync-invariant stamping: helpers in `js/schema.js`. ALL writes to synced stores stamp `deviceId`+`updatedAt`+`schemaVersion` through them.
 
-### Where things live (orchestrator + subagents read from these)
+### Test commands
 
-- Audit docs: `docs/sync-impl/audits/<PR-ID>-AUDIT.md` (canonical example: `A-1-AUDIT.md`).
-- Per-PR briefs: `docs/sync-impl/prompts/<PR-ID>-PROMPT.md` (canonical example: `S0-1-PROMPT.md`).
-- Implementation plan (source of truth): `docs/sync-impl/PLAN.md`.
-- Strategy + per-store merge rules: `docs/CLOUD-SYNC-STRATEGY.md` v2.0.
-- Backend decision: `docs/sync-review/BACKEND-SELECTION.md`.
-- Session log (one entry per Claude session): `docs/SESSION-LOG.md`.
-- Orchestrator system prompt: `.claude/orchestrator-prompt.md`.
-- Subagent system prompts: `.claude/agents/{sync-auditor,engine-implementer,engine-tester,ui-wirer,pr-shipper}.md`.
-- Phase brief template (orchestrator → subagent dispatch): `.claude/templates/phase-brief.md`.
+No Node test runner. Engine tests live in `tests/*.test.js`, executed by opening
+`tests/index.html` in a **real browser** (the page title self-reports the live PASS/FAIL count).
 
-### Service worker cache bump rule
+```bash
+python3 -m http.server 8765    # from repo root, then open http://localhost:8765/tests/index.html
+pkill -f "python3 -m http.server 8765"   # stop when done
+```
 
-`sw.js` contains a `CACHE_NAME` constant. **Any PR that ships a change to a cached web file (`index.html`, `css/styles.css`, `css/tempo-shell.css`, `manifest.json`, or any `js/*.js`) must bump that version string in the same PR.** The orchestrator's `pr-shipper` handles this — but only when `engine-implementer` reports `sw.js cache-bump needed: yes`.
+`curl`-grepping the HTML does NOT execute the tests. If you have no browser tool, ask the user
+to open the URL and paste the counts. Test API: `describe` / `it` / `assert` / `assertEqual` /
+`assertClose` / `assertArrayEqual` (in `tests/test-runner.js`).
 
-### Branch + commit conventions for sync PRs
+### Lint / typecheck / build
 
-- Branch name: `feat/sync-<pr-id-lowercased>-<short-slug>` (e.g., `feat/sync-b1-uploader`).
-- Commit type prefix: `feat` / `refactor` / `fix` / `docs` (matches recent history — see commit `cc363b8`).
-- One PR per Stage row in `docs/sync-impl/PLAN.md`. Sequential merge order within a stage.
-- `pr-shipper` always pauses before pushing for explicit user approval.
+None — vanilla JS, no toolchain. The script order in `index.html` IS the dependency graph.
+iOS: `npm run sync-www` then `npm run ios:open`.
 
-### Known gaps / workflow TODOs
+### Orchestrator / subagent workflow (when dispatched)
 
-_(None currently open. Resolved gaps are removed from this section once the fix lands; git history preserves the narrative.)_
+A 5-subagent sync-PR pipeline (`sync-auditor` → `engine-implementer` → `engine-tester` →
+`ui-wirer` → `pr-shipper`) lives in `.claude/orchestrator-prompt.md` + `.claude/agents/`. The
+`ui-wirer` phase fires only when the audit's affected-files table includes UI files
+(`js/*-ui.js`, `index.html`, `css/*.css`, `js/tempo-nav.js`). `pr-shipper` always pauses for
+explicit push approval. Sync-PR branches: `feat/sync-<pr-id>-<slug>`; commit prefixes
+`feat`/`refactor`/`fix`/`docs`; one PR per Stage row in `docs/sync-impl/PLAN.md`, merged in
+**sequential order within a stage**. The cache-bump above is applied by `pr-shipper` only when
+`engine-implementer` reports `sw.js cache-bump needed: yes`.
+
+**Where things live (doc index):**
+- Architecture + ADRs + diagrams → `docs/ARCHITECTURE.md`, `docs/adr/`, `docs/diagrams/`
+- Data dictionary (every persisted key) → `docs/reference/data-dictionary.md`
+- Glossary (F-numbers, stage codes) → `docs/reference/glossary.md`
+- Feature backlog detail → `docs/BACKLOG.md`
+- Build history → `docs/BUILD-HISTORY.md`
+- Cloud-sync strategy + per-store merge rules → `docs/CLOUD-SYNC-STRATEGY.md`
+- Sync implementation plan (`docs/sync-impl/PLAN.md`) + audits (`docs/sync-impl/audits/<PR-ID>-AUDIT.md`, e.g. `A-1-AUDIT.md`) + per-PR briefs (`docs/sync-impl/prompts/<PR-ID>-PROMPT.md`, e.g. `S0-1-PROMPT.md`)
+- Backend decision → `docs/sync-review/BACKEND-SELECTION.md`
+- Session log (one entry per session) → `docs/SESSION-LOG.md`
+- Orchestrator + subagent prompts → `.claude/orchestrator-prompt.md`, `.claude/agents/`, `.claude/templates/phase-brief.md`
