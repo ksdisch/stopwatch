@@ -24,6 +24,38 @@
 
 const GlobalBFRB = (() => {
   const BTN_ID = 'global-bfrb-fab';
+  const POPOVER_ID = 'bfrb-capture-popover';
+
+  // ── Antecedent capture taxonomy (E-1g) ────────────────────────────────
+  // These labels are the ONE human-ratification surface for this milestone —
+  // conservative defaults for a real person in BFRB recovery. Edit this single
+  // list to retune the chips: the engine stores whatever string it's given and
+  // the BFRB Triggers Insights panel groups by value, so relabeling needs no
+  // other code change.
+  const URGE_CHIPS = [
+    { level: 1, label: 'Mild' },
+    { level: 2, label: 'Medium' },
+    { level: 3, label: 'Strong' },
+  ];
+  const TRIGGER_CHIPS = ['stress', 'bored', 'tired', 'focused', 'idle'];
+
+  // Deferred-commit backstop. Armed at catch time and re-armed on each chip tap
+  // (so it never races a deliberating user), it's the last-resort flush for the
+  // narrow case of "popover left open, no clicks anywhere, no app-lifecycle
+  // exit." Every genuinely-lossy exit (Done, click-outside, navigate, tab
+  // background/close, a new catch) flushes sooner. It sits inside the 60s
+  // competing-response countdown that hides the FAB count, so the catch always
+  // lands before the label re-renders.
+  const AUTO_COMMIT_MS = 30000;
+
+  // At most ONE uncommitted catch. The antecedent fields MUST ride a single
+  // BfrbEvents.log() call — sync-merge-bfrb keeps the CLOUD copy on a
+  // (deviceId, takenAt) collision (js/sync-merge-bfrb.js:158-174), so a
+  // post-hoc patch of an already-synced catch is silently dropped. The catch
+  // is held here while the user optionally taps chips, then committed exactly
+  // once. Every app-lifecycle exit flushes it, so no catch is ever lost.
+  let pending = null;
+  let commitTimer = null;
 
   function isFlowRunning() {
     return typeof Flow !== 'undefined' && Flow.getStatus && Flow.getStatus() === 'running';
@@ -112,31 +144,146 @@ const GlobalBFRB = (() => {
     btn.textContent = label();
   }
 
-  function logCatch() {
+  // Build the per-context payload for a catch. takenAt is captured at the
+  // catch moment (the deferred commit replays it via opts.takenAt).
+  function beginPending() {
     const context = getActiveContext();
-    // Build per-context payload. BfrbEvents.log stamps deviceId +
-    // updatedAt + schemaVersion (F10) and consults SyncState.canWrite (F13).
-    const payload = { context: context };
+    const p = { takenAt: Date.now(), context: context, urgeLevel: null, triggerZone: null };
     if (context === 'flow') {
-      payload.sessionId = getActiveSessionId();
+      p.sessionId = getActiveSessionId();
       const ph = getActivePhase();
-      if (typeof ph === 'string') payload.phase = ph;
+      if (typeof ph === 'string') p.phase = ph;
     } else if (context === 'pomodoro') {
-      payload.sessionId = getActiveSessionId();
+      p.sessionId = getActiveSessionId();
       const ph = getActivePhase();
-      if (typeof ph === 'string') payload.phase = ph;
+      if (typeof ph === 'string') p.phase = ph;
       const ci = getActiveCycleIndex();
-      if (typeof ci === 'number') payload.cycleIndex = ci;
+      if (typeof ci === 'number') p.cycleIndex = ci;
     }
+    return p;
+  }
+
+  // Persist the pending catch in exactly ONE BfrbEvents.log() call (antecedent
+  // fields included), then clear it. Idempotent — safe to call from any flush
+  // hook. BfrbEvents.log stamps deviceId + updatedAt + schemaVersion (F10) and
+  // consults SyncState.canWrite (F13).
+  function commitPending() {
+    if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+    const p = pending;
+    pending = null;
+    if (!p) return;
     if (typeof BfrbEvents !== 'undefined' && typeof BfrbEvents.log === 'function') {
-      BfrbEvents.log(payload);
+      const opts = { context: p.context, takenAt: p.takenAt };
+      if (p.sessionId !== undefined && p.sessionId !== null) opts.sessionId = p.sessionId;
+      if (typeof p.phase === 'string') opts.phase = p.phase;
+      if (typeof p.cycleIndex === 'number') opts.cycleIndex = p.cycleIndex;
+      if (p.urgeLevel === 1 || p.urgeLevel === 2 || p.urgeLevel === 3) opts.urgeLevel = p.urgeLevel;
+      if (typeof p.triggerZone === 'string' && p.triggerZone) opts.triggerZone = p.triggerZone;
+      BfrbEvents.log(opts);
     }
+    hidePicker();
+    renderLabel();
+  }
+
+  function armCommitTimer(ms) {
+    if (commitTimer) clearTimeout(commitTimer);
+    commitTimer = setTimeout(commitPending, ms);
+  }
+
+  function logCatch() {
+    // Flush any still-pending prior catch first (no loss; counts stay correct).
+    commitPending();
+
+    pending = beginPending();
     Platform.haptic(20);
     if (typeof BFRBRecovery !== 'undefined') {
       BFRBRecovery.start(BTN_ID, label);
     } else {
       renderLabel();
     }
+    showPicker();
+    armCommitTimer(AUTO_COMMIT_MS);
+  }
+
+  // ── Antecedent capture popover ────────────────────────────────────────
+  // Created lazily on <body> (mirrors RhythmInsights' lazy tooltip element).
+  // Chips are OPTIONAL: one tap logs the catch field-less via the auto-commit
+  // fallback; tapping chips folds urge + one trigger into the same single
+  // commit. The popover never blocks the FAB hot path.
+  let _popoverEl = null;
+
+  function _buildPopover() {
+    if (_popoverEl || typeof document === 'undefined' || !document.body) return _popoverEl;
+    const el = document.createElement('div');
+    el.id = POPOVER_ID;
+    el.className = 'bfrb-capture';
+    el.setAttribute('role', 'group');
+    el.setAttribute('aria-label', 'Tag this BFRB catch (optional)');
+    el.hidden = true;
+
+    const urgeRow = URGE_CHIPS.map(c =>
+      '<button type="button" class="bfrb-chip" data-urge="' + c.level + '">'
+      + escapeHtml(c.label) + '</button>').join('');
+    const trigRow = TRIGGER_CHIPS.map(z =>
+      '<button type="button" class="bfrb-chip" data-zone="' + escapeHtml(z) + '">'
+      + escapeHtml(z.charAt(0).toUpperCase() + z.slice(1)) + '</button>').join('');
+
+    el.innerHTML =
+      '<div class="bfrb-capture-title">Logged ✓'
+      + '<span class="bfrb-capture-sub"> — what set it off? (optional)</span></div>'
+      + '<div class="bfrb-capture-grouplabel">Urge</div>'
+      + '<div class="bfrb-capture-row" data-group="urge">' + urgeRow + '</div>'
+      + '<div class="bfrb-capture-grouplabel">Trigger</div>'
+      + '<div class="bfrb-capture-row" data-group="trigger">' + trigRow + '</div>'
+      + '<div class="bfrb-capture-actions">'
+      + '<button type="button" class="bfrb-capture-done">Done</button></div>';
+
+    el.addEventListener('click', _onPopoverClick);
+    document.body.appendChild(el);
+    _popoverEl = el;
+    return el;
+  }
+
+  function _onPopoverClick(e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('.bfrb-capture-done')) { commitPending(); return; }
+    const chip = t.closest('.bfrb-chip');
+    if (!chip || !pending) return;
+    if (chip.hasAttribute('data-urge')) {
+      const lvl = parseInt(chip.getAttribute('data-urge'), 10);
+      pending.urgeLevel = (pending.urgeLevel === lvl) ? null : lvl; // toggle off on re-tap
+      _syncSelected('urge');
+    } else if (chip.hasAttribute('data-zone')) {
+      const z = chip.getAttribute('data-zone');
+      pending.triggerZone = (pending.triggerZone === z) ? null : z;
+      _syncSelected('trigger');
+    }
+    armCommitTimer(AUTO_COMMIT_MS); // re-arm so an engaged user is never cut off
+  }
+
+  // Reflect the pending selection into each chip row's .is-selected state.
+  function _syncSelected(group) {
+    if (!_popoverEl) return;
+    const row = _popoverEl.querySelector('.bfrb-capture-row[data-group="' + group + '"]');
+    if (!row) return;
+    row.querySelectorAll('.bfrb-chip').forEach(chip => {
+      const on = (group === 'urge')
+        ? (pending && pending.urgeLevel === parseInt(chip.getAttribute('data-urge'), 10))
+        : (pending && pending.triggerZone === chip.getAttribute('data-zone'));
+      chip.classList.toggle('is-selected', !!on);
+    });
+  }
+
+  function showPicker() {
+    const el = _buildPopover();
+    if (!el) return;
+    el.querySelectorAll('.bfrb-chip.is-selected').forEach(c => c.classList.remove('is-selected'));
+    el.hidden = false;
+  }
+
+  function hidePicker() {
+    if (_popoverEl) _popoverEl.hidden = true;
   }
 
   // ms until the next local midnight. The +50ms buffer keeps us safely past
@@ -178,9 +325,30 @@ const GlobalBFRB = (() => {
     // tempo-nav routes, focus fires when the window re-gains attention.
     window.addEventListener('hashchange', renderLabel);
     window.addEventListener('focus', renderLabel);
-    // Also tick on visibility in case another tab mutated a store.
+    // Also tick on visibility in case another tab mutated a store. When the tab
+    // is BACKGROUNDED, flush any pending catch first so a deferred antecedent
+    // capture can't be lost to a tab suspend.
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) renderLabel();
+      if (document.hidden) commitPending();
+      else renderLabel();
+    });
+
+    // Guaranteed flush — a pending catch must never be lost on app exit or a
+    // route change. commitPending is idempotent, so registering it on several
+    // lifecycle events is safe (whichever fires first wins).
+    window.addEventListener('pagehide', commitPending);
+    window.addEventListener('beforeunload', commitPending);
+    window.addEventListener('hashchange', commitPending);
+
+    // Click anywhere outside the popover (and not on the FAB) dismisses it,
+    // committing the pending catch. The natural "I'm done tagging" signal — so
+    // the backstop timer never has to race a deliberating user. The FAB is
+    // excluded because its own handler (logCatch → commitPending) owns that path.
+    document.addEventListener('click', (e) => {
+      if (!_popoverEl || _popoverEl.hidden) return;
+      const t = e.target;
+      if (t && t.closest && (t.closest('#' + POPOVER_ID) || t.closest('#' + BTN_ID))) return;
+      commitPending();
     });
 
     // Midnight rollover: a long-running PWA tab needs the global tally to
@@ -213,5 +381,5 @@ const GlobalBFRB = (() => {
   // placed just before this script so document.getElementById works.
   init();
 
-  return { logCatch, renderLabel, getActiveStoreKey };
+  return { logCatch, renderLabel, getActiveStoreKey, commitPending };
 })();

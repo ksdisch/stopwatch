@@ -2643,6 +2643,92 @@ body.focus-mode .global-bfrb-fab {
   display: none;
 }
 
+/* ── BFRB antecedent capture popover (E-1g) ──────────────────────────────
+   Optional 1-2 tap urge + trigger picker that floats above the FAB after a
+   catch. Chips are dismissible: the catch is already logged via the deferred
+   commit, so one-tap-and-ignore still records it field-less. */
+.bfrb-capture {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 78px);
+  z-index: 2001;
+  width: min(260px, calc(100vw - 32px));
+  padding: 12px 14px 10px;
+  background: var(--bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  animation: bfrb-capture-in 0.14s ease;
+}
+
+@keyframes bfrb-capture-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bfrb-capture[hidden] { display: none; }
+
+.bfrb-capture-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.bfrb-capture-sub { font-weight: 400; opacity: 0.6; }
+
+.bfrb-capture-grouplabel {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  margin: 4px 0;
+}
+
+.bfrb-capture-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.bfrb-chip {
+  appearance: none;
+  border: 1px solid var(--btn-border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.76rem;
+  padding: 5px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.bfrb-chip:hover { border-color: #ff9f0a; }
+
+.bfrb-chip.is-selected {
+  background: #ff9f0a;
+  border-color: #ff9f0a;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.bfrb-capture-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.bfrb-capture-done {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #ff9f0a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.bfrb-capture-done:hover { text-decoration: underline; }
+
+body.focus-mode .bfrb-capture { display: none; }
+
 /* BFRB chime volume slider in the settings drawer. */
 .tempo-settings-slider {
   display: flex;
@@ -5610,6 +5696,58 @@ body.focus-mode .global-bfrb-fab {
 }
 
 .rhythm-insight-card { gap: 10px; }
+
+/* ── BFRB Triggers panel (order 45) ──────────────────────────────────────
+   Forgiving clean-streak (reuses .analytics-streak-*; catch days get an amber
+   dot) + trigger leaderboard (reuses .analytics-distraction-*) + urge mix. */
+.bfrb-streak { margin-bottom: 6px; }
+
+.bfrb-streak-dot-catch { background: #ff9f0a; }
+
+.bfrb-triggers-subtitle {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  margin: 10px 0 6px;
+}
+
+.bfrb-trigger-bar-fill { height: 100%; background: #ff9f0a; }
+
+.bfrb-trigger-bar-untagged {
+  background: var(--text-secondary, #8a8a8e);
+  opacity: 0.5;
+}
+
+.bfrb-urge { margin-top: 4px; }
+
+.bfrb-urge-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--btn-border);
+}
+
+.bfrb-urge-seg { height: 100%; }
+.bfrb-urge-seg-1 { background: var(--green); }
+.bfrb-urge-seg-2 { background: #ff9f0a; }
+.bfrb-urge-seg-3 { background: var(--red); }
+
+.bfrb-urge-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
+.bfrb-urge-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+
+.bfrb-urge-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.bfrb-urge-dot-1 { background: var(--green); }
+.bfrb-urge-dot-2 { background: #ff9f0a; }
+.bfrb-urge-dot-3 { background: var(--red); }
 
 /* Segmented toggles + selectors (aside controls / med picker) */
 .rhythm-ms-toggle,
