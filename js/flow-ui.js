@@ -49,6 +49,62 @@ let flowLastVibrateMs = 0;
 const FLOW_AMBIENT_PROFILE_KEY = 'flow_ambient_profile';
 let flowAmbientProfile = localStorage.getItem(FLOW_AMBIENT_PROFILE_KEY) || '';
 
+// tempo-coach-daily-loop: readiness-sized Flow focus default. When the
+// opt-out toggle is ON (default), the pre-block setup pre-selects a
+// focus-duration control sized to today's recovery signal and shows a
+// one-line descriptive "why". User override always wins — the moment the
+// user taps a duration button, `flowDurUserOverride` latches and the
+// suggestion never re-applies for this idle session. The latch clears on
+// Flow.start() (handled where the block resets), so a fresh idle gets a
+// fresh suggestion. Device-local opt-out key; null suggestion leaves the
+// persisted default untouched with no "why" line.
+const FLOW_READINESS_SUGGEST_KEY = 'flow_readiness_suggest';
+let flowDurUserOverride = false;
+
+function flowReadinessSuggestEnabled() {
+  return localStorage.getItem(FLOW_READINESS_SUGGEST_KEY) !== '0';
+}
+
+// Apply (or clear) the readiness-sized default + "why" line for the idle
+// setup view. Read-only consumer of TempoCoach + RecoveryFeed — never
+// reaches into engine internals. Safe no-op when the toggle is off, the
+// user has overridden, the engine/feed is absent, or there's no signal.
+function applyFlowReadinessSuggestion() {
+  const whyEl = document.getElementById('flow-readiness-why');
+  const clearWhy = () => {
+    if (whyEl) { whyEl.textContent = ''; whyEl.classList.add('hidden'); }
+  };
+
+  // Opt-out OFF, user already chose, or no engine/feed → no pre-selection.
+  if (!flowReadinessSuggestEnabled() || flowDurUserOverride) { clearWhy(); return; }
+  if (typeof TempoCoach === 'undefined' || typeof RecoveryFeed === 'undefined') { clearWhy(); return; }
+
+  let latest = null;
+  try { latest = RecoveryFeed.getLatest(); } catch (_) { latest = null; }
+
+  let suggestion = null;
+  try { suggestion = TempoCoach.suggestFocusDurationMs(latest); } catch (_) { suggestion = null; }
+
+  // ms === null → leave the user's persisted default untouched, no "why".
+  if (!suggestion || suggestion.ms == null) { clearWhy(); return; }
+
+  // Pre-select the matching control via the engine's own configure path —
+  // this is a default, not a forced choice; a manual tap still overrides.
+  if (Flow.getFocusDurationMs() !== suggestion.ms) {
+    Flow.configure({ focusDurationMs: suggestion.ms });
+    saveFlowConfig();
+  }
+  document.querySelectorAll('.flow-dur-btn').forEach(b => {
+    const m = parseInt(b.dataset.flowDur, 10);
+    b.classList.toggle('flow-dur-active', m * 60000 === suggestion.ms);
+  });
+
+  if (whyEl) {
+    whyEl.textContent = suggestion.reason || '';
+    whyEl.classList.toggle('hidden', !suggestion.reason);
+  }
+}
+
 // Fixed pre-block checklist items. Index order must be stable — local state
 // arrays are indexed by position.
 const FLOW_CHECKLIST_ITEMS = [
@@ -143,6 +199,12 @@ function initFlowUI() {
   document.querySelectorAll('.flow-dur-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (Flow.getStatus() !== 'idle') return;
+      // tempo-coach-daily-loop: a manual tap is the user's explicit choice —
+      // latch the override so the readiness suggestion never re-applies (or
+      // re-pre-selects the other control) for the rest of this idle session.
+      flowDurUserOverride = true;
+      const whyEl = document.getElementById('flow-readiness-why');
+      if (whyEl) { whyEl.textContent = ''; whyEl.classList.add('hidden'); }
       const minutes = parseInt(btn.dataset.flowDur, 10);
       Flow.configure({ focusDurationMs: minutes * 60000 });
       saveFlowConfig();
@@ -352,6 +414,9 @@ function onFlowRight() {
     // PR deferred per Pick C on TODO #6).
     saveFlowBFRBs([]);
     Flow.start();
+    // tempo-coach-daily-loop: clear the readiness-override latch so the NEXT
+    // idle (after this block finishes/resets) re-evaluates today's signal.
+    flowDurUserOverride = false;
     // todoist-flow-tasks (DECISION 5): the planning task list TEXT survives
     // across blocks, but completion is per-block — reset every item to
     // done:false on a fresh start. Spread preserves text/todoistId/localTag;
@@ -474,6 +539,10 @@ function updateFlowUI() {
 
   // Sync setup UI to current config/goal
   if (isIdle) {
+    // tempo-coach-daily-loop: pre-select a readiness-sized default (+ "why")
+    // before reading the active duration, so the highlight reflects the
+    // suggestion. No-op when opted out / overridden / no signal.
+    applyFlowReadinessSuggestion();
     const dur = Flow.getFocusDurationMs();
     document.querySelectorAll('.flow-dur-btn').forEach(b => {
       const m = parseInt(b.dataset.flowDur, 10);

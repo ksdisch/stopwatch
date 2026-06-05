@@ -2664,7 +2664,11 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* ── Cloud Sync (B-2) — settings drawer section ── */
-.tempo-cloud-sync-section {
+.tempo-cloud-sync-section,
+/* tempo-coach-daily-loop: same column spacing + separator as Cloud Sync so
+   the Tempo Coach toggle rows align with the rest of the drawer. Reuses the
+   shared .tempo-cloud-sync-toggle / .tempo-cloud-sync-row / -heading markup. */
+.tempo-coach-section {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -3280,6 +3284,20 @@ body.focus-mode .global-bfrb-fab {
 
 .flow-dur-btn:active {
   opacity: 0.7;
+}
+
+/* tempo-coach-daily-loop: the one-line descriptive "why" under the duration
+   buttons when a readiness-sized default is pre-selected. Observational copy
+   only — no pillar-color hardcoding (inherits the green accent var). */
+.flow-readiness-why {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.flow-readiness-why.hidden {
+  display: none;
 }
 
 .flow-goal-input {

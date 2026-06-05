@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v110-rhythm-insights-foundation';
+const CACHE_NAME = 'stopwatch-v111-tempo-coach';
 const ASSETS = [
   './',
   './index.html',
@@ -40,6 +40,7 @@ const ASSETS = [
   './js/compare-ui.js',
   './js/timer-ui.js',
   './js/bfrb-recovery.js',
+  './js/tempo-coach.js',
   './js/pomodoro-ui.js',
   './js/flow-ui.js',
   './js/alert-ui.js',
@@ -66,6 +67,7 @@ const ASSETS = [
   './js/recovery-feed.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
+  './js/rhythm-panel-today.js',
   './js/rhythm-panel-meds-sleep.js',
   './js/rhythm-panel-recovery-trends.js',
   './js/rhythm-panel-focus-minutes.js',
