@@ -513,11 +513,7 @@ const MedsUI = (() => {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = String(str ?? '');
-    return el.innerHTML;
-  }
+  // escapeHtml: shared global from js/dom-utils.js (Batch E reuse dedup).
 
   return { init };
 })();
