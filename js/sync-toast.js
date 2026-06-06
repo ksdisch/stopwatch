@@ -146,6 +146,16 @@ const Toast = (() => {
     _downlevelWarningShown = true;
   }
 
+  // Public — paint an arbitrary non-blocking notice. Used by surfaces beyond
+  // cloud sync (e.g. the BFRB pace-support nudge in js/global-bfrb.js, which
+  // owns its own once-per-day throttle). `_show` uses textContent, so a
+  // parameterized string is XSS-safe with no escaping needed. No-ops on a
+  // falsy/blank string.
+  function notice(text) {
+    if (typeof text !== 'string' || text.trim() === '') return;
+    _show(text);
+  }
+
   // Test-only escape hatch — resets the dedup flag + tears down any
   // visible toast so each test case starts from a clean baseline.
   // Production callers SHOULD NOT call this — the natural reset path
@@ -219,6 +229,7 @@ const Toast = (() => {
   return {
     bufferOverflow,
     downlevelWarning,
+    notice,
     // Test-only escape hatch — see `_resetForTests` definition above.
     _resetForTests,
     // Internal hooks exposed for tests + future surfaces.

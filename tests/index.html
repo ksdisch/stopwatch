@@ -47,6 +47,10 @@
        migration. Load before analytics.js so analytics' BFRB-trend read
        path sees the consolidated stream during tests. -->
   <script src="../js/bfrb-events.js"></script>
+  <!-- BFRB Closed Loop Slice B: pure pace-risk decision core (BfrbRisk). No
+       load-order deps (events passed in); uses TempoCoach.readinessBand when
+       present with a local fallback. -->
+  <script src="../js/bfrb-risk.js"></script>
   <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
        pomodoro_distractions stores + migration. Load before any UI deps. -->
   <script src="../js/distractions.js"></script>
@@ -149,6 +153,7 @@
   <script src="rhythm-panel-focus-minutes.test.js"></script>
   <script src="rhythm-panel-bfrb-frequency.test.js"></script>
   <script src="bfrb-triggers.test.js"></script>
+  <script src="bfrb-risk.test.js"></script>
   <script src="rhythm-panel-distraction-rollup.test.js"></script>
   <script src="rhythm-panel-event-zoom.test.js"></script>
   <script src="rhythm-panel-correlations.test.js"></script>

@@ -116,6 +116,12 @@ const Export = (() => {
     'wellness_meds',       // Medications + dose log (legacy blob — see above)
     'wellness_rest_log',   // Sleep + naps by day
     'bfrbs_global',        // BFRB catches logged outside any focus session
+    // BFRB Closed Loop Slice B: the user-authored if-then competing-response
+    // plan (own words). User CONTENT, so backed up here for device portability
+    // (like flow_user_tasks) — but NOT synced (not in SYNCED_STORES). The
+    // bfrb_support_enabled toggle is a device-local PREFERENCE → intentionally
+    // NOT exported (matches tempo_coach_nudge_enabled / flow_readiness_suggest).
+    'bfrb_if_then_plan',
 
     // Preferences
     'theme', 'sound_muted', 'sound_profile', 'bfrb_volume',

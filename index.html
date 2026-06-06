@@ -143,6 +143,42 @@
             </button>
           </div>
         </div>
+        <!-- BFRB support section (Slice B). Two device-local prefs wired by
+             tempo-nav.js wireBfrbSupport(): (1) Pace support nudge — opt-IN
+             (default OFF), persists bfrb_support_enabled; gates the gentle
+             once-a-day "your 60-second reset is here" toast when today's
+             catches cluster above baseline (decision: js/bfrb-risk.js).
+             (2) Competing-response plan — a free-text if-then plan in the
+             user's own words, persists bfrb_if_then_plan (backed up, not
+             synced); surfaced during the 60s recovery countdown. Reuses the
+             toggle switch markup; data-keep-drawer-open so editing does not
+             auto-close the drawer. -->
+        <div class="tempo-settings-item bfrb-support-section" role="group"
+             aria-label="BFRB support">
+          <div class="tempo-cloud-sync-heading">BFRB support</div>
+          <div class="tempo-cloud-sync-row">
+            <span class="tempo-settings-item-label">Pace support nudge</span>
+            <button id="bfrb-support-toggle" type="button"
+                    class="tempo-cloud-sync-toggle"
+                    role="switch" aria-checked="false"
+                    aria-label="Toggle BFRB pace support nudge"
+                    data-keep-drawer-open>
+              <span class="tempo-cloud-sync-toggle-track">
+                <span class="tempo-cloud-sync-toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+          <div class="bfrb-support-plan-row">
+            <label for="bfrb-if-then-plan" class="tempo-settings-item-label">
+              Competing-response plan
+            </label>
+            <input id="bfrb-if-then-plan" type="text" class="bfrb-support-plan-input"
+                   maxlength="120" autocomplete="off"
+                   placeholder="When I catch myself, I'll…"
+                   aria-label="Competing-response plan (shown during the 60-second reset)"
+                   data-keep-drawer-open>
+          </div>
+        </div>
         <!-- Cloud Sync section (B-2). Surfaces the developer toggle for
              tempo_sync_enabled, plus Google sign-in / current-user / sign-out
              once the flag is on. Wired by tempo-nav.js. -->
@@ -1177,9 +1213,20 @@
   <button id="global-bfrb-fab" class="bfrb-btn global-bfrb-fab"
           aria-label="Log BFRB (shortcut: B)" title="Log BFRB (B)">BFRB</button>
 
+  <!-- Slice B: if-then competing-response plan banner. BFRBRecovery shows this
+       (with the user's bfrb_if_then_plan text) for the duration of the 60s
+       countdown, then hides it. Empty when no plan is set. -->
+  <div id="bfrb-recovery-plan" class="bfrb-recovery-plan" hidden role="status" aria-live="polite">
+    <span class="bfrb-recovery-plan-label">Your plan</span>
+    <span class="bfrb-recovery-plan-text"></span>
+  </div>
+
   <!-- E-1d-f3: BfrbEvents owns the consolidated bfrb_events store + migration.
        MUST load BEFORE global-bfrb.js (which calls BfrbEvents.log synchronously). -->
   <script src="js/bfrb-events.js"></script>
+  <!-- Slice B: pure pace-risk decision core. No load-order deps (events are
+       passed in); placed next to its only consumer, global-bfrb.js. -->
+  <script src="js/bfrb-risk.js"></script>
   <script src="js/global-bfrb.js"></script>
   <script src="js/tempo-nav.js?v=2"></script>
   <script src="js/app.js"></script>

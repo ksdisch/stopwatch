@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v112-bfrb-closed-loop';
+const CACHE_NAME = 'stopwatch-v113-bfrb-risk-support';
 const ASSETS = [
   './',
   './index.html',
@@ -78,6 +78,7 @@ const ASSETS = [
   './js/rhythm-panel-correlations.js',
   './js/rhythm-ui.js',
   './js/bfrb-events.js',
+  './js/bfrb-risk.js',
   './js/distractions.js',
   './js/todoist.js',
   './js/todoist-ui.js',
