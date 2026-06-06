@@ -2644,17 +2644,18 @@ body.focus-mode .global-bfrb-fab {
 }
 
 /* BFRB Closed Loop Slice B: the if-then competing-response plan banner.
-   BFRBRecovery shows this during the 60s countdown. Anchored bottom-LEFT so it
-   never sits behind the right-aligned antecedent-capture popover (.bfrb-capture)
-   or the FAB — the popover's height is content-dependent, so a left anchor is the
-   robust way to keep BOTH visible at once. A gentle reminder of the user's own
-   replacement-behavior plan. */
+   Anchored just above the FAB (bottom-right) so the plan reminder sits with the
+   countdown it relates to. It is shown only AFTER the antecedent-capture popover
+   dismisses (js/global-bfrb.js commitPending → BFRBRecovery.showPlan), so the two
+   right-aligned surfaces never overlap on a narrow viewport — the separation is
+   temporal, not spatial (tagging happens first, the competing-response window
+   after). A gentle reminder of the user's own replacement-behavior plan. */
 .bfrb-recovery-plan {
   position: fixed;
-  left: 16px;
+  right: 16px;
   bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 16px + 60px);
   z-index: 2000;
-  max-width: min(240px, calc(100vw - 90px));
+  max-width: min(280px, calc(100vw - 32px));
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--bg);
@@ -2691,7 +2692,7 @@ body.focus-mode .global-bfrb-fab {
 
 @media (max-width: 480px) {
   .bfrb-recovery-plan {
-    left: 12px;
+    right: 12px;
     bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 12px + 56px);
   }
 }

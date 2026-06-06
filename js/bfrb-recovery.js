@@ -19,8 +19,15 @@ const BFRBRecovery = (() => {
   // The user authors a short plan in their OWN words (settings drawer →
   // bfrb_if_then_plan); we surface it during the 60s countdown as a gentle
   // reminder of the replacement behavior. User content → no framing risk, no
-  // opt-in gate. Shown while ANY recovery is active, hidden once the last one
-  // ends. No plan set → no banner. textContent keeps it XSS-safe.
+  // opt-in gate. No plan set → no banner. textContent keeps it XSS-safe.
+  //
+  // NOT auto-shown on start(): the global FAB also opens an antecedent-capture
+  // popover at catch time, and both are right-aligned bottom surfaces that would
+  // overlap on a narrow viewport. Instead the caller shows the banner once the
+  // popover dismisses (js/global-bfrb.js commitPending → BFRBRecovery.showPlan()),
+  // so the two are separated in TIME (tagging first, plan reminder during the
+  // remaining countdown) rather than fighting for the same corner. The banner is
+  // hidden again automatically once the last countdown ends (_hidePlanIfIdle).
   const PLAN_KEY = 'bfrb_if_then_plan';
   const PLAN_EL_ID = 'bfrb-recovery-plan';
 
@@ -30,7 +37,11 @@ const BFRBRecovery = (() => {
     return typeof raw === 'string' ? raw.trim() : '';
   }
 
-  function _showPlan() {
+  // Show the plan banner IFF a countdown is active and a plan is set. Public so
+  // the catch flow can call it after its capture popover dismisses. No-op when
+  // no recovery is running (so a stray call can't leave the banner stuck on).
+  function showPlan() {
+    if (sessions.size === 0) return;
     const el = document.getElementById(PLAN_EL_ID);
     if (!el) return;
     const text = _planText();
@@ -98,14 +109,13 @@ const BFRBRecovery = (() => {
     tick();
     const intervalId = setInterval(tick, TICK_MS);
     sessions.set(btnId, { endsAt, intervalId, baseLabelFn });
-
-    // Surface the user's competing-response plan for the duration of the countdown.
-    _showPlan();
+    // NOTE: the plan banner is NOT shown here — the caller surfaces it after its
+    // capture popover dismisses (see showPlan() comment above).
   }
 
   function isActive(btnId) {
     return sessions.has(btnId);
   }
 
-  return { start, cancel, isActive };
+  return { start, cancel, isActive, showPlan };
 })();

@@ -194,6 +194,16 @@ const GlobalBFRB = (() => {
       BfrbEvents.log(opts);
     }
     hidePicker();
+    // The capture popover just dismissed. If the 60s competing-response
+    // countdown is still running, surface the user's if-then plan now — so the
+    // popover (tagging) and the plan banner (the competing-response reminder)
+    // never share the corner; they're separated in time. Every popover-dismiss
+    // path routes through commitPending(), so this covers Done / click-outside /
+    // a new catch / auto-commit / lifecycle exits.
+    if (typeof BFRBRecovery !== 'undefined' && typeof BFRBRecovery.showPlan === 'function'
+        && BFRBRecovery.isActive && BFRBRecovery.isActive(BTN_ID)) {
+      try { BFRBRecovery.showPlan(); } catch (_) {}
+    }
     renderLabel();
   }
 
