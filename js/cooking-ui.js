@@ -94,32 +94,12 @@ function cookingTimerAlarm(timer) {
   const ct = cookingTimers.find(c => c.timer === timer);
   const idx = ct ? cookingTimers.indexOf(ct) : 0;
   const freq = COOKING_TONES[idx % COOKING_TONES.length];
-  if (!SFX.isMuted()) {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.5);
-      // Second beep
-      setTimeout(() => {
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.frequency.value = freq * 1.25;
-        gain2.gain.setValueAtTime(0.2, ctx.currentTime);
-        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start();
-        osc2.stop(ctx.currentTime + 0.5);
-      }, 200);
-    } catch (e) {}
-  }
+  // B6: play the two-tone chime through the shared SFX AudioContext instead of
+  // allocating a NEW AudioContext per alarm (which was never closed — leaking a
+  // context on every cook-timer finish, and stacking several when multiple
+  // timers finished in the same frame). SFX.beep no-ops when muted.
+  SFX.beep(freq, 500, 'sine', 0.2);
+  setTimeout(() => SFX.beep(freq * 1.25, 500, 'sine', 0.2), 200);
   Platform.haptic([200, 100, 200, 100, 200]);
   Platform.notify(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
   History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [], programName: timer.getName() });

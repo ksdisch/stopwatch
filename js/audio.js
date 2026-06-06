@@ -341,6 +341,7 @@ const SFX = (() => {
   }
 
   return {
+    beep,
     playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, playBFRBEnd,
     isMuted, toggleMute, getProfile, setProfile, getProfiles,
     getBFRBVolume, setBFRBVolume,

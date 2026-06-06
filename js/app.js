@@ -485,13 +485,27 @@ UI.syncUI = function() {
   PresetsUI.updateQuickVisibility();
 };
 
-// Save stopwatch sessions on reset — track per-instance status
+// Save stopwatch sessions on reset — track per-instance status.
+// Kept as the single session-saver across EVERY reset path (onLeftClick,
+// preset apply, compare-view reset) rather than event-driving each. B3 gates
+// the body so it does real work only while a stopwatch is active (or has a
+// pending →idle transition to flush); B8 evicts tracking for idled/deleted
+// instances so the Map can't grow unbounded.
 const lastKnownStates = new Map();
 
 setInterval(() => {
-  // Track all stopwatch instances
-  InstanceManager.getStopwatches().forEach(sw => {
+  const instances = InstanceManager.getStopwatches();
+  const anyActive = instances.some(sw => sw.getStatus() !== 'idle');
+  // B3 early-exit: nothing running AND nothing left to flush → cheap no-op.
+  // (When the last active instance idles, its entry is still tracked below, so
+  // size > 0 keeps us processing for exactly one more tick to save its session,
+  // then the entry is evicted and the Map empties.)
+  if (!anyActive && lastKnownStates.size === 0) return;
+
+  const liveIds = new Set();
+  instances.forEach(sw => {
     const id = sw.getId();
+    liveIds.add(id);
     const status = sw.getStatus();
     const prev = lastKnownStates.get(id) || { status: 'idle', elapsed: 0, laps: [] };
 
@@ -509,6 +523,13 @@ setInterval(() => {
       prev.laps = [];
     }
     prev.status = status;
-    lastKnownStates.set(id, prev);
+    // B8: keep tracking only active instances. An idled instance has had its
+    // session flushed above, so drop it — this empties the Map and re-arms the
+    // early-exit. Deleted instances are pruned just below.
+    if (status === 'idle') lastKnownStates.delete(id);
+    else lastKnownStates.set(id, prev);
   });
+  for (const id of lastKnownStates.keys()) {
+    if (!liveIds.has(id)) lastKnownStates.delete(id);
+  }
 }, 500);

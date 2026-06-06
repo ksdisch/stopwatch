@@ -367,6 +367,54 @@ function onPomodoroRight() {
   }
 }
 
+// B1: the cheap per-frame painter. Only the time readout, progress fill, and
+// the overshoot flash/steady-amber classes change every RAF frame — everything
+// else (dots, timeline + its localStorage/toLocaleTimeString reads, checklists,
+// buttons, labels) changes only on a phase/status transition. The RAF loop
+// calls this on non-transition frames and the full updatePomodoroUI() only when
+// the status actually changes. updatePomodoroUI() also delegates these bits here
+// so the two can't drift.
+function paintPomodoroFrame() {
+  if (appMode !== 'pomodoro') return;
+  const status = Pomodoro.getStatus();
+  const isOver = status === 'overflowing';
+  const overshootMs = isOver && Pomodoro.getOvershootMs ? Pomodoro.getOvershootMs() : 0;
+  const timeEl = document.getElementById('time');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const timerDisplay = document.getElementById('timer-display');
+  if (!timeEl) return;
+
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    const t = Utils.formatMs(Pomodoro.getRemainingMs());
+    timeEl.innerHTML = (t.hours > 0)
+      ? `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  if (progressBar && progressFill) {
+    if (status !== 'idle' && status !== 'done') {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = `${Pomodoro.getProgress() * 100}%`;
+    } else {
+      progressBar.classList.add('hidden');
+    }
+  }
+
+  if (timerDisplay) {
+    // First ~3s of overshoot reuse the flash-red animation, then settle to
+    // steady amber — both thresholds are crossed mid-overflow (same status), so
+    // they belong in the per-frame painter.
+    timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+    timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
+  }
+}
+
 function updatePomodoroUI() {
   if (appMode !== 'pomodoro') return;
 
@@ -411,37 +459,12 @@ function updatePomodoroUI() {
   renderPomodoroTimeline();
   updateDistractionBtnVisibility();
 
-  // Format remaining time. During overflow, show "+M:SS.cc" instead of zero.
-  if (isOver) {
-    const t = Utils.formatMs(overshootMs);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  } else {
-    const t = Utils.formatMs(remaining);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  }
+  // Time readout + progress fill + overshoot flash — the per-frame bits, shared
+  // with the RAF loop's non-transition path so they can't drift (B1).
+  paintPomodoroFrame();
 
-  // Progress bar
-  if (status !== 'idle' && status !== 'done') {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = `${Pomodoro.getProgress() * 100}%`;
-  } else {
-    progressBar.classList.add('hidden');
-  }
-
-  // Break color + zero-cross flash + steady amber overshoot
+  // Break color (phase/status-derived → only changes on a transition).
   timerDisplay.classList.toggle('pomodoro-break', phase !== 'work' && status === 'running');
-  // Reuse the existing flash-red animation (6 × 0.5s = 3s) for the first
-  // ~3s of overshoot, then settle into the steady amber via .overshoot.
-  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
-  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   timerDisplay.classList.remove('timer-finished');
 
   // Running indicator
@@ -547,12 +570,17 @@ function startPomodoroRenderLoop() {
     const st = Pomodoro.getStatus();
     if (st === 'running' || st === 'overflowing') {
       Pomodoro.checkFinished();
-      updatePomodoroUI();
       const after = Pomodoro.getStatus();
+      // B1: a full structural update (dots, timeline, checklists, buttons, the
+      // toLocaleTimeString/localStorage reads) only when the status actually
+      // changed (e.g. running → overflowing). Otherwise just the cheap painter.
+      if (after !== st) updatePomodoroUI();
+      else paintPomodoroFrame();
       if (after === 'running' || after === 'overflowing') {
         pomodoroRafId = requestAnimationFrame(tick);
       } else {
         pomodoroRafId = null;
+        updatePomodoroUI(); // settle the final structural state
       }
     } else {
       pomodoroRafId = null;

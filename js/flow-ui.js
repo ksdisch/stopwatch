@@ -502,6 +502,54 @@ function canStartFlow() {
   return state.every(Boolean);
 }
 
+// B2: cheap per-frame painter — only the time readout, progress fill, and
+// overshoot flash classes change every RAF frame. The structural work
+// (section visibility, the goal/label, and especially renderFlowUserTasks —
+// two innerHTML rebuilds + listener re-binds — buttons, summary) runs only on a
+// status transition. The RAF loop calls this on non-transition frames; the full
+// updateFlowUI() delegates these same bits here so they can't drift.
+function paintFlowFrame() {
+  if (appMode !== 'flow') return;
+  const status = Flow.getStatus();
+  const isDone = status === 'done';
+  const isOver = Flow.isOvershooting && Flow.isOvershooting();
+  const overshootMs = isOver ? Flow.getOvershootMs() : 0;
+  const isFocusActive = status === 'running' || status === 'paused';
+  const isRecoveryActive = status === 'recovery' || status === 'recoveryPaused' || status === 'recoveryOverflowing';
+  const timeEl = document.getElementById('time');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const timerDisplay = document.getElementById('timer-display');
+  if (!timeEl) return;
+
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    const remaining = isDone ? 0 : Flow.getRemainingMs();
+    const t = Utils.formatMs(remaining);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  if (progressBar && progressFill) {
+    if (isFocusActive || isRecoveryActive) {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = `${Flow.getProgress() * 100}%`;
+    } else {
+      progressBar.classList.add('hidden');
+    }
+  }
+
+  if (timerDisplay) {
+    timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+    timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
+  }
+}
+
 function updateFlowUI() {
   if (appMode !== 'flow') return;
 
@@ -577,40 +625,13 @@ function updateFlowUI() {
     endEarlyBtn.classList.toggle('hidden', !isFocusActive);
   }
 
-  // Format remaining time. Overflow shows "+M:SS.cc" — applies to focus
-  // overshoot (status 'overflowing') and recovery overshoot
-  // ('recoveryOverflowing'). All other states show remaining.
-  if (Flow.isOvershooting && Flow.isOvershooting()) {
-    const t = Utils.formatMs(overshootMs);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  } else {
-    const remaining = isDone ? 0 : Flow.getRemainingMs();
-    const t = Utils.formatMs(remaining);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  }
+  // Time readout + progress fill + overshoot flash — per-frame bits shared with
+  // the RAF loop's non-transition path (B2).
+  paintFlowFrame();
 
-  // Progress bar
-  if (isFocusActive || isRecoveryActive) {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = `${Flow.getProgress() * 100}%`;
-  } else {
-    progressBar.classList.add('hidden');
-  }
-
-  // Visual states. Overflow flashes red briefly (first ~3s) then settles
-  // into steady amber via .overshoot.
+  // Visual states that change only on a transition.
   const isOver = Flow.isOvershooting && Flow.isOvershooting();
   timerDisplay.classList.toggle('pomodoro-break', isRecoveryActive && !isOver);
-  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
-  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   timerDisplay.classList.remove('timer-finished');
   timerDisplay.classList.toggle('is-running', status === 'running' || status === 'recovery');
   appEl.classList.toggle('is-running', status === 'running' || status === 'recovery');
@@ -1147,7 +1168,12 @@ function startFlowRenderLoop() {
       || st === 'overflowing' || st === 'recoveryOverflowing';
     if (ticking) {
       Flow.checkFinished();
-      updateFlowUI();
+      const afterCheck = Flow.getStatus();
+      // B2: full structural update only when the status actually changed (phase
+      // transition); otherwise just the cheap per-frame painter — so
+      // renderFlowUserTasks + the goal/label no longer rebuild every frame.
+      if (afterCheck !== st) updateFlowUI();
+      else paintFlowFrame();
       // Backlog #2: periodic check-in haptic during the focus phase.
       // Mirrors the Stopwatch implementation at js/ui.js:429-437 —
       // fire when elapsed crosses each multiple of vibrateIntervalMs.
