@@ -2643,6 +2643,69 @@ body.focus-mode .global-bfrb-fab {
   display: none;
 }
 
+/* BFRB Closed Loop Slice B: the if-then competing-response plan banner.
+   BFRBRecovery shows this during the 60s countdown. Anchored bottom-LEFT so it
+   never sits behind the right-aligned antecedent-capture popover (.bfrb-capture)
+   or the FAB — the popover's height is content-dependent, so a left anchor is the
+   robust way to keep BOTH visible at once. A gentle reminder of the user's own
+   replacement-behavior plan. */
+.bfrb-recovery-plan {
+  position: fixed;
+  left: 16px;
+  bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 16px + 60px);
+  z-index: 2000;
+  max-width: min(240px, calc(100vw - 90px));
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid #ff9f0a;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: bfrb-plan-in 0.18s ease;
+}
+
+.bfrb-recovery-plan[hidden] {
+  display: none;
+}
+
+.bfrb-recovery-plan-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff9f0a;
+}
+
+.bfrb-recovery-plan-text {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+@keyframes bfrb-plan-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 480px) {
+  .bfrb-recovery-plan {
+    left: 12px;
+    bottom: calc(var(--tempo-tabbar-h, 56px) + env(safe-area-inset-bottom, 0px) + 12px + 56px);
+  }
+}
+
+@media (min-width: 768px) {
+  .bfrb-recovery-plan {
+    bottom: calc(16px + 60px);
+  }
+}
+
+body.focus-mode .bfrb-recovery-plan {
+  display: none;
+}
+
 /* ── BFRB antecedent capture popover (E-1g) ──────────────────────────────
    Optional 1-2 tap urge + trigger picker that floats above the FAB after a
    catch. Chips are dismissible: the catch is already logged via the deferred
@@ -2754,7 +2817,10 @@ body.focus-mode .bfrb-capture { display: none; }
 /* tempo-coach-daily-loop: same column spacing + separator as Cloud Sync so
    the Tempo Coach toggle rows align with the rest of the drawer. Reuses the
    shared .tempo-cloud-sync-toggle / .tempo-cloud-sync-row / -heading markup. */
-.tempo-coach-section {
+.tempo-coach-section,
+/* BFRB Closed Loop Slice B: same column layout for the BFRB support section
+   (pace-nudge toggle + if-then plan input). */
+.bfrb-support-section {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2762,6 +2828,43 @@ body.focus-mode .bfrb-capture { display: none; }
   padding: 10px 12px;
   border-top: 1px solid var(--separator);
   margin-top: 4px;
+}
+
+/* BFRB support — the if-then competing-response plan input row (stacked label
+   over a full-width text field). */
+.bfrb-support-plan-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bfrb-support-plan-row .tempo-settings-item-label {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.bfrb-support-plan-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bfrb-support-plan-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.bfrb-support-plan-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, #ff9f0a 60%, transparent);
+  outline-offset: 1px;
+  border-color: #ff9f0a;
 }
 
 .tempo-cloud-sync-heading {

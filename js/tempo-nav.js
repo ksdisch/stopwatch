@@ -319,6 +319,59 @@ const TempoNav = (() => {
     wireCloudSync(drawer, syncExpanded);
     initTodoistSection(drawer);
     wireTempoCoach(drawer);
+    wireBfrbSupport(drawer);
+  }
+
+  // ── BFRB support section (BFRB Closed Loop Slice B) ─────────────────
+  // Two device-local prefs in the settings drawer, matching the toggle idiom
+  // (aria-checked switch + [data-keep-drawer-open]). Neither is synced nor
+  // stamped via js/schema.js.
+  //
+  //   (1) Pace support nudge — opt-IN (default OFF). Persists
+  //       `bfrb_support_enabled` ('0'/'1'). Gates the once-a-day supportive
+  //       toast in js/global-bfrb.js (decision: js/bfrb-risk.js).
+  //   (2) Competing-response plan — a free-text if-then plan in the user's own
+  //       words. Persists `bfrb_if_then_plan` (string). Surfaced during the
+  //       60s recovery countdown by js/bfrb-recovery.js. Backed up via
+  //       EXPORT_SETTINGS_KEYS (user content), NOT synced.
+  function wireBfrbSupport(drawer) {
+    const SUPPORT_KEY = 'bfrb_support_enabled';
+    const PLAN_KEY = 'bfrb_if_then_plan';
+
+    const supportToggle = drawer.querySelector('#bfrb-support-toggle');
+    const planInput = drawer.querySelector('#bfrb-if-then-plan');
+    if (!supportToggle && !planInput) return; // markup not present
+
+    // Default OFF when the key is absent ('1' is the only "on" value).
+    const supportEnabled = () => localStorage.getItem(SUPPORT_KEY) === '1';
+
+    if (supportToggle) {
+      supportToggle.setAttribute('aria-checked', supportEnabled() ? 'true' : 'false');
+      supportToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = !supportEnabled();
+        localStorage.setItem(SUPPORT_KEY, next ? '1' : '0');
+        supportToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+      });
+    }
+
+    if (planInput) {
+      // Hydrate from storage.
+      let saved = '';
+      try { saved = localStorage.getItem(PLAN_KEY) || ''; } catch (_) { saved = ''; }
+      planInput.value = saved;
+      // Persist on every edit (trim/empty-strip handled at read time by the
+      // recovery banner). Empty → remove the key so no banner shows.
+      const persist = () => {
+        const v = planInput.value;
+        try {
+          if (v && v.trim() !== '') localStorage.setItem(PLAN_KEY, v);
+          else localStorage.removeItem(PLAN_KEY);
+        } catch (_) {}
+      };
+      planInput.addEventListener('input', persist);
+      planInput.addEventListener('change', persist);
+    }
   }
 
   // ── Tempo Coach section (tempo-coach-daily-loop) ────────────────────

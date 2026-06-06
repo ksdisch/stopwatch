@@ -39,6 +39,18 @@ const GlobalBFRB = (() => {
   ];
   const TRIGGER_CHIPS = ['stress', 'bored', 'tired', 'focused', 'idle'];
 
+  // ── BFRB pace-support nudge (Slice B) ─────────────────────────────────
+  // RATIFIED COPY (user sign-off 2026-06-05, "Supportive offer" tone): the ONE
+  // human-owned string for Slice B. Shown at most once/day, ONLY when the opt-in
+  // toggle is on AND BfrbRisk says today's catches are clustering above the
+  // user's own baseline. Descriptive-first by construction — no count, no
+  // prediction, no judgment; it offers the existing 60s reset as a tool. Edit
+  // this single line to retune the wording (the engine, throttle, and gate are
+  // copy-agnostic).
+  const SUPPORT_COPY = 'A few catches close together today. Your 60-second reset is here whenever you want it.';
+  const SUPPORT_ENABLED_KEY = 'bfrb_support_enabled';     // '1' = on; default OFF (absent)
+  const SUPPORT_TOAST_DAY_KEY = 'bfrb_support_last_toast_day'; // 'YYYY-MM-DD' throttle stamp
+
   // Deferred-commit backstop. Armed at catch time and re-armed on each chip tap
   // (so it never races a deliberating user), it's the last-resort flush for the
   // narrow case of "popover left open, no clicks anywhere, no app-lifecycle
@@ -203,6 +215,72 @@ const GlobalBFRB = (() => {
     }
     showPicker();
     armCommitTimer(AUTO_COMMIT_MS);
+
+    // Slice B: offer the gentle pace-support nudge at the catch moment (the
+    // therapeutic interrupt) — foreground only, never on a lifecycle-flush
+    // commit. Pass the just-started pending catch so today's count reflects it
+    // (it isn't in the store yet — commitPending() persists it later).
+    maybeOfferSupport(pending);
+  }
+
+  // ── BFRB pace-support nudge (Slice B) ─────────────────────────────────
+  // Opt-in (default OFF). On a fresh-today CLUSTERED band from BfrbRisk, paint
+  // the ratified supportive toast once per local day. Everything is best-effort
+  // + guarded so a missing engine / Toast / RecoveryFeed never breaks the catch
+  // hot path. The decision logic is pure (js/bfrb-risk.js); this only gates,
+  // throttles, and paints the one ratified copy line.
+  function _supportEnabled() {
+    try { return localStorage.getItem(SUPPORT_ENABLED_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  function _todayKey() {
+    const d = new Date();
+    return d.getFullYear() + '-'
+      + String(d.getMonth() + 1).padStart(2, '0') + '-'
+      + String(d.getDate()).padStart(2, '0');
+  }
+
+  function maybeOfferSupport(pendingEntry) {
+    if (!_supportEnabled()) return;
+    if (typeof BfrbRisk === 'undefined' || typeof BfrbRisk.assess !== 'function') return;
+
+    let events = [];
+    try {
+      events = (typeof BfrbEvents !== 'undefined' && BfrbEvents.getAll) ? BfrbEvents.getAll() : [];
+    } catch (_) { events = []; }
+    // Include the in-flight catch — it isn't persisted until commitPending().
+    if (pendingEntry && typeof pendingEntry.takenAt === 'number') {
+      events = events.concat([{ takenAt: pendingEntry.takenAt }]);
+    }
+
+    let recoveryState = null;
+    try {
+      if (typeof RecoveryFeed !== 'undefined' && typeof RecoveryFeed.getLatest === 'function') {
+        recoveryState = RecoveryFeed.getLatest();
+      }
+    } catch (_) { recoveryState = null; }
+
+    let decision = null;
+    try {
+      decision = BfrbRisk.assess({ events: events, now: Date.now(), recoveryState: recoveryState });
+    } catch (_) { return; }
+    if (!decision || decision.band !== 'clustered') return;
+
+    // Once-per-day throttle — at most one supportive toast per local day.
+    const today = _todayKey();
+    let last = null;
+    try { last = localStorage.getItem(SUPPORT_TOAST_DAY_KEY); } catch (_) {}
+    if (last === today) return;
+
+    // Stamp the day ONLY after a successful paint, so the throttle records a
+    // toast that was SHOWN — not merely attempted. If Toast is somehow absent
+    // or throws, the day stays un-consumed and the nudge can still fire later.
+    if (typeof Toast !== 'undefined' && typeof Toast.notice === 'function') {
+      try {
+        Toast.notice(SUPPORT_COPY);
+        localStorage.setItem(SUPPORT_TOAST_DAY_KEY, today);
+      } catch (_) {}
+    }
   }
 
   // ── Antecedent capture popover ────────────────────────────────────────
