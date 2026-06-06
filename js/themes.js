@@ -10,6 +10,7 @@ const Themes = (() => {
         '--green': '#30d158', '--green-dark': '#0a3d1a', '--red': '#ff453a',
         '--red-dark': '#3d0f0c', '--btn-bg': '#1c1c1e', '--btn-border': '#38383a',
         '--separator': '#38383a', '--lap-best': '#30d158', '--lap-worst': '#ff453a',
+        '--amber': '#ff9f0a',
       }
     },
     ocean: {
@@ -19,6 +20,7 @@ const Themes = (() => {
         '--green': '#0ac7e8', '--green-dark': '#0a2838', '--red': '#ff6b6b',
         '--red-dark': '#3d1a1a', '--btn-bg': '#132240', '--btn-border': '#1e3a5f',
         '--separator': '#1e3a5f', '--lap-best': '#0ac7e8', '--lap-worst': '#ff6b6b',
+        '--amber': '#ffb340',
       }
     },
     sunset: {
@@ -28,6 +30,7 @@ const Themes = (() => {
         '--green': '#f5a623', '--green-dark': '#3d2a0c', '--red': '#e85d4a',
         '--red-dark': '#3d1510', '--btn-bg': '#2a1a10', '--btn-border': '#4a3020',
         '--separator': '#4a3020', '--lap-best': '#f5a623', '--lap-worst': '#e85d4a',
+        '--amber': '#ff8c1a',
       }
     },
     minimal: {
@@ -37,6 +40,7 @@ const Themes = (() => {
         '--green': '#007aff', '--green-dark': '#e0ecff', '--red': '#ff3b30',
         '--red-dark': '#ffe0de', '--btn-bg': '#f0f0f5', '--btn-border': '#d1d1d6',
         '--separator': '#d1d1d6', '--lap-best': '#007aff', '--lap-worst': '#ff3b30',
+        '--amber': '#ff9500',
       }
     },
     oled: {
@@ -46,6 +50,7 @@ const Themes = (() => {
         '--green': '#00ff88', '--green-dark': '#001a0d', '--red': '#ff0044',
         '--red-dark': '#1a0008', '--btn-bg': '#0a0a0a', '--btn-border': '#222222',
         '--separator': '#222222', '--lap-best': '#00ff88', '--lap-worst': '#ff0044',
+        '--amber': '#ff9f0a',
       }
     },
   };

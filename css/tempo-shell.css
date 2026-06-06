@@ -705,7 +705,7 @@
   font-variant-numeric: tabular-nums;
 }
 .med-status-done      { color: var(--active-accent); }
-.med-status-partial   { color: #ff9f0a; }
+.med-status-partial   { color: var(--amber); }
 .med-status-none      { color: var(--text-secondary); font-weight: 500; font-size: 1.1rem; }
 .med-status-asneeded  { color: var(--text); font-weight: 500; font-size: 1.1rem; }
 
@@ -870,10 +870,10 @@
   text-align: right;
 }
 .med-supply-low {
-  background: rgba(255, 159, 10, 0.12);
-  border-color: rgba(255, 159, 10, 0.35);
+  background: var(--amber-tint);
+  border-color: color-mix(in srgb, var(--amber) 35%, transparent);
 }
-.med-supply-low .med-supply-count { color: #ff9f0a; }
+.med-supply-low .med-supply-count { color: var(--amber); }
 .med-supply-empty {
   background: rgba(255, 69, 58, 0.12);
   border-color: rgba(255, 69, 58, 0.4);
@@ -1410,8 +1410,8 @@
 
 .wcook-cap-notice {
   padding: 10px 14px;
-  background: color-mix(in srgb, #ff9f0a 14%, var(--btn-bg));
-  border: 1px solid color-mix(in srgb, #ff9f0a 40%, transparent);
+  background: color-mix(in srgb, var(--amber) 14%, var(--btn-bg));
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
   border-radius: 10px;
   color: var(--text);
   font-size: 0.85rem;
