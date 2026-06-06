@@ -1,7 +1,11 @@
 # Tempo Full-App Overhaul — Plan (Phase 2)
 
-> **Status: AWAITING APPROVAL.** No implementation code is written until you sign off on
-> (1) the design direction, (2) the batch sequence, (3) scope/depth on the big refactors.
+> **Status: ✅ APPROVED 2026-06-06 — Phase 3 in progress.** Gate decisions:
+> 1. **Design direction:** **Bold Data-Dense** (dashboard-grade Rhythm/Analytics; timing modes stay clean & calm).
+> 2. **Sequence:** **Recommended** — `A bugs → B perf → E-system tokens → D a11y → C ux → F pwa → E-polish`.
+> 3. **ModeButtons (C3):** **Do it, incrementally** — shared controller, one mode per PR behind the appMode guard.
+> 4. **Depth:** **Through medium + high-value lows** — all crit/high/medium app-wide, cherry-pick high-ROI lows; cosmetic lows → backlog.
+>
 > Branch `feat/overhaul` is cut from `main` @ `f2ca225`. Baseline + safety net: `docs/overhaul/baseline/BASELINE.md`.
 > Full raw findings (124, machine-readable): `docs/overhaul/audit-findings.json`.
 
