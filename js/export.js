@@ -115,7 +115,21 @@ const Export = (() => {
     // loadAll's _migrateLegacyBlob folds it into per-record keys on reload.
     'wellness_meds',       // Medications + dose log (legacy blob — see above)
     'wellness_rest_log',   // Sleep + naps by day
-    'bfrbs_global',        // BFRB catches logged outside any focus session
+    // F3 consolidated BFRB stream — the SINGLE SOURCE OF TRUTH since the
+    // bfrb-events migration (js/bfrb-events.js). EVERY catch logged after that
+    // migration lands ONLY here; the legacy keys below stop receiving new
+    // entries. Omitting it meant post-migration catches were silently dropped
+    // from both the JSON export AND the F12 mandatory pre-push backup
+    // (backup.js reuses buildBackupData) — health-relevant data loss.
+    'bfrb_events',
+    // …and its migration marker. bfrb-events.js's migration dedups by
+    // (deviceId, takenAt); on a CROSS-DEVICE restore the legacy keys would be
+    // re-migrated under the NEW device's id and double-count the already-
+    // consolidated entries. Restoring the marker makes the migration a clean
+    // no-op so bfrb_events round-trips verbatim. (Pre-migration backups have no
+    // marker → migration still runs on reload and consolidates the legacy keys.)
+    'tempo_bfrb_events_migration_v1',
+    'bfrbs_global',        // BFRB catches logged outside any focus session (legacy/pre-migration)
     // BFRB Closed Loop Slice B: the user-authored if-then competing-response
     // plan (own words). User CONTENT, so backed up here for device portability
     // (like flow_user_tasks) — but NOT synced (not in SYNCED_STORES). The

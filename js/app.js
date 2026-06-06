@@ -214,7 +214,7 @@ function applyAppMode() {
     isStopwatch || isCooking
     || (isTimer && Timer.getStatus() === 'idle')
     || (isPomodoro && Pomodoro.getStatus() === 'idle')
-    || (isFlow && (Flow.getStatus() === 'idle' || Flow.getStatus() === 'focusComplete' || Flow.getStatus() === 'done'))
+    || (isFlow && (Flow.getStatus() === 'idle' || Flow.getStatus() === 'overflowing' || Flow.getStatus() === 'done'))
     || (isInterval && Interval.getStatus() === 'idle'));
   document.querySelector('.mode-toggle').classList.toggle('hidden', !isStopwatch);
   document.getElementById('export-area').classList.toggle('hidden', !isStopwatch);
@@ -476,12 +476,6 @@ UI.syncUI = function() {
   if (appMode === 'stopwatch') renderAlerts();
   PresetsUI.updateQuickVisibility();
 };
-
-// Hook into stopwatch reset to save history
-const originalOnLeftClick = document.getElementById('btn-left').onclick;
-document.getElementById('btn-left').addEventListener('click', () => {
-  if (appMode !== 'stopwatch') return;
-});
 
 // Save stopwatch sessions on reset — track per-instance status
 const lastKnownStates = new Map();

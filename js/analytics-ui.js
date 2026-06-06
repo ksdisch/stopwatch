@@ -625,7 +625,13 @@ async function renderAnalytics() {
   if (!content) return;
   content.innerHTML = '<div class="analytics-loading">Loading...</div>';
 
-  const [trends, bests, weekly, heatmap, streak, flowComp, distractions, bfrbTrend, medAdh, actualWork, phaseRestarts, overshoot] = await Promise.all([
+  // A4: settle each query independently. With Promise.all a single rejected
+  // query (a corrupt IndexedDB session, a malformed bfrb/distraction record)
+  // rejected the WHOLE await, html was never built, and the panel was stranded
+  // on "Loading..." forever with an unhandled rejection. allSettled lets one
+  // bad query degrade to a safe default for its card while the rest render —
+  // mirroring the per-panel isolation already used in rhythm-insights.js.
+  const settled = await Promise.allSettled([
     Analytics.getTrends(),
     Analytics.getPersonalBests(),
     Analytics.getWeeklyTotals(8),
@@ -639,7 +645,23 @@ async function renderAnalytics() {
     Analytics.getPhaseRestarts(30),
     Analytics.getOvershootStats(30),
   ]);
+  const _val = (i, dflt) => (settled[i].status === 'fulfilled' && settled[i].value != null) ? settled[i].value : dflt;
+  const trends = _val(0, { thisWeek: { totalMs: 0, count: 0 }, lastWeek: { totalMs: 0 } });
+  const bests = _val(1, null);
+  const weekly = _val(2, []);
+  const heatmap = _val(3, []);
+  const streak = _val(4, null);
+  const flowComp = _val(5, null);
+  const distractions = _val(6, null);
+  const bfrbTrend = _val(7, []);
+  const medAdh = _val(8, null);
+  const actualWork = _val(9, null);
+  const phaseRestarts = _val(10, null);
+  const overshoot = _val(11, null);
 
+  // Belt-and-suspenders: if any card renderer throws on an unexpected shape,
+  // show a Retry affordance instead of an eternal spinner.
+  try {
   let html = '';
 
   // Focus streak hero — flow + pomodoro days of a run. Ship-first analytic
@@ -754,4 +776,11 @@ async function renderAnalytics() {
   }
 
   content.innerHTML = html;
+  } catch (err) {
+    try { console.warn('[Analytics] render failed: ' + (err && err.message)); } catch (_) {}
+    content.innerHTML = '<div class="analytics-loading">Couldn’t load analytics. '
+      + '<button type="button" id="analytics-retry" class="analytics-retry-btn">Retry</button></div>';
+    const retry = document.getElementById('analytics-retry');
+    if (retry) retry.addEventListener('click', renderAnalytics);
+  }
 }

@@ -11,6 +11,21 @@ let cookingRafId = null;
 function initCookingUI() {
   loadCookingTimers();
 
+  // A2: a cook timer that crossed zero while the tab was closed reloads as
+  // 'finished', but the alarm callback (the ONLY site that logs History) never
+  // fires on the silent loadState recovery path (timer.js). Log any such
+  // missed session once — idempotent via the persisted `logged` flag — so it
+  // still shows up in History/Analytics, mirroring Flow's overflow re-save.
+  let recoveredCooking = false;
+  cookingTimers.forEach(ct => {
+    if (ct.timer.getStatus() === 'finished' && !ct.logged && ct.timer.getDurationMs() > 0) {
+      History.addSession({ type: 'cooking', duration: ct.timer.getDurationMs(), laps: [], programName: ct.timer.getName() });
+      ct.logged = true;
+      recoveredCooking = true;
+    }
+  });
+  if (recoveredCooking) saveCookingTimers();
+
   document.getElementById('cooking-add-btn')?.addEventListener('click', addCookingTimer);
 
   // Restore running timers
@@ -31,8 +46,8 @@ function loadCookingTimers() {
       timer.loadState(s.state);
       timer.setName(s.name || 'Timer');
       // Re-register alarm for each
-      timer.onAlarm(() => cookingTimerAlarm(timer, i));
-      return { id: s.id || Date.now().toString(36) + i, name: s.name || 'Timer', timer };
+      timer.onAlarm(() => cookingTimerAlarm(timer));
+      return { id: s.id || Date.now().toString(36) + i, name: s.name || 'Timer', timer, logged: !!s.logged };
     });
   } catch (e) {
     cookingTimers = [];
@@ -45,6 +60,7 @@ function saveCookingTimers() {
       id: ct.id,
       name: ct.name,
       state: ct.timer.getState(),
+      logged: !!ct.logged,
     }));
     localStorage.setItem(COOKING_KEY, JSON.stringify(data));
   } catch (e) {}
@@ -57,8 +73,8 @@ function addCookingTimer() {
   const timer = createTimer('cook-' + id);
   const name = COOKING_SUGGESTIONS[idx % COOKING_SUGGESTIONS.length];
   timer.setName(name);
-  timer.onAlarm(() => cookingTimerAlarm(timer, idx));
-  cookingTimers.push({ id, name, timer });
+  timer.onAlarm(() => cookingTimerAlarm(timer));
+  cookingTimers.push({ id, name, timer, logged: false });
   saveCookingTimers();
   renderCookingTimers();
 }
@@ -71,8 +87,12 @@ function removeCookingTimer(id) {
   renderCookingTimers();
 }
 
-function cookingTimerAlarm(timer, idx) {
-  // Distinct tone per slot
+function cookingTimerAlarm(timer) {
+  // Distinct tone per slot — derive the slot from the timer's CURRENT position
+  // so deleting a middle timer doesn't leave later timers playing a stale tone
+  // (A13). The owning record is reused below to flag the logged episode.
+  const ct = cookingTimers.find(c => c.timer === timer);
+  const idx = ct ? cookingTimers.indexOf(ct) : 0;
   const freq = COOKING_TONES[idx % COOKING_TONES.length];
   if (!SFX.isMuted()) {
     try {
@@ -103,6 +123,9 @@ function cookingTimerAlarm(timer, idx) {
   Platform.haptic([200, 100, 200, 100, 200]);
   Platform.notify(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
   History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [], programName: timer.getName() });
+  // Mark this finished episode logged so the tab-close→reopen recovery in
+  // initCookingUI doesn't double-log it (A2).
+  if (ct) ct.logged = true;
   saveCookingTimers();
   renderCookingTimers();
 }
@@ -189,6 +212,7 @@ function attachCookingHandlers() {
     btn.addEventListener('click', () => {
       const ct = cookingTimers.find(c => c.id === btn.dataset.cookStart);
       if (ct && ct.timer.getDurationMs() > 0) {
+        ct.logged = false; // fresh run / resume — re-arm missed-session logging (A2)
         ct.timer.start();
         BgNotify.schedule('cook-' + ct.id, ct.timer.getRemainingMs(), `${ct.name} Done`, 'Cooking timer finished!');
         saveCookingTimers();
@@ -216,6 +240,7 @@ function attachCookingHandlers() {
     btn.addEventListener('click', () => {
       const ct = cookingTimers.find(c => c.id === btn.dataset.cookReset);
       if (ct) {
+        ct.logged = false; // reset clears the logged-episode flag (A2)
         ct.timer.reset();
         BgNotify.cancel('cook-' + ct.id);
         saveCookingTimers();
