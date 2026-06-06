@@ -65,6 +65,26 @@ function initSequenceUI() {
     if (saved) Sequence.loadState(saved);
   } catch (e) {}
 
+  // A6: a phase (or the FINAL phase) that crossed zero while the tab was closed
+  // reloads stuck at 'phaseComplete' — loadState sets that status but never
+  // fires the onPhaseComplete callback that advances the chain and writes the
+  // terminal 'done' history row, and updateSequenceUI has no 'phaseComplete'
+  // button case (so the controls are frozen). Recover SILENTLY here: advance
+  // once; if that finishes the sequence, log the session (the write that was
+  // otherwise lost); otherwise advancePhase() has already left the next phase
+  // 'idle' (startable). We intentionally do NOT chime or auto-start — a silent
+  // reload shouldn't replay a missed alarm or begin timing a phase from
+  // reload-time (which would also be frozen until refocus; see A16).
+  if (Sequence.getStatus() === 'phaseComplete') {
+    Sequence.advancePhase();
+    if (Sequence.getStatus() === 'done') {
+      const prog = Sequence.getProgram();
+      const totalMs = prog.phases.reduce((s, p) => s + p.durationMs, 0);
+      History.addSession({ type: 'sequence', duration: totalMs, laps: [] });
+    }
+    saveSequenceState();
+  }
+
   // Wire keyboard shortcuts for sequence mode
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'timer' || !sequenceMode) return;

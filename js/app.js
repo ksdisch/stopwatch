@@ -176,6 +176,14 @@ function switchAppMode(mode) {
     appMode = mode;
     localStorage.setItem('app_mode', mode);
     applyAppMode();
+    // A10/A11: keep the URL hash + sub-nav in sync when the mode is switched
+    // via a NON-nav path (a preset, deep programmatic switch). The nav path
+    // already writes the hash; writeHash is no-op-guarded and uses
+    // replaceState (no hashchange re-entry), so this is idempotent there.
+    // TempoNav loads after app.js → guard the reference.
+    if (typeof TempoNav !== 'undefined' && typeof TempoNav.onAppModeChanged === 'function') {
+      TempoNav.onAppModeChanged(mode);
+    }
     display.classList.remove('mode-fade-out');
     display.classList.add('mode-fade-in');
     setTimeout(() => display.classList.remove('mode-fade-in'), 150);

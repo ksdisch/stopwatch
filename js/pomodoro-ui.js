@@ -220,6 +220,25 @@ function cancelAutoAdvance() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// A8: the completed-session write was duplicated inline in onPomodoroRight's
+// done branch and MISSING from onPomodoroLeft's (Skip) done branch — so
+// skipping the final phase's overflow advanced to 'done' WITHOUT logging the
+// session. Extracted so both Skip and Break/Work write the identical record and
+// can't drift again.
+function logPomodoroDoneSession() {
+  const cfg = Pomodoro.getConfig();
+  const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
+  const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0);
+  History.addSession({
+    type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
+    completedCycles: cfg.totalCycles,
+    totalWorkMs: cfg.totalCycles * cfg.workMs,
+    overshootMs: totalOvershoot,
+    ...gatherTaskData(),
+    ...gatherTimingData(),
+  });
+}
+
 function onPomodoroLeft() {
   if (appMode !== 'pomodoro') return;
   if (pomodoroClickLock) return;
@@ -261,9 +280,14 @@ function onPomodoroLeft() {
     SFX.playReset();
     updatePomodoroUI();
   } else if (status === 'overflowing') {
-    // Skip — advance to next phase (overshoot already captured into phaseLog
-    // by the engine's nextPhase()).
+    // Skip — advance to next phase (overshoot already captured into phaseLog by
+    // the engine's nextPhase()). Unlike Break/Work (right), Skip intentionally
+    // does NOT auto-start the next phase — it advances and waits for the user.
     Pomodoro.nextPhase();
+    // A8: but if Skip advanced the FINAL phase to 'done', still write the
+    // session — previously this path reached 'done' without logging, losing
+    // the record that the Break/Work path writes.
+    if (Pomodoro.getStatus() === 'done') logPomodoroDoneSession();
     savePomodoroState();
     updatePomodoroUI();
   }
@@ -308,17 +332,7 @@ function onPomodoroRight() {
     // session record at end-of-cycle (sum of all phaseLog overshoots).
     Pomodoro.nextPhase();
     if (Pomodoro.getStatus() === 'done') {
-      const cfg = Pomodoro.getConfig();
-      const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
-      const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0);
-      History.addSession({
-        type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
-        completedCycles: cfg.totalCycles,
-        totalWorkMs: cfg.totalCycles * cfg.workMs,
-        overshootMs: totalOvershoot,
-        ...gatherTaskData(),
-        ...gatherTimingData(),
-      });
+      logPomodoroDoneSession();
       savePomodoroState();
       updatePomodoroUI();
       return;
