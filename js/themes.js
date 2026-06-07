@@ -36,17 +36,20 @@ const Themes = (() => {
     minimal: {
       name: 'Minimal',
       vars: {
-        '--bg': '#ffffff', '--text': '#1a1a1a', '--text-secondary': '#8e8e93',
-        '--green': '#007aff', '--green-dark': '#e0ecff', '--red': '#ff3b30',
+        // D4 WCAG-AA: --text-secondary #8e8e93 (3.26:1 on #fff) → #6b6b70 (~4.9:1);
+        // link/accent green #007aff (4.02:1) → #0066d6 (~5.4:1) on both text spots.
+        '--bg': '#ffffff', '--text': '#1a1a1a', '--text-secondary': '#6b6b70',
+        '--green': '#0066d6', '--green-dark': '#e0ecff', '--red': '#ff3b30',
         '--red-dark': '#ffe0de', '--btn-bg': '#f0f0f5', '--btn-border': '#d1d1d6',
-        '--separator': '#d1d1d6', '--lap-best': '#007aff', '--lap-worst': '#ff3b30',
+        '--separator': '#d1d1d6', '--lap-best': '#0066d6', '--lap-worst': '#ff3b30',
         '--amber': '#ff9500',
       }
     },
     oled: {
       name: 'OLED',
       vars: {
-        '--bg': '#000000', '--text': '#ffffff', '--text-secondary': '#555555',
+        // D4 WCAG-AA: --text-secondary #555 (2.82:1 on #000) → #8a8a8a (~4.8:1).
+        '--bg': '#000000', '--text': '#ffffff', '--text-secondary': '#8a8a8a',
         '--green': '#00ff88', '--green-dark': '#001a0d', '--red': '#ff0044',
         '--red-dark': '#1a0008', '--btn-bg': '#0a0a0a', '--btn-border': '#222222',
         '--separator': '#222222', '--lap-best': '#00ff88', '--lap-worst': '#ff0044',

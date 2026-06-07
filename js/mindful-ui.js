@@ -160,7 +160,11 @@ const MindfulUI = (() => {
     const step = currentPattern.steps[currentStepIdx];
 
     runnerLabel.textContent = step.label;
-    runnerCircle.style.transition = `transform ${step.sec}s ease-in-out`;
+    // D reduced-motion: a CSS @media can't override this inline transition, so
+    // gate it here — when the user prefers reduced motion, snap the circle to
+    // the target scale and rely on the phase label + countdown text instead.
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    runnerCircle.style.transition = reduceMotion ? 'none' : `transform ${step.sec}s ease-in-out`;
     runnerCircle.style.transform = `scale(${step.scale})`;
 
     // Live countdown inside the circle.
@@ -197,7 +201,8 @@ const MindfulUI = (() => {
     if (runnerEl) runnerEl.hidden = true;
     if (patternsEl) patternsEl.hidden = false;
     if (runnerCircle) {
-      runnerCircle.style.transition = 'transform 0.25s ease-out';
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      runnerCircle.style.transition = reduceMotion ? 'none' : 'transform 0.25s ease-out';
       runnerCircle.style.transform = 'scale(0.5)';
     }
   }

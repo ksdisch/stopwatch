@@ -6136,3 +6136,44 @@ rect.rhythm-day-hi {
 .rhythm-tooltip[hidden] {
   display: none;
 }
+
+/* ── Accessibility: global reduced-motion reset (Batch D) ──────────────────
+   The codebase only had a handful of targeted reduced-motion blocks, leaving
+   the flash-red countdown, BFRB pulse, mode-fade, breathing glow, and analog
+   hand transitions uncovered. This honors the OS setting app-wide by collapsing
+   all animation/transition durations. (Inline JS-set transitions — e.g. the
+   Mindful breathing circle — can't be reached by CSS and are gated in JS via
+   matchMedia in mindful-ui.js.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Accessibility: ≥44px touch targets for icon/chip-delete controls (D) ──
+   The tag/checklist/alert/phase/card/preset delete glyphs and icon buttons had
+   ~16-24px effective hit areas — below the 44px iOS/WCAG minimum on a phone-
+   first PWA. Keep the small visual glyph; expand the HIT area via a centered
+   flex box + min size. Applied to the existing per-component selectors so no
+   markup changes are needed. */
+.tag-chip-delete,
+.pomo-checklist-item-delete,
+.alert-chip-delete,
+.interval-phase-del,
+.card-delete,
+.card-compare,
+.preset-delete,
+.cooking-timer-delete,
+.icon-btn,
+.tempo-iconbtn,
+[data-seq-del],
+[data-log-del] {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
