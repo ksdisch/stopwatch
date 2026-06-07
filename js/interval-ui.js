@@ -416,12 +416,15 @@ function startIntervalRenderLoop() {
         intervalRafId = requestAnimationFrame(tick);
       } else {
         intervalRafId = null;
+        Platform.keepAwake(false); // F-pwa
         updateIntervalUI(); // settle final structural state
       }
     } else {
       intervalRafId = null;
+      Platform.keepAwake(false); // F-pwa
     }
   }
+  Platform.keepAwake(true); // F-pwa: keep screen on while timing
   intervalRafId = requestAnimationFrame(tick);
 }
 
@@ -430,6 +433,7 @@ function stopIntervalRenderLoop() {
     cancelAnimationFrame(intervalRafId);
     intervalRafId = null;
   }
+  Platform.keepAwake(false); // F-pwa
 }
 
 function saveIntervalState() {

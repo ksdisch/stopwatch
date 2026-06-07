@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v119-overhaul-e-polish';
+const CACHE_NAME = 'stopwatch-v120-overhaul-f-pwa';
 const ASSETS = [
   './',
   './index.html',
@@ -122,14 +122,56 @@ self.addEventListener('fetch', (event) => {
       // malformed referrer — fall through to the existing cache logic
     }
   }
-  event.respondWith(
+  const req = event.request;
+
+  // Only GET requests are cacheable; let everything else hit the network
+  // untouched.
+  if (req.method !== 'GET') return;
+
+  const sameOrigin = (() => {
+    try { return new URL(req.url).origin === self.location.origin; }
+    catch (_) { return false; }
+  })();
+
+  // F-pwa: stale-while-revalidate + navigation fallback.
+  //
+  // Old behavior was pure cache-first (`cached || fetch`): a missed
+  // CACHE_NAME bump (a documented footgun) silently served stale code with
+  // no way to self-heal. Now we serve the cache immediately AND refresh it in
+  // the background, so the *next* load picks up fresh files even if a bump was
+  // forgotten. Cross-origin requests (Firebase / gstatic CDN) are never
+  // written back to avoid caching opaque/3rd-party responses.
+  event.respondWith((async () => {
     // ignoreSearch:true so `?v=N` cache-bust query strings on asset
     // references (see index.html's tempo-shell.css / tempo-nav.js links)
-    // still hit the pre-cached entry instead of falling through to the
-    // network every time.
-    caches.match(event.request, { ignoreSearch: true })
-      .then((cached) => cached || fetch(event.request))
-  );
+    // still hit the pre-cached entry.
+    const cached = await caches.match(req, { ignoreSearch: true });
+
+    const fetchAndUpdate = fetch(req).then((resp) => {
+      if (sameOrigin && resp && resp.ok) {
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+      }
+      return resp;
+    }).catch(() => null);
+
+    if (cached) {
+      // Serve cache now; keep the SW alive long enough to finish revalidating.
+      event.waitUntil(fetchAndUpdate);
+      return cached;
+    }
+
+    const resp = await fetchAndUpdate;
+    if (resp) return resp;
+
+    // Offline + uncached: for a navigation, fall back to the app shell so the
+    // user gets Tempo (hash-routed SPA) instead of the browser's error page.
+    if (req.mode === 'navigate') {
+      const shell = await caches.match('./index.html');
+      if (shell) return shell;
+    }
+    return Response.error();
+  })());
 });
 
 // ── Background Notification Scheduling ──

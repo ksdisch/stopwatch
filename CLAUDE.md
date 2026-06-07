@@ -31,7 +31,7 @@ index.html                      — App shell, all HTML structure
 css/styles.css (~3300 lines)    — All styling: themes, responsive, animations, a11y
 js/utils.js                     — Utils.formatMs(ms) shared time formatting
 js/dom-utils.js                 — escapeHtml(str) shared HTML-escape helper
-js/platform.js                  — Platform abstraction (web vs Capacitor native): haptic/notify/scheduleNotification + Firebase Auth shim (Platform.auth) + network shim. Isolates all native calls.
+js/platform.js                  — Platform abstraction (web vs Capacitor native): haptic/notify/scheduleNotification + Firebase Auth shim (Platform.auth) + network shim + keepAwake (wake lock: web navigator.wakeLock / native keep-awake). Isolates all native calls.
 js/schema.js                    — Sync-invariant stamping seam: SCHEMA_VERSION / stamp(record) (deviceId+updatedAt+schemaVersion) / isFutureRecord (F19a guard). ALL synced-store writes go through here.
 js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall-clock timing. Alerts.
 js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.

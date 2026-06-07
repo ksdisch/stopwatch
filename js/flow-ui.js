@@ -1197,11 +1197,14 @@ function startFlowRenderLoop() {
         flowRafId = requestAnimationFrame(tick);
       } else {
         flowRafId = null;
+        Platform.keepAwake(false); // F-pwa
       }
     } else {
       flowRafId = null;
+      Platform.keepAwake(false); // F-pwa
     }
   }
+  Platform.keepAwake(true); // F-pwa: keep screen on while timing
   flowRafId = requestAnimationFrame(tick);
 }
 
@@ -1210,6 +1213,7 @@ function stopFlowRenderLoop() {
     cancelAnimationFrame(flowRafId);
     flowRafId = null;
   }
+  Platform.keepAwake(false); // F-pwa
 }
 
 function saveFlowState() {

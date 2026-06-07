@@ -4316,6 +4316,11 @@ body.focus-mode .bfrb-capture { display: none; }
   justify-content: center;
   opacity: 0;
   transition: opacity 0.3s;
+  /* F-pwa: this overlay is meant to be left on-screen, so safe-area insets
+     matter most here — keep the centered time + bottom hint clear of the
+     notch and home indicator on iOS standalone. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
 .focus-overlay.focus-visible {
@@ -4339,7 +4344,8 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .focus-hint {
   position: absolute;
-  bottom: 24px;
+  /* F-pwa: lift above the home indicator on iOS standalone. */
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   font-size: 0.7rem;
   color: var(--text-secondary);
   opacity: 0.4;

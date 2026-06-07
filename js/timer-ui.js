@@ -228,12 +228,15 @@ function startTimerRenderLoop() {
         timerRafId = requestAnimationFrame(tick);
       } else {
         timerRafId = null;
+        Platform.keepAwake(false); // F-pwa
         updateTimerUI(); // settle final structural state (e.g. → finished)
       }
     } else {
       timerRafId = null;
+      Platform.keepAwake(false); // F-pwa
     }
   }
+  Platform.keepAwake(true); // F-pwa: keep screen on while timing
   timerRafId = requestAnimationFrame(tick);
 }
 
@@ -242,6 +245,7 @@ function stopTimerRenderLoop() {
     cancelAnimationFrame(timerRafId);
     timerRafId = null;
   }
+  Platform.keepAwake(false); // F-pwa
 }
 
 function saveTimerState() {
