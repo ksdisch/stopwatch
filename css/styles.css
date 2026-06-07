@@ -134,6 +134,32 @@ input:focus:not(:focus-visible) {
   border: 0;
 }
 
+/* D: the <main> content landmark must NOT generate a box — the pillars stay
+   flex children of #app (their wrappers are display:contents too). The <main>
+   role is preserved by modern browsers under display:contents. */
+.tempo-main { display: contents; }
+
+/* D: skip link — visually hidden until it receives focus, then it parks at the
+   top-left so a keyboard user can jump straight into the content. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: var(--z-max, 9999);
+  padding: 8px 14px;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-md, 10px);
+  text-decoration: none;
+  transition: top var(--dur-fast, 120ms) var(--ease-standard, ease);
+}
+.skip-link:focus {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 /* Top Bar */
 .top-bar {
   display: flex;

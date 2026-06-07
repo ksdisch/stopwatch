@@ -42,6 +42,9 @@
   </div>
 
   <div id="app">
+    <!-- D: skip link — first focusable, jumps past the top bar + sub-nav to the
+         main content landmark. Visually hidden until focused (.skip-link). -->
+    <a href="#tempo-main" class="skip-link">Skip to content</a>
     <!-- Tempo shell: top bar + sub-nav.
          Replaces the legacy mode selector. Wordmark on the left, History
          and Settings icons on the right. Settings opens a drawer that
@@ -303,6 +306,12 @@
 
     <div id="sr-announce" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
 
+    <!-- D: primary-content landmark. .tempo-main is display:contents so it adds
+         NO box — the pillars stay flex children of #app per the note below —
+         while still exposing a <main> landmark + a skip-link/focus target. -->
+    <main id="tempo-main" class="tempo-main" tabindex="-1">
+    <h1 class="sr-only">Tempo</h1>
+
     <!-- ── Timers pillar ── Wraps the existing Stopwatch / Timer / Pomodoro /
          Flow / Interval / Cooking content. display:contents on [data-active]
          means the wrapper doesn't create its own box — the flex layout of
@@ -416,7 +425,7 @@
       <div id="pomodoro-dots" class="pomodoro-dots"></div>
       <div id="pomo-timeline" class="pomo-timeline"></div>
       <button id="pomo-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>
-      <div id="pomo-distraction-picker" class="pomo-distraction-picker hidden">
+      <div id="pomo-distraction-picker" class="pomo-distraction-picker hidden" role="group" aria-label="Log a distraction">
         <div class="pomo-distraction-cats">
           <button class="pomo-distraction-cat" data-cat="phone">Phone</button>
           <button class="pomo-distraction-cat" data-cat="email">Email</button>
@@ -505,7 +514,7 @@
           <button id="flow-end-early-btn" class="flow-end-early-btn hidden"
                   aria-label="End focus block early and save to history">End early</button>
         </div>
-        <div id="flow-distraction-picker" class="pomo-distraction-picker hidden">
+        <div id="flow-distraction-picker" class="pomo-distraction-picker hidden" role="group" aria-label="Log a distraction">
           <div class="pomo-distraction-cats">
             <button class="flow-distraction-cat" data-cat="phone">Phone</button>
             <button class="flow-distraction-cat" data-cat="email">Email</button>
@@ -570,7 +579,7 @@
       <button id="btn-left" class="control-btn" aria-label="Lap" disabled>
         <span class="btn-inner">Lap</span>
       </button>
-      <button id="btn-right" class="control-btn btn-start" aria-label="Start">
+      <button id="btn-right" class="control-btn btn-start" aria-label="Start" aria-keyshortcuts="Space">
         <span class="btn-inner">Start</span>
       </button>
     </div>
@@ -961,6 +970,7 @@
         </button>
       </div>
     </section>
+    </main>
 
     <!-- Pomodoro stats panel (slide-up overlay) -->
     <div id="analytics-panel" class="analytics-panel hidden">

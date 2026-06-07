@@ -69,6 +69,7 @@ const BFRBRecovery = (() => {
       btn.classList.remove('bfrb-recovery-active');
       btn.style.removeProperty('--bfrb-recovery-progress');
       if (s.baseLabelFn) btn.textContent = s.baseLabelFn();
+      if (s.baseAriaLabel != null) btn.setAttribute('aria-label', s.baseAriaLabel); // D: restore action label
     }
     _hidePlanIfIdle();
   }
@@ -78,6 +79,11 @@ const BFRBRecovery = (() => {
     if (!btn) return;
 
     cancel(btnId);
+
+    // D: the FAB's static aria-label ("Log BFRB…") would otherwise mask the
+    // countdown from screen readers. Swap it during the countdown, restore it on
+    // end/cancel, and announce() completion (the audible event SR needs).
+    const baseAriaLabel = btn.getAttribute('aria-label');
 
     const endsAt = Date.now() + DURATION_MS;
     btn.classList.add('bfrb-recovery-active');
@@ -91,11 +97,13 @@ const BFRBRecovery = (() => {
         btn.classList.remove('bfrb-recovery-active');
         btn.style.removeProperty('--bfrb-recovery-progress');
         btn.textContent = baseLabelFn();
+        if (baseAriaLabel != null) btn.setAttribute('aria-label', baseAriaLabel); // D: restore action label
         _hidePlanIfIdle();
         Platform.haptic([30, 40, 30]);
         // Two-note ascending chime — short but noticeable. Respects the
         // user's global mute toggle via the SFX module.
         if (typeof SFX !== 'undefined') SFX.playBFRBEnd();
+        if (typeof announce === 'function') announce('Competing-response timer complete — count reset'); // D
         return;
       }
       const progress = remaining / DURATION_MS; // 1 → 0
@@ -104,11 +112,12 @@ const BFRBRecovery = (() => {
       const m = Math.floor(secs / 60);
       const s = secs % 60;
       btn.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      btn.setAttribute('aria-label', `Competing-response timer, ${secs} second${secs === 1 ? '' : 's'} left`); // D
     };
 
     tick();
     const intervalId = setInterval(tick, TICK_MS);
-    sessions.set(btnId, { endsAt, intervalId, baseLabelFn });
+    sessions.set(btnId, { endsAt, intervalId, baseLabelFn, baseAriaLabel });
     // NOTE: the plan banner is NOT shown here — the caller surfaces it after its
     // capture popover dismisses (see showPlan() comment above).
   }

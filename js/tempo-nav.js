@@ -525,8 +525,14 @@ const TempoNav = (() => {
         statusEl.removeAttribute('data-progress');
         return;
       }
-      statusEl.textContent = msg;
+      // D: unhide BEFORE setting text so the change happens while the live
+      // region is in the a11y tree (a text change made while [hidden] is not
+      // announced), and mirror it through the always-present #sr-announce so the
+      // sign-in/sync feedback is reliably spoken regardless of this row's hidden
+      // toggling.
       statusEl.hidden = false;
+      statusEl.textContent = msg;
+      if (typeof announce === 'function') announce(msg);
       if (isError) statusEl.setAttribute('data-error', '');
       else statusEl.removeAttribute('data-error');
     }
