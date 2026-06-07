@@ -4,16 +4,25 @@ function initHistoryPanel() {
   const panel = document.getElementById('history-panel');
   const closeBtn = document.getElementById('history-close');
 
-  toggleBtn.addEventListener('click', () => {
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) renderHistory();
-  });
-
-  closeBtn.addEventListener('click', () => {
+  // D: treat the slide-up history panel as a modal dialog (focus move-in, Tab
+  // trap, Escape, focus restore) via the shared openModal/closeModal helper.
+  function openPanel() {
+    panel.classList.remove('hidden');
+    renderHistory();
+    openModal(panel, { label: 'Session history', onClose: closePanel });
+  }
+  function closePanel() {
     panel.classList.add('hidden');
     activeTagFilter = null;
     activeDateRange = null;
+    closeModal(panel);
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (panel.classList.contains('hidden')) openPanel(); else closePanel();
   });
+
+  closeBtn.addEventListener('click', closePanel);
 
   document.getElementById('history-export-all').addEventListener('click', () => {
     Export.exportAllData();
@@ -446,10 +455,12 @@ function initLogPastPanel() {
     renderLogPastList(logPastBreakTasks, 'log-past-break-tasks');
     renderLogPastList(logPastActualWork, 'log-past-actual-work');
     updateLogPastPomoVisibility();
+    openModal(panel, { label: 'Log past session', onClose: closePanel }); // D: modal focus mgmt
   }
 
   function closePanel() {
     panel.classList.add('hidden');
+    closeModal(panel); // D: restore focus + tear down trap
   }
 
   // Top bar button

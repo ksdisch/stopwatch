@@ -146,15 +146,20 @@ function initPomodoroUI() {
   // The helper still writes to pomodoro_bfrbs when Pomodoro work is running,
   // so gatherTaskData() picks up per-session catches below.
 
-  // Stats panel
+  // Stats panel — D: modal-dialog focus management via the shared helper.
+  const statsPanel = document.getElementById('pomo-stats-panel');
+  const closeStats = () => { if (statsPanel) { statsPanel.classList.add('hidden'); closeModal(statsPanel); } };
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
-    const panel = document.getElementById('pomo-stats-panel');
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) renderPomodoroStats();
+    if (!statsPanel) return;
+    if (statsPanel.classList.contains('hidden')) {
+      statsPanel.classList.remove('hidden');
+      renderPomodoroStats();
+      openModal(statsPanel, { label: 'Pomodoro stats', onClose: closeStats });
+    } else {
+      closeStats();
+    }
   });
-  document.getElementById('pomo-stats-close')?.addEventListener('click', () => {
-    document.getElementById('pomo-stats-panel').classList.add('hidden');
-  });
+  document.getElementById('pomo-stats-close')?.addEventListener('click', closeStats);
 
   // Keyboard shortcuts for Pomodoro mode
   document.addEventListener('keydown', (e) => {

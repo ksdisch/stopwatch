@@ -10,14 +10,22 @@ function initAnalyticsPanel() {
   const closeBtn = document.getElementById('analytics-close');
   if (!toggleBtn || !panel) return;
 
+  // D: modal-dialog focus management via the shared helper.
+  function openPanel() {
+    panel.classList.remove('hidden');
+    renderAnalytics();
+    openModal(panel, { label: 'Analytics dashboard', onClose: closePanel });
+  }
+  function closePanel() {
+    panel.classList.add('hidden');
+    closeModal(panel);
+  }
+
   toggleBtn.addEventListener('click', () => {
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) renderAnalytics();
+    if (panel.classList.contains('hidden')) openPanel(); else closePanel();
   });
 
-  closeBtn?.addEventListener('click', () => {
-    panel.classList.add('hidden');
-  });
+  closeBtn?.addEventListener('click', closePanel);
 
   // Event delegation for the BFRB-trend window toggle. Content innerHTML is
   // replaced on re-render but the #analytics-content element itself stays.
