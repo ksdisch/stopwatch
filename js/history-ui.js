@@ -4,16 +4,25 @@ function initHistoryPanel() {
   const panel = document.getElementById('history-panel');
   const closeBtn = document.getElementById('history-close');
 
-  toggleBtn.addEventListener('click', () => {
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) renderHistory();
-  });
-
-  closeBtn.addEventListener('click', () => {
+  // D: treat the slide-up history panel as a modal dialog (focus move-in, Tab
+  // trap, Escape, focus restore) via the shared openModal/closeModal helper.
+  function openPanel() {
+    panel.classList.remove('hidden');
+    renderHistory();
+    openModal(panel, { label: 'Session history', onClose: closePanel });
+  }
+  function closePanel() {
     panel.classList.add('hidden');
     activeTagFilter = null;
     activeDateRange = null;
+    closeModal(panel);
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    if (panel.classList.contains('hidden')) openPanel(); else closePanel();
   });
+
+  closeBtn.addEventListener('click', closePanel);
 
   document.getElementById('history-export-all').addEventListener('click', () => {
     Export.exportAllData();
@@ -63,65 +72,14 @@ function initHistoryPanel() {
     }
   });
 
-  // Log Past Session — standalone panel
+  // Log Past Session — standalone panel. initLogPastPanel() owns ALL of the
+  // log-past wiring (#log-past-save / #log-past-cancel / open / close). The
+  // duplicate save+cancel handlers that USED to live here fired on the SAME
+  // click as initLogPastPanel's copy — writing each logged session TWICE and
+  // stacking a second listener on every init (A3). Removed; the canonical
+  // handlers in initLogPastPanel (which closePanel() + re-render only when the
+  // history panel is open) remain the single source.
   initLogPastPanel();
-
-  document.getElementById('log-past-cancel').addEventListener('click', () => {
-    logForm.classList.add('hidden');
-  });
-
-  document.getElementById('log-past-save').addEventListener('click', async () => {
-    const mode = logModeSelect.value;
-    const dateStr = document.getElementById('log-past-date').value;
-    const startTime = document.getElementById('log-past-start').value;
-    const endTime = document.getElementById('log-past-end').value;
-
-    if (!dateStr || !startTime || !endTime) {
-      alert('Please fill in date, start time, and end time.');
-      return;
-    }
-
-    const startDate = new Date(`${dateStr}T${startTime}`);
-    const endDate = new Date(`${dateStr}T${endTime}`);
-    // Handle end time crossing midnight
-    if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
-    const durationMs = endDate.getTime() - startDate.getTime();
-
-    if (durationMs <= 0) {
-      alert('End time must be after start time.');
-      return;
-    }
-
-    const note = document.getElementById('log-past-note').value.trim();
-    const tagsRaw = document.getElementById('log-past-tags').value.trim();
-    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
-
-    const session = {
-      id: startDate.getTime(),
-      date: startDate.toISOString(),
-      type: mode,
-      duration: durationMs,
-      laps: [],
-      note,
-      tags,
-      sessionStartedAt: startDate.getTime(),
-      sessionEndedAt: endDate.getTime(),
-    };
-
-    if (mode === 'pomodoro') {
-      const cycles = Math.max(0, parseInt(document.getElementById('log-past-cycles').value, 10) || 0);
-      const workMin = Math.max(1, parseInt(document.getElementById('log-past-work-min').value, 10) || 25);
-      session.completedCycles = cycles;
-      session.totalWorkMs = cycles * workMin * 60000;
-      if (logPastFocusGoals.length > 0) session.focusGoals = logPastFocusGoals.slice();
-      if (logPastBreakTasks.length > 0) session.breakTasks = logPastBreakTasks.slice();
-      if (logPastActualWork.length > 0) session.actualWork = logPastActualWork.slice();
-    }
-
-    await History.addSession(session);
-    logForm.classList.add('hidden');
-    renderHistory();
-  });
 
   // Backlog #6 caveat (c): re-render the history panel when the sync
   // engine reports a history-store merge so cross-device session
@@ -497,10 +455,12 @@ function initLogPastPanel() {
     renderLogPastList(logPastBreakTasks, 'log-past-break-tasks');
     renderLogPastList(logPastActualWork, 'log-past-actual-work');
     updateLogPastPomoVisibility();
+    openModal(panel, { label: 'Log past session', onClose: closePanel }); // D: modal focus mgmt
   }
 
   function closePanel() {
     panel.classList.add('hidden');
+    closeModal(panel); // D: restore focus + tear down trap
   }
 
   // Top bar button

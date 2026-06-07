@@ -176,6 +176,14 @@ function switchAppMode(mode) {
     appMode = mode;
     localStorage.setItem('app_mode', mode);
     applyAppMode();
+    // A10/A11: keep the URL hash + sub-nav in sync when the mode is switched
+    // via a NON-nav path (a preset, deep programmatic switch). The nav path
+    // already writes the hash; writeHash is no-op-guarded and uses
+    // replaceState (no hashchange re-entry), so this is idempotent there.
+    // TempoNav loads after app.js → guard the reference.
+    if (typeof TempoNav !== 'undefined' && typeof TempoNav.onAppModeChanged === 'function') {
+      TempoNav.onAppModeChanged(mode);
+    }
     display.classList.remove('mode-fade-out');
     display.classList.add('mode-fade-in');
     setTimeout(() => display.classList.remove('mode-fade-in'), 150);
@@ -214,7 +222,7 @@ function applyAppMode() {
     isStopwatch || isCooking
     || (isTimer && Timer.getStatus() === 'idle')
     || (isPomodoro && Pomodoro.getStatus() === 'idle')
-    || (isFlow && (Flow.getStatus() === 'idle' || Flow.getStatus() === 'focusComplete' || Flow.getStatus() === 'done'))
+    || (isFlow && (Flow.getStatus() === 'idle' || Flow.getStatus() === 'overflowing' || Flow.getStatus() === 'done'))
     || (isInterval && Interval.getStatus() === 'idle'));
   document.querySelector('.mode-toggle').classList.toggle('hidden', !isStopwatch);
   document.getElementById('export-area').classList.toggle('hidden', !isStopwatch);
@@ -477,19 +485,27 @@ UI.syncUI = function() {
   PresetsUI.updateQuickVisibility();
 };
 
-// Hook into stopwatch reset to save history
-const originalOnLeftClick = document.getElementById('btn-left').onclick;
-document.getElementById('btn-left').addEventListener('click', () => {
-  if (appMode !== 'stopwatch') return;
-});
-
-// Save stopwatch sessions on reset — track per-instance status
+// Save stopwatch sessions on reset — track per-instance status.
+// Kept as the single session-saver across EVERY reset path (onLeftClick,
+// preset apply, compare-view reset) rather than event-driving each. B3 gates
+// the body so it does real work only while a stopwatch is active (or has a
+// pending →idle transition to flush); B8 evicts tracking for idled/deleted
+// instances so the Map can't grow unbounded.
 const lastKnownStates = new Map();
 
 setInterval(() => {
-  // Track all stopwatch instances
-  InstanceManager.getStopwatches().forEach(sw => {
+  const instances = InstanceManager.getStopwatches();
+  const anyActive = instances.some(sw => sw.getStatus() !== 'idle');
+  // B3 early-exit: nothing running AND nothing left to flush → cheap no-op.
+  // (When the last active instance idles, its entry is still tracked below, so
+  // size > 0 keeps us processing for exactly one more tick to save its session,
+  // then the entry is evicted and the Map empties.)
+  if (!anyActive && lastKnownStates.size === 0) return;
+
+  const liveIds = new Set();
+  instances.forEach(sw => {
     const id = sw.getId();
+    liveIds.add(id);
     const status = sw.getStatus();
     const prev = lastKnownStates.get(id) || { status: 'idle', elapsed: 0, laps: [] };
 
@@ -507,6 +523,13 @@ setInterval(() => {
       prev.laps = [];
     }
     prev.status = status;
-    lastKnownStates.set(id, prev);
+    // B8: keep tracking only active instances. An idled instance has had its
+    // session flushed above, so drop it — this empties the Map and re-arms the
+    // early-exit. Deleted instances are pruned just below.
+    if (status === 'idle') lastKnownStates.delete(id);
+    else lastKnownStates.set(id, prev);
   });
+  for (const id of lastKnownStates.keys()) {
+    if (!liveIds.has(id)) lastKnownStates.delete(id);
+  }
 }, 500);

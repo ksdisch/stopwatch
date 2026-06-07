@@ -98,6 +98,49 @@ function onTimerRight() {
   }
 }
 
+// B4: cheap per-frame painter (time + progress + overshoot flash). The buttons,
+// is-running class, and set-area visibility change only on a status transition,
+// so the RAF loop calls this on non-transition frames and the full
+// updateTimerUI() only when the status flips. updateTimerUI() delegates these
+// bits here so they can't drift.
+function paintTimerFrame() {
+  if (appMode !== 'timer') return;
+  const status = Timer.getStatus();
+  const isOver = status === 'overflowing';
+  const overshootMs = isOver ? Timer.getOvershootMs() : 0;
+  const timeEl = document.getElementById('time');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const timerDisplay = document.getElementById('timer-display');
+  if (!timeEl) return;
+
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    const t = Utils.formatMs(Timer.getRemainingMs());
+    timeEl.innerHTML = (t.hours > 0)
+      ? `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  if (progressBar && progressFill) {
+    if (status !== 'idle') {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = `${Timer.getProgress() * 100}%`;
+    } else {
+      progressBar.classList.add('hidden');
+    }
+  }
+
+  if (timerDisplay) {
+    timerDisplay.classList.toggle('timer-finished', status === 'finished' || (isOver && overshootMs <= 3000));
+    timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
+  }
+}
+
 function updateTimerUI() {
   if (appMode !== 'timer') return;
 
@@ -111,40 +154,12 @@ function updateTimerUI() {
   const progressBar = document.getElementById('timer-progress');
   const progressFill = document.getElementById('timer-progress-fill');
 
-  // Format display: standard remaining when running normally; "+M:SS.cc"
-  // when past zero.
-  if (isOver) {
-    const overshootMs = Timer.getOvershootMs();
-    const t = Utils.formatMs(overshootMs);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  } else {
-    const remaining = Timer.getRemainingMs();
-    const t = Utils.formatMs(remaining);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  }
+  // Time + progress + overshoot flash — the per-frame bits, shared with the RAF
+  // loop's non-transition path so they can't drift (B4).
+  paintTimerFrame();
 
-  // Progress bar (full during overflow)
-  if (status !== 'idle') {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = `${Timer.getProgress() * 100}%`;
-  } else {
-    progressBar.classList.add('hidden');
-  }
-
-  // Visual states. Finished briefly (legacy timers without overshoot) flashes
-  // red. Overflowing: flash red for the first ~3s (existing 6×0.5s animation
-  // duration), then settle into steady amber via the .overshoot class.
+  // overshoot magnitude for the overflow button suffix below.
   const overshootMs = isOver ? Timer.getOvershootMs() : 0;
-  timerDisplay.classList.toggle('timer-finished', status === 'finished' || (isOver && overshootMs <= 3000));
-  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
 
   // Running indicator
   timerDisplay.classList.toggle('is-running', status === 'running');
@@ -204,12 +219,16 @@ function startTimerRenderLoop() {
     const st = Timer.getStatus();
     if (st === 'running' || st === 'overflowing') {
       Timer.checkFinished();
-      updateTimerUI();
       const after = Timer.getStatus();
+      // B4: full structural update only on a status change (e.g. running →
+      // overflowing/finished); otherwise the cheap per-frame painter.
+      if (after !== st) updateTimerUI();
+      else paintTimerFrame();
       if (after === 'running' || after === 'overflowing') {
         timerRafId = requestAnimationFrame(tick);
       } else {
         timerRafId = null;
+        updateTimerUI(); // settle final structural state (e.g. → finished)
       }
     } else {
       timerRafId = null;
@@ -234,6 +253,7 @@ function initTimerAlarm() {
     SFX.playAlarm();
     Platform.haptic([200, 100, 200, 100, 200]);
     Platform.notify('Timer Complete', { body: 'Your countdown has finished!' });
+    announce('Timer complete'); // D: SR parity with the chime/notification
     saveTimerState();
     updateTimerUI();
   });

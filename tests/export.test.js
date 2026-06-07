@@ -14,6 +14,7 @@ const CRITICAL_KEYS = [
   'wellness_rest_log',
 
   // BFRB — ADHD-adjacent habit data the user's invested in tracking
+  'bfrb_events',   // F3 consolidated stream — source of truth post-migration (A1)
   'bfrbs_global',
   'flow_bfrbs',
   'pomodoro_bfrbs',
@@ -521,6 +522,63 @@ describe('Export + Import round-trip', () => {
 
     // Cleanup
     Object.keys(seeded).forEach(k => localStorage.removeItem(k));
+  });
+});
+
+describe('Export — bfrb_events (F3 consolidated stream, A1)', () => {
+  function makeHistoryStub() {
+    let stored = [];
+    return {
+      getSessions: async () => stored.slice(),
+      addSession: async (s) => { stored.push(s); },
+      clearAll: async () => { stored = []; },
+    };
+  }
+
+  it('includes bfrb_events AND its migration marker in getSettingsKeys()', () => {
+    const keys = Export.getSettingsKeys();
+    assertEqual(keys.includes('bfrb_events'), true,
+      'bfrb_events (post-migration source of truth) must be backed up — every catch logged after the migration lands ONLY here');
+    assertEqual(keys.includes('tempo_bfrb_events_migration_v1'), true,
+      'the migration marker must be backed up so a cross-device restore does not re-migrate the legacy keys and double-count');
+  });
+
+  it('captures bfrb_events in the backup when set', async () => {
+    const events = JSON.stringify([
+      { takenAt: 1700000000000, context: 'global', deviceId: 'd1', updatedAt: 1700000000000, schemaVersion: 1 },
+    ]);
+    localStorage.setItem('bfrb_events', events);
+    window.History = { getSessions: async () => [] };
+    try {
+      const data = await Export.buildBackupData();
+      assertEqual(data.settings.bfrb_events, events);
+    } finally {
+      localStorage.removeItem('bfrb_events');
+    }
+  });
+
+  it('round-trips bfrb_events + marker through export → import (the data-loss regression)', async () => {
+    Export.getSettingsKeys().forEach(k => localStorage.removeItem(k));
+    const events = JSON.stringify([
+      { takenAt: 1700000000000, context: 'flow', phase: 'focus', deviceId: 'd1', updatedAt: 1700000000000, schemaVersion: 1 },
+      { takenAt: 1700000600000, context: 'global', deviceId: 'd1', updatedAt: 1700000600000, schemaVersion: 1 },
+    ]);
+    localStorage.setItem('bfrb_events', events);
+    localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
+    window.History = makeHistoryStub();
+
+    const json = JSON.stringify(await Export.buildBackupData());
+    // Simulate restoring onto a fresh device.
+    localStorage.removeItem('bfrb_events');
+    localStorage.removeItem('tempo_bfrb_events_migration_v1');
+
+    await Export.importAllData(json);
+    assertEqual(localStorage.getItem('bfrb_events'), events,
+      'every consolidated BFRB catch must survive backup → restore');
+    assertEqual(localStorage.getItem('tempo_bfrb_events_migration_v1'), '1',
+      'the marker must restore so the migration stays a no-op on the new device (no double-count)');
+
+    Export.getSettingsKeys().forEach(k => localStorage.removeItem(k));
   });
 });
 

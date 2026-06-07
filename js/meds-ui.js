@@ -20,6 +20,19 @@ const MedsUI = (() => {
   let editingId = null;
   let tickTimer = null;
 
+  // A5: dose logging ("Took it now" / apply offset) has no double-tap guard —
+  // a fast double-tap logs the dose twice, double-counting adherence AND
+  // double-decrementing the derived prescription-supply remaining. Pomodoro
+  // already debounces its primary action; meds (safety-relevant) did not. A
+  // brief per-med lock collapses an accidental double-tap into one dose.
+  const _doseLocks = new Set();
+  function _tryLockDose(id) {
+    if (_doseLocks.has(id)) return false;
+    _doseLocks.add(id);
+    setTimeout(() => _doseLocks.delete(id), 600);
+    return true;
+  }
+
   function init() {
     surfaceEl = document.querySelector('[data-wellness-sub="meds"]');
     if (!surfaceEl) return;
@@ -213,6 +226,7 @@ const MedsUI = (() => {
       const action = btn.dataset.action;
 
       if (action === 'log-now') {
+        if (!_tryLockDose(med.getId())) return; // A5: ignore double-tap
         med.logDose();
         MedsManager.saveAll();
         refreshCardStatus(med);
@@ -237,7 +251,7 @@ const MedsUI = (() => {
         const h  = parseInt(card.querySelector('[data-offset-h]').value, 10) || 0;
         const mm = parseInt(card.querySelector('[data-offset-m]').value, 10) || 0;
         const offsetMs = (h * 3600 + mm * 60) * 1000;
-        if (offsetMs > 0) {
+        if (offsetMs > 0 && _tryLockDose(med.getId())) { // A5: ignore double-tap
           med.logDose(Date.now() - offsetMs);
           MedsManager.saveAll();
           refreshCardStatus(med);
@@ -499,11 +513,7 @@ const MedsUI = (() => {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = String(str ?? '');
-    return el.innerHTML;
-  }
+  // escapeHtml: shared global from js/dom-utils.js (Batch E reuse dedup).
 
   return { init };
 })();

@@ -7,11 +7,16 @@ const InstanceManager = (() => {
   let primaryStopwatchId = Stopwatch.getId();
   let primaryTimerId = Timer.getId();
 
+  // A18: monotonic suffix so two adds within the SAME millisecond can't collide
+  // on Date.now().toString(36). Duplicate instance ids corrupt the id-keyed
+  // saveAll() and every find-by-id lookup. Shared across stopwatch + timer.
+  let _idSeq = 0;
+
   // ── Stopwatch Management ──
 
   function addStopwatch(name) {
     if (stopwatches.length >= MAX_INSTANCES) return null;
-    const id = 'sw-' + Date.now().toString(36);
+    const id = 'sw-' + Date.now().toString(36) + '-' + (_idSeq++).toString(36);
     const instance = createStopwatch(id);
     instance.setName(name || 'Stopwatch ' + (stopwatches.length + 1));
     stopwatches.push(instance);
@@ -44,7 +49,7 @@ const InstanceManager = (() => {
 
   function addTimer(name) {
     if (timers.length >= MAX_INSTANCES) return null;
-    const id = 'tm-' + Date.now().toString(36);
+    const id = 'tm-' + Date.now().toString(36) + '-' + (_idSeq++).toString(36);
     const instance = createTimer(id, { allowOvershoot: true });
     instance.setName(name || 'Timer ' + (timers.length + 1));
     timers.push(instance);

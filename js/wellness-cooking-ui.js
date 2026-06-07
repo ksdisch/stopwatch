@@ -212,11 +212,7 @@ const WellnessCookingUI = (() => {
     return `${secs}s`;
   }
 
-  function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = String(str ?? '');
-    return el.innerHTML;
-  }
+  // escapeHtml: shared global from js/dom-utils.js (Batch E reuse dedup).
 
   return { init, PRESETS };
 })();

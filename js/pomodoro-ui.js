@@ -86,6 +86,7 @@ function initPomodoroUI() {
     Platform.haptic([200, 100, 200, 100, 200]);
     const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
     Platform.notify('Pomodoro', { body: label });
+    announce(label); // D: SR parity with the chime/notification
     savePomodoroState();
     updatePomodoroUI();
 
@@ -145,20 +146,25 @@ function initPomodoroUI() {
   // The helper still writes to pomodoro_bfrbs when Pomodoro work is running,
   // so gatherTaskData() picks up per-session catches below.
 
-  // Stats panel
+  // Stats panel — D: modal-dialog focus management via the shared helper.
+  const statsPanel = document.getElementById('pomo-stats-panel');
+  const closeStats = () => { if (statsPanel) { statsPanel.classList.add('hidden'); closeModal(statsPanel); } };
   document.getElementById('pomodoro-stats-toggle')?.addEventListener('click', () => {
-    const panel = document.getElementById('pomo-stats-panel');
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) renderPomodoroStats();
+    if (!statsPanel) return;
+    if (statsPanel.classList.contains('hidden')) {
+      statsPanel.classList.remove('hidden');
+      renderPomodoroStats();
+      openModal(statsPanel, { label: 'Pomodoro stats', onClose: closeStats });
+    } else {
+      closeStats();
+    }
   });
-  document.getElementById('pomo-stats-close')?.addEventListener('click', () => {
-    document.getElementById('pomo-stats-panel').classList.add('hidden');
-  });
+  document.getElementById('pomo-stats-close')?.addEventListener('click', closeStats);
 
   // Keyboard shortcuts for Pomodoro mode
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'pomodoro') return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     const status = Pomodoro.getStatus();
     switch (e.code) {
       case 'Space':
@@ -220,6 +226,25 @@ function cancelAutoAdvance() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// A8: the completed-session write was duplicated inline in onPomodoroRight's
+// done branch and MISSING from onPomodoroLeft's (Skip) done branch — so
+// skipping the final phase's overflow advanced to 'done' WITHOUT logging the
+// session. Extracted so both Skip and Break/Work write the identical record and
+// can't drift again.
+function logPomodoroDoneSession() {
+  const cfg = Pomodoro.getConfig();
+  const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
+  const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0);
+  History.addSession({
+    type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
+    completedCycles: cfg.totalCycles,
+    totalWorkMs: cfg.totalCycles * cfg.workMs,
+    overshootMs: totalOvershoot,
+    ...gatherTaskData(),
+    ...gatherTimingData(),
+  });
+}
+
 function onPomodoroLeft() {
   if (appMode !== 'pomodoro') return;
   if (pomodoroClickLock) return;
@@ -261,9 +286,14 @@ function onPomodoroLeft() {
     SFX.playReset();
     updatePomodoroUI();
   } else if (status === 'overflowing') {
-    // Skip — advance to next phase (overshoot already captured into phaseLog
-    // by the engine's nextPhase()).
+    // Skip — advance to next phase (overshoot already captured into phaseLog by
+    // the engine's nextPhase()). Unlike Break/Work (right), Skip intentionally
+    // does NOT auto-start the next phase — it advances and waits for the user.
     Pomodoro.nextPhase();
+    // A8: but if Skip advanced the FINAL phase to 'done', still write the
+    // session — previously this path reached 'done' without logging, losing
+    // the record that the Break/Work path writes.
+    if (Pomodoro.getStatus() === 'done') logPomodoroDoneSession();
     savePomodoroState();
     updatePomodoroUI();
   }
@@ -308,17 +338,7 @@ function onPomodoroRight() {
     // session record at end-of-cycle (sum of all phaseLog overshoots).
     Pomodoro.nextPhase();
     if (Pomodoro.getStatus() === 'done') {
-      const cfg = Pomodoro.getConfig();
-      const phaseLog = Pomodoro.getPhaseLog ? Pomodoro.getPhaseLog() : [];
-      const totalOvershoot = phaseLog.reduce((sum, p) => sum + (p.overshootMs || 0), 0);
-      History.addSession({
-        type: 'pomodoro', duration: getPomodoroTotalDuration(), laps: [],
-        completedCycles: cfg.totalCycles,
-        totalWorkMs: cfg.totalCycles * cfg.workMs,
-        overshootMs: totalOvershoot,
-        ...gatherTaskData(),
-        ...gatherTimingData(),
-      });
+      logPomodoroDoneSession();
       savePomodoroState();
       updatePomodoroUI();
       return;
@@ -350,6 +370,54 @@ function onPomodoroRight() {
     renderBreakChecklist();
     renderActualWork();
     updatePomodoroUI();
+  }
+}
+
+// B1: the cheap per-frame painter. Only the time readout, progress fill, and
+// the overshoot flash/steady-amber classes change every RAF frame — everything
+// else (dots, timeline + its localStorage/toLocaleTimeString reads, checklists,
+// buttons, labels) changes only on a phase/status transition. The RAF loop
+// calls this on non-transition frames and the full updatePomodoroUI() only when
+// the status actually changes. updatePomodoroUI() also delegates these bits here
+// so the two can't drift.
+function paintPomodoroFrame() {
+  if (appMode !== 'pomodoro') return;
+  const status = Pomodoro.getStatus();
+  const isOver = status === 'overflowing';
+  const overshootMs = isOver && Pomodoro.getOvershootMs ? Pomodoro.getOvershootMs() : 0;
+  const timeEl = document.getElementById('time');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const timerDisplay = document.getElementById('timer-display');
+  if (!timeEl) return;
+
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    const t = Utils.formatMs(Pomodoro.getRemainingMs());
+    timeEl.innerHTML = (t.hours > 0)
+      ? `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  if (progressBar && progressFill) {
+    if (status !== 'idle' && status !== 'done') {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = `${Pomodoro.getProgress() * 100}%`;
+    } else {
+      progressBar.classList.add('hidden');
+    }
+  }
+
+  if (timerDisplay) {
+    // First ~3s of overshoot reuse the flash-red animation, then settle to
+    // steady amber — both thresholds are crossed mid-overflow (same status), so
+    // they belong in the per-frame painter.
+    timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+    timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   }
 }
 
@@ -397,37 +465,12 @@ function updatePomodoroUI() {
   renderPomodoroTimeline();
   updateDistractionBtnVisibility();
 
-  // Format remaining time. During overflow, show "+M:SS.cc" instead of zero.
-  if (isOver) {
-    const t = Utils.formatMs(overshootMs);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  } else {
-    const t = Utils.formatMs(remaining);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  }
+  // Time readout + progress fill + overshoot flash — the per-frame bits, shared
+  // with the RAF loop's non-transition path so they can't drift (B1).
+  paintPomodoroFrame();
 
-  // Progress bar
-  if (status !== 'idle' && status !== 'done') {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = `${Pomodoro.getProgress() * 100}%`;
-  } else {
-    progressBar.classList.add('hidden');
-  }
-
-  // Break color + zero-cross flash + steady amber overshoot
+  // Break color (phase/status-derived → only changes on a transition).
   timerDisplay.classList.toggle('pomodoro-break', phase !== 'work' && status === 'running');
-  // Reuse the existing flash-red animation (6 × 0.5s = 3s) for the first
-  // ~3s of overshoot, then settle into the steady amber via .overshoot.
-  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
-  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
   timerDisplay.classList.remove('timer-finished');
 
   // Running indicator
@@ -533,12 +576,17 @@ function startPomodoroRenderLoop() {
     const st = Pomodoro.getStatus();
     if (st === 'running' || st === 'overflowing') {
       Pomodoro.checkFinished();
-      updatePomodoroUI();
       const after = Pomodoro.getStatus();
+      // B1: a full structural update (dots, timeline, checklists, buttons, the
+      // toLocaleTimeString/localStorage reads) only when the status actually
+      // changed (e.g. running → overflowing). Otherwise just the cheap painter.
+      if (after !== st) updatePomodoroUI();
+      else paintPomodoroFrame();
       if (after === 'running' || after === 'overflowing') {
         pomodoroRafId = requestAnimationFrame(tick);
       } else {
         pomodoroRafId = null;
+        updatePomodoroUI(); // settle the final structural state
       }
     } else {
       pomodoroRafId = null;
@@ -1471,6 +1519,10 @@ function initActionsDrawer() {
   });
 
   document.getElementById('pomo-clear-all-tasks').addEventListener('click', () => {
+    // C2: this wipes the user's focus goals + break tasks + actual-work lists
+    // for the session with no undo — confirm before discarding. (Stopwatch
+    // reset/lap-delete get an undo toast; this destructive action had nothing.)
+    if (!confirm('Clear all goals, break tasks, and what-you-worked-on for this session?')) return;
     clearChecklist();
     renderChecklist();
     renderBreakChecklist();

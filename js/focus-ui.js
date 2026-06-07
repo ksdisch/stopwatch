@@ -4,21 +4,30 @@ const FocusUI = (() => {
   let rafId = null;
   let overlay = null;
   let lastTap = 0;
+  let prevFocus = null; // D: restore focus to the opener when the overlay exits
 
   function enter() {
     if (active) return;
     active = true;
 
+    prevFocus = document.activeElement; // D: restore on exit
     overlay = document.createElement('div');
     overlay.id = 'focus-overlay';
     overlay.className = 'focus-overlay';
+    // D: full-screen modal surface for AT. The time ticks every frame, so it's
+    // aria-hidden (a per-frame live region would spam SR); state changes go
+    // through the polite #focus-status + announce() in togglePrimary/doLap.
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Focus display');
+    overlay.tabIndex = -1;
     overlay.innerHTML = `
-      <div class="focus-time" id="focus-time"></div>
-      <div class="focus-status" id="focus-status"></div>
-      <div class="focus-hint">Tap: pause/resume &middot; Double-tap: lap &middot; Swipe down: exit</div>
+      <div class="focus-time" id="focus-time" aria-hidden="true"></div>
+      <div class="focus-status" id="focus-status" aria-live="polite"></div>
+      <div class="focus-hint">Tap or Space: pause/resume &middot; Double-tap or L: lap &middot; Esc / swipe down: exit</div>
     `;
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('focus-visible'));
+    requestAnimationFrame(() => { overlay.classList.add('focus-visible'); overlay.focus(); });
 
     // Gestures
     let touchStartY = 0;
@@ -41,8 +50,8 @@ const FocusUI = (() => {
       handleTap();
     });
 
-    // Escape key
-    document.addEventListener('keydown', onEscape);
+    // Keyboard: Escape exits; Space/Enter pause-resume; L lap (parity with tap).
+    document.addEventListener('keydown', onKeydown);
 
     // Fullscreen
     try {
@@ -67,8 +76,10 @@ const FocusUI = (() => {
       overlay.remove();
       overlay = null;
     }
+    if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); // D: restore focus
+    prevFocus = null;
 
-    document.removeEventListener('keydown', onEscape);
+    document.removeEventListener('keydown', onKeydown);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
 
@@ -80,54 +91,50 @@ const FocusUI = (() => {
 
   function isActive() { return active; }
 
+  // D: lap (double-tap / "L") and pause-resume (single-tap / Space) extracted so
+  // the keyboard handler can invoke the identical actions.
+  function doLap() {
+    if (appMode === 'stopwatch' && Stopwatch.getStatus() === 'running') {
+      Stopwatch.lap();
+      Persistence.save();
+      SFX.playLap();
+      announce('Lap recorded');
+    }
+  }
+
+  function togglePrimary() {
+    if (appMode === 'stopwatch') {
+      if (Stopwatch.getStatus() === 'running') { Stopwatch.pause(); SFX.playStop(); announce('Paused'); }
+      else { Stopwatch.start(); SFX.playStart(); announce('Started'); }
+      Persistence.save();
+    } else if (appMode === 'timer') {
+      if (Timer.getStatus() === 'running') { Timer.pause(); SFX.playStop(); announce('Paused'); }
+      else if (Timer.getStatus() === 'paused' || Timer.getStatus() === 'idle') { Timer.start(); SFX.playStart(); announce('Started'); }
+    } else if (appMode === 'pomodoro') {
+      if (Pomodoro.getStatus() === 'running') { Pomodoro.pause(); SFX.playStop(); announce('Paused'); }
+      else if (Pomodoro.getStatus() === 'idle' || Pomodoro.getStatus() === 'paused') { Pomodoro.start(); SFX.playStart(); announce('Started'); }
+    }
+    updateFocus();
+  }
+
   function handleTap() {
     const now = Date.now();
     if (now - lastTap < 300) {
-      // Double tap → lap (stopwatch only)
-      lastTap = 0;
-      if (appMode === 'stopwatch' && Stopwatch.getStatus() === 'running') {
-        Stopwatch.lap();
-        Persistence.save();
-        SFX.playLap();
-      }
+      lastTap = 0;        // double tap → lap
+      doLap();
       return;
     }
     lastTap = now;
     setTimeout(() => {
       if (lastTap === 0) return; // was double tap
-      // Single tap → pause/resume
-      if (appMode === 'stopwatch') {
-        if (Stopwatch.getStatus() === 'running') {
-          Stopwatch.pause();
-          SFX.playStop();
-        } else {
-          Stopwatch.start();
-          SFX.playStart();
-        }
-        Persistence.save();
-      } else if (appMode === 'timer') {
-        if (Timer.getStatus() === 'running') {
-          Timer.pause();
-          SFX.playStop();
-        } else if (Timer.getStatus() === 'paused' || Timer.getStatus() === 'idle') {
-          Timer.start();
-          SFX.playStart();
-        }
-      } else if (appMode === 'pomodoro') {
-        if (Pomodoro.getStatus() === 'running') {
-          Pomodoro.pause();
-          SFX.playStop();
-        } else if (Pomodoro.getStatus() === 'idle' || Pomodoro.getStatus() === 'paused') {
-          Pomodoro.start();
-          SFX.playStart();
-        }
-      }
-      updateFocus();
+      togglePrimary();           // single tap → pause/resume
     }, 300);
   }
 
-  function onEscape(e) {
-    if (e.key === 'Escape') exit();
+  function onKeydown(e) {
+    if (e.key === 'Escape') { exit(); return; }
+    if (e.key === ' ' || e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); togglePrimary(); return; }
+    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); doLap(); }
   }
 
   function onFullscreenChange() {

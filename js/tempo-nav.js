@@ -278,24 +278,29 @@ const TempoNav = (() => {
       toggle.setAttribute('aria-expanded',
         drawer.classList.contains('hidden') ? 'false' : 'true');
     };
+    // D: focus management via the shared helper — move focus into the drawer on
+    // open, trap Tab, Escape to close, restore focus to the toggle on close
+    // (closeModal restores to the element that was focused when openModal ran,
+    // i.e. the toggle). Replaces the old document-level Escape handler.
+    const closeDrawer = () => {
+      if (drawer.classList.contains('hidden')) return;
+      drawer.classList.add('hidden');
+      syncExpanded();
+      closeModal(drawer);
+    };
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
-      drawer.classList.toggle('hidden');
-      syncExpanded();
+      if (drawer.classList.contains('hidden')) {
+        drawer.classList.remove('hidden');
+        syncExpanded();
+        openModal(drawer, { label: 'Settings', onClose: closeDrawer });
+      } else {
+        closeDrawer();
+      }
     });
     document.addEventListener('click', (e) => {
       if (drawer.classList.contains('hidden')) return;
-      if (!drawer.contains(e.target) && !toggle.contains(e.target)) {
-        drawer.classList.add('hidden');
-        syncExpanded();
-      }
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !drawer.classList.contains('hidden')) {
-        drawer.classList.add('hidden');
-        syncExpanded();
-        toggle.focus();
-      }
+      if (!drawer.contains(e.target) && !toggle.contains(e.target)) closeDrawer();
     });
     // Items inside the drawer keep their legacy IDs (theme-toggle, sound-
     // toggle, presets-toggle, log-session-toggle, focus-toggle) so their
@@ -309,9 +314,13 @@ const TempoNav = (() => {
     // action so it auto-closes as usual.
     drawer.querySelectorAll('button:not([data-keep-drawer-open])').forEach(btn => {
       btn.addEventListener('click', () => {
+        // D: tear down the drawer's trap on auto-close, but do NOT restore focus
+        // — several of these items (Presets/Log/Focus) open their OWN modal
+        // which has already moved focus in; restoring here would steal it back.
         setTimeout(() => {
           drawer.classList.add('hidden');
           syncExpanded();
+          closeModal(drawer, { restoreFocus: false });
         }, 0);
       });
     });
@@ -516,8 +525,14 @@ const TempoNav = (() => {
         statusEl.removeAttribute('data-progress');
         return;
       }
-      statusEl.textContent = msg;
+      // D: unhide BEFORE setting text so the change happens while the live
+      // region is in the a11y tree (a text change made while [hidden] is not
+      // announced), and mirror it through the always-present #sr-announce so the
+      // sign-in/sync feedback is reliably spoken regardless of this row's hidden
+      // toggling.
       statusEl.hidden = false;
+      statusEl.textContent = msg;
+      if (typeof announce === 'function') announce(msg);
       if (isError) statusEl.setAttribute('data-error', '');
       else statusEl.removeAttribute('data-error');
     }

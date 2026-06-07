@@ -310,10 +310,10 @@ const GlobalBFRB = (() => {
     el.hidden = true;
 
     const urgeRow = URGE_CHIPS.map(c =>
-      '<button type="button" class="bfrb-chip" data-urge="' + c.level + '">'
+      '<button type="button" class="bfrb-chip" data-urge="' + c.level + '" aria-pressed="false">'
       + escapeHtml(c.label) + '</button>').join('');
     const trigRow = TRIGGER_CHIPS.map(z =>
-      '<button type="button" class="bfrb-chip" data-zone="' + escapeHtml(z) + '">'
+      '<button type="button" class="bfrb-chip" data-zone="' + escapeHtml(z) + '" aria-pressed="false">'
       + escapeHtml(z.charAt(0).toUpperCase() + z.slice(1)) + '</button>').join('');
 
     el.innerHTML =
@@ -360,18 +360,34 @@ const GlobalBFRB = (() => {
         ? (pending && pending.urgeLevel === parseInt(chip.getAttribute('data-urge'), 10))
         : (pending && pending.triggerZone === chip.getAttribute('data-zone'));
       chip.classList.toggle('is-selected', !!on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false'); // D: toggle-button state for AT
     });
   }
 
   function showPicker() {
     const el = _buildPopover();
     if (!el) return;
-    el.querySelectorAll('.bfrb-chip.is-selected').forEach(c => c.classList.remove('is-selected'));
+    el.querySelectorAll('.bfrb-chip').forEach(c => { c.classList.remove('is-selected'); c.setAttribute('aria-pressed', 'false'); });
     el.hidden = false;
+    // D: move focus into the popover so keyboard/SR users can tag the catch.
+    // This is a NON-blocking, auto-committing popover (timer + click-outside),
+    // so we deliberately do NOT trap focus — just move it in, and restore it to
+    // the FAB on hide (below).
+    const firstChip = el.querySelector('.bfrb-chip');
+    if (firstChip && firstChip.focus) firstChip.focus();
   }
 
   function hidePicker() {
-    if (_popoverEl) _popoverEl.hidden = true;
+    if (!_popoverEl) return;
+    // D: restore focus to the FAB, but only if it currently sits inside the
+    // popover (hidePicker is also reached from non-focus paths like the auto-
+    // commit timer — we shouldn't yank focus then).
+    const focusWasInside = _popoverEl.contains(document.activeElement);
+    _popoverEl.hidden = true;
+    if (focusWasInside) {
+      const fab = document.getElementById(BTN_ID);
+      if (fab && fab.focus) fab.focus();
+    }
   }
 
   // ms until the next local midnight. The +50ms buffer keeps us safely past

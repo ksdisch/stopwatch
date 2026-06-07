@@ -21,6 +21,49 @@
   --accent-tint: color-mix(in srgb, var(--green) 12%, transparent);
   --accent-glow: color-mix(in srgb, var(--green) 22%, transparent);
   --accent-red-tint: color-mix(in srgb, var(--red) 12%, transparent);
+
+  /* ── Design-system token foundation (Batch E-system) ───────────────────
+     Scales below are color-scheme-independent → defined once here. Color
+     tokens that differ by light/dark are mirrored in the prefers-color-scheme
+     block; tokens that ALIAS an existing per-theme token (amber excepted) need
+     no light variant because the referenced token already adapts. */
+  /* Type scale */
+  --fs-xs: 0.68rem;  --fs-sm: 0.8rem;  --fs-base: 0.9rem;  --fs-md: 1rem;
+  --fs-lg: 1.25rem;  --fs-xl: 1.5rem;  --fs-display: clamp(3.2rem, 14vw, 5.5rem);
+  /* Spacing scale (4px base) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;  --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  /* Radius scale */
+  --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-pill: 999px;
+  /* Motion */
+  --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Z-index scale (named layers — see the z-index audit) */
+  --z-base: 1; --z-dropdown: 10; --z-sticky: 20; --z-fab: 50;
+  --z-overlay: 100; --z-modal: 200; --z-toast: 300; --z-max: 9999;
+  /* Elevation */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.22);
+  --shadow-3: 0 10px 28px rgba(0, 0, 0, 0.30);
+  /* Amber — warning / partial-dose / BFRB / cap-notice. Themed (replaces the
+     32 hardcoded #ff9f0a literals, which never picked up light mode). */
+  --amber: #ff9f0a;
+  --amber-tint: color-mix(in srgb, var(--amber) 14%, transparent);
+  /* Phantom-token aliases (E1): the Rhythm pillar referenced these but they
+     were defined NOWHERE — every reference silently used a hardcoded fallback
+     and never re-themed. Aliasing to the existing per-theme tokens fixes Rhythm
+     theming across all 6 themes + light with no edits to the Rhythm rules.
+     (Alias targets match the old fallbacks: btn-bg≈#2c2c2e, text≈#f5f5f7,
+     red=#ff453a, text-secondary≈the muted fallback.) */
+  --surface: var(--btn-bg);
+  --text-primary: var(--text);
+  --text-muted: var(--text-secondary);
+  --accent: var(--red);
+  /* Categorical chart palette (Bold Data-Dense) — applied to Insights in
+     E-polish. References themed tokens where sensible; literals get a light
+     variant below. */
+  --chart-1: #0a84ff; --chart-2: var(--green); --chart-3: var(--amber);
+  --chart-4: var(--red); --chart-5: var(--text-secondary); --chart-6: #bf5af2;
 }
 
 @media (prefers-color-scheme: light) {
@@ -38,6 +81,11 @@
     --separator: #c7c7cc;
     --lap-best: #34c759;
     --lap-worst: #ff3b30;
+    /* Light variants of the color tokens (Batch E-system). Scales + aliases
+       carry over from :root unchanged. */
+    --amber: #ff9500;
+    --chart-1: #007aff;
+    --chart-6: #af52de;
   }
 }
 
@@ -84,6 +132,32 @@ input:focus:not(:focus-visible) {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* D: the <main> content landmark must NOT generate a box — the pillars stay
+   flex children of #app (their wrappers are display:contents too). The <main>
+   role is preserved by modern browsers under display:contents. */
+.tempo-main { display: contents; }
+
+/* D: skip link — visually hidden until it receives focus, then it parks at the
+   top-left so a keyboard user can jump straight into the content. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: var(--z-max, 9999);
+  padding: 8px 14px;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-md, 10px);
+  text-decoration: none;
+  transition: top var(--dur-fast, 120ms) var(--ease-standard, ease);
+}
+.skip-link:focus {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 /* Top Bar */
@@ -931,7 +1005,7 @@ input:focus:not(:focus-visible) {
 }
 
 .status-paused {
-  background: #ff9f0a;
+  background: var(--amber);
 }
 
 .status-finished {
@@ -2512,9 +2586,9 @@ input:focus:not(:focus-visible) {
 
 .bfrb-btn {
   background: none;
-  border: 1px solid #ff9f0a;
+  border: 1px solid var(--amber);
   border-radius: 8px;
-  color: #ff9f0a;
+  color: var(--amber);
   font-size: 0.75rem;
   padding: 4px 12px;
   font-variant-numeric: tabular-nums;
@@ -2528,7 +2602,7 @@ input:focus:not(:focus-visible) {
 
 .bfrb-btn.bfrb-pulse {
   transform: scale(1.12);
-  background: color-mix(in srgb, #ff9f0a 16%, transparent);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
 }
 
 /* Recovery countdown: button fills with an amber bar that drains from 100%
@@ -2546,7 +2620,7 @@ input:focus:not(:focus-visible) {
   content: '';
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, #ff9f0a 22%, transparent);
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
   transform-origin: left;
   transform: scaleX(var(--bfrb-recovery-progress, 1));
   transition: transform 0.25s linear;
@@ -2556,7 +2630,7 @@ input:focus:not(:focus-visible) {
 
 .bfrb-btn.bfrb-recovery-active {
   /* Push text above the fill */
-  color: #ff9f0a;
+  color: var(--amber);
 }
 
 .bfrb-btn.bfrb-recovery-active > * {
@@ -2580,8 +2654,8 @@ input:focus:not(:focus-visible) {
   font-size: 0.78rem;
   font-weight: 600;
   background: var(--bg);
-  border: 2px solid #ff9f0a;
-  color: #ff9f0a;
+  border: 2px solid var(--amber);
+  color: var(--amber);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   user-select: none;
@@ -2590,7 +2664,7 @@ input:focus:not(:focus-visible) {
 
 .global-bfrb-fab:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(255, 159, 10, 0.35);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--amber) 35%, transparent);
 }
 
 .global-bfrb-fab:active {
@@ -2599,7 +2673,7 @@ input:focus:not(:focus-visible) {
 }
 
 .global-bfrb-fab:focus-visible {
-  outline: 3px solid color-mix(in srgb, #ff9f0a 60%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--amber) 60%, transparent);
   outline-offset: 2px;
 }
 
@@ -2659,7 +2733,7 @@ body.focus-mode .global-bfrb-fab {
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--bg);
-  border: 1px solid #ff9f0a;
+  border: 1px solid var(--amber);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -2676,7 +2750,7 @@ body.focus-mode .global-bfrb-fab {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #ff9f0a;
+  color: var(--amber);
 }
 
 .bfrb-recovery-plan-text {
@@ -2763,11 +2837,11 @@ body.focus-mode .bfrb-recovery-plan {
   transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }
 
-.bfrb-chip:hover { border-color: #ff9f0a; }
+.bfrb-chip:hover { border-color: var(--amber); }
 
 .bfrb-chip.is-selected {
-  background: #ff9f0a;
-  border-color: #ff9f0a;
+  background: var(--amber);
+  border-color: var(--amber);
   color: #1a1a1a;
   font-weight: 600;
 }
@@ -2782,7 +2856,7 @@ body.focus-mode .bfrb-recovery-plan {
   appearance: none;
   border: none;
   background: transparent;
-  color: #ff9f0a;
+  color: var(--amber);
   font-size: 0.8rem;
   font-weight: 600;
   padding: 4px 6px;
@@ -2810,7 +2884,7 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .tempo-settings-slider input[type="range"] {
   width: 100%;
-  accent-color: #ff9f0a;
+  accent-color: var(--amber);
 }
 
 /* ── Cloud Sync (B-2) — settings drawer section ── */
@@ -2863,9 +2937,9 @@ body.focus-mode .bfrb-capture { display: none; }
 }
 
 .bfrb-support-plan-input:focus-visible {
-  outline: 2px solid color-mix(in srgb, #ff9f0a 60%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--amber) 60%, transparent);
   outline-offset: 1px;
-  border-color: #ff9f0a;
+  border-color: var(--amber);
 }
 
 .tempo-cloud-sync-heading {
@@ -4073,7 +4147,7 @@ body.focus-mode .bfrb-capture { display: none; }
 }
 
 .cooking-paused {
-  border-color: #ff9f0a;
+  border-color: var(--amber);
 }
 
 .cooking-timer-header {
@@ -4664,8 +4738,8 @@ body.focus-mode .bfrb-capture { display: none; }
 }
 
 .analytics-bfrb-window-active {
-  background: color-mix(in srgb, #ff9f0a 18%, transparent);
-  color: #ff9f0a;
+  background: color-mix(in srgb, var(--amber) 18%, transparent);
+  color: var(--amber);
   opacity: 1;
 }
 
@@ -4685,7 +4759,7 @@ body.focus-mode .bfrb-capture { display: none; }
 .analytics-bfrb-primary-value {
   font-size: 2rem;
   font-weight: 600;
-  color: #ff9f0a;
+  color: var(--amber);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -4908,7 +4982,7 @@ body.focus-mode .bfrb-capture { display: none; }
 }
 
 .adherence-pct-high { color: var(--green); }
-.adherence-pct-mid { color: #ff9f0a; }
+.adherence-pct-mid { color: var(--amber); }
 .adherence-pct-low { color: #ff6b6b; }
 
 .adherence-dots {
@@ -5824,7 +5898,7 @@ body.focus-mode .bfrb-capture { display: none; }
    dot) + trigger leaderboard (reuses .analytics-distraction-*) + urge mix. */
 .bfrb-streak { margin-bottom: 6px; }
 
-.bfrb-streak-dot-catch { background: #ff9f0a; }
+.bfrb-streak-dot-catch { background: var(--amber); }
 
 .bfrb-triggers-subtitle {
   font-size: 0.66rem;
@@ -5834,7 +5908,7 @@ body.focus-mode .bfrb-capture { display: none; }
   margin: 10px 0 6px;
 }
 
-.bfrb-trigger-bar-fill { height: 100%; background: #ff9f0a; }
+.bfrb-trigger-bar-fill { height: 100%; background: var(--amber); }
 
 .bfrb-trigger-bar-untagged {
   background: var(--text-secondary, #8a8a8e);
@@ -5853,7 +5927,7 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .bfrb-urge-seg { height: 100%; }
 .bfrb-urge-seg-1 { background: var(--green); }
-.bfrb-urge-seg-2 { background: #ff9f0a; }
+.bfrb-urge-seg-2 { background: var(--amber); }
 .bfrb-urge-seg-3 { background: var(--red); }
 
 .bfrb-urge-legend {
@@ -5868,7 +5942,7 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .bfrb-urge-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .bfrb-urge-dot-1 { background: var(--green); }
-.bfrb-urge-dot-2 { background: #ff9f0a; }
+.bfrb-urge-dot-2 { background: var(--amber); }
 .bfrb-urge-dot-3 { background: var(--red); }
 
 /* Segmented toggles + selectors (aside controls / med picker) */
@@ -6087,4 +6161,45 @@ rect.rhythm-day-hi {
 }
 .rhythm-tooltip[hidden] {
   display: none;
+}
+
+/* ── Accessibility: global reduced-motion reset (Batch D) ──────────────────
+   The codebase only had a handful of targeted reduced-motion blocks, leaving
+   the flash-red countdown, BFRB pulse, mode-fade, breathing glow, and analog
+   hand transitions uncovered. This honors the OS setting app-wide by collapsing
+   all animation/transition durations. (Inline JS-set transitions — e.g. the
+   Mindful breathing circle — can't be reached by CSS and are gated in JS via
+   matchMedia in mindful-ui.js.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Accessibility: ≥44px touch targets for icon/chip-delete controls (D) ──
+   The tag/checklist/alert/phase/card/preset delete glyphs and icon buttons had
+   ~16-24px effective hit areas — below the 44px iOS/WCAG minimum on a phone-
+   first PWA. Keep the small visual glyph; expand the HIT area via a centered
+   flex box + min size. Applied to the existing per-component selectors so no
+   markup changes are needed. */
+.tag-chip-delete,
+.pomo-checklist-item-delete,
+.alert-chip-delete,
+.interval-phase-del,
+.card-delete,
+.card-compare,
+.preset-delete,
+.cooking-timer-delete,
+.icon-btn,
+.tempo-iconbtn,
+[data-seq-del],
+[data-log-del] {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

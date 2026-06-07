@@ -11,14 +11,18 @@ const PresetsUI = (() => {
     quickRow = document.getElementById('presets-quick');
     drawer = document.getElementById('presets-drawer');
 
-    // Drawer toggle
+    // Drawer toggle — D: modal-dialog focus management via the shared helper.
+    const closeDrawer = () => { drawer.classList.add('hidden'); closeModal(drawer); };
     document.getElementById('presets-toggle')?.addEventListener('click', () => {
-      drawer.classList.toggle('hidden');
-      if (!drawer.classList.contains('hidden')) renderGrid();
+      if (drawer.classList.contains('hidden')) {
+        drawer.classList.remove('hidden');
+        renderGrid();
+        openModal(drawer, { label: 'Quick presets', onClose: closeDrawer });
+      } else {
+        closeDrawer();
+      }
     });
-    document.getElementById('presets-drawer-close')?.addEventListener('click', () => {
-      drawer.classList.add('hidden');
-    });
+    document.getElementById('presets-drawer-close')?.addEventListener('click', closeDrawer);
 
     renderQuickPicks();
 

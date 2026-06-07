@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v113-bfrb-risk-support';
+const CACHE_NAME = 'stopwatch-v118-overhaul-c-ux';
 const ASSETS = [
   './',
   './index.html',

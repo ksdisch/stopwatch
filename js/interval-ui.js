@@ -16,6 +16,7 @@ function initIntervalUI() {
       SFX.playAlarm();
       Platform.haptic([200, 100, 200, 100, 200]);
       Platform.notify('Interval Complete', { body: 'Workout finished!' });
+      announce('Workout complete'); // D: SR parity
     } else {
       SFX.playPhaseChange();
       Platform.haptic([100, 50, 100]);
@@ -25,6 +26,10 @@ function initIntervalUI() {
     if (type === 'phase' || type === 'rest' || type === 'roundEnd') {
       Interval.advancePhase();
       Interval.start();
+      // D: announce the phase the user just advanced into (SR parity with the
+      // phase-change chime, which is otherwise silent).
+      const ph = Interval.getCurrentPhase();
+      if (ph) announce(`${ph.name}, round ${Interval.getRoundIndex() + 1} of ${Interval.getTotalRounds()}`);
       BgNotify.schedule('interval', Interval.getRemainingMs(), 'Interval', 'Phase complete!');
       saveIntervalState();
       startIntervalRenderLoop();
@@ -39,7 +44,7 @@ function initIntervalUI() {
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'interval') return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     const status = Interval.getStatus();
     switch (e.code) {
       case 'Space':
@@ -266,6 +271,67 @@ function onIntervalRight() {
   }
 }
 
+// B4: cheap per-frame painter. Includes the phase label/next/round because the
+// interval AUTO-ADVANCES phases within the 'running' status (so a status-only
+// transition check would miss them) — but those are cheap textContent writes.
+// The expensive per-frame waste was the button innerHTML rebuilds + setup/run
+// visibility, which change only on a real status transition and stay in the
+// full updateIntervalUI(). updateIntervalUI() delegates these bits here.
+function paintIntervalFrame() {
+  if (appMode !== 'interval') return;
+  const status = Interval.getStatus();
+  const isOver = status === 'overflowing';
+  const overshootMs = isOver && Interval.getOvershootMs ? Interval.getOvershootMs() : 0;
+  const isActive = status !== 'idle';
+  const timeEl = document.getElementById('time');
+  const progressBar = document.getElementById('timer-progress');
+  const progressFill = document.getElementById('timer-progress-fill');
+  const timerDisplay = document.getElementById('timer-display');
+  const runArea = document.getElementById('interval-run-info');
+  if (!timeEl) return;
+
+  if (isActive && runArea) {
+    const phase = Interval.getCurrentPhase();
+    const next = Interval.getNextPhase();
+    const phaseLabel = document.getElementById('interval-current-phase');
+    const nextLabel = document.getElementById('interval-next-phase');
+    const roundLabel = document.getElementById('interval-round-label');
+    if (phaseLabel && phase) { phaseLabel.textContent = phase.name; phaseLabel.style.color = phase.color || 'var(--green)'; }
+    if (nextLabel) nextLabel.textContent = next ? `Next: ${next.name}` : 'Last phase';
+    if (roundLabel) roundLabel.textContent = `Round ${Interval.getRoundIndex() + 1}/${Interval.getTotalRounds()}`;
+  }
+
+  if (isOver) {
+    const t = Utils.formatMs(overshootMs);
+    timeEl.innerHTML = (t.hours > 0)
+      ? `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  } else {
+    const t = Utils.formatMs(Interval.getRemainingMs());
+    timeEl.innerHTML = (t.hours > 0)
+      ? `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`
+      : `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
+  }
+
+  if (progressBar && progressFill) {
+    if (isActive && !isOver) {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = `${Interval.getProgress() * 100}%`;
+    } else if (isOver) {
+      progressBar.classList.remove('hidden');
+      progressFill.style.width = '100%';
+    } else {
+      progressBar.classList.add('hidden');
+    }
+  }
+
+  if (timerDisplay) {
+    timerDisplay.classList.toggle('timer-finished', isOver && overshootMs <= 3000);
+    timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
+    timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
+  }
+}
+
 function updateIntervalUI() {
   if (appMode !== 'interval') return;
 
@@ -283,67 +349,19 @@ function updateIntervalUI() {
   const setupArea = document.getElementById('interval-setup');
   const runArea = document.getElementById('interval-run-info');
 
-  // Show/hide setup vs running info
+  // Setup vs running-info visibility (idle ↔ active transition).
   const isActive = status !== 'idle';
   if (setupArea) setupArea.classList.toggle('hidden', isActive);
   if (runArea) runArea.classList.toggle('hidden', !isActive);
 
-  // Current phase info
-  if (isActive && runArea) {
-    const phase = Interval.getCurrentPhase();
-    const next = Interval.getNextPhase();
-    const phaseLabel = document.getElementById('interval-current-phase');
-    const nextLabel = document.getElementById('interval-next-phase');
-    const roundLabel = document.getElementById('interval-round-label');
+  // Phase info + time + progress + overshoot flash — the per-frame bits, shared
+  // with the RAF loop's non-transition path (B4).
+  paintIntervalFrame();
 
-    if (phaseLabel && phase) {
-      phaseLabel.textContent = phase.name;
-      phaseLabel.style.color = phase.color || 'var(--green)';
-    }
-    if (nextLabel) {
-      nextLabel.textContent = next ? `Next: ${next.name}` : 'Last phase';
-    }
-    if (roundLabel) {
-      roundLabel.textContent = `Round ${Interval.getRoundIndex() + 1}/${Interval.getTotalRounds()}`;
-    }
-  }
-
-  // Time display: standard during running phases, "+M:SS.cc" during overflow.
-  if (isOver) {
-    const t = Utils.formatMs(overshootMs);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `+${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `+${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  } else {
-    const t = Utils.formatMs(remaining);
-    if (t.hours > 0) {
-      timeEl.innerHTML = `${t.hours}:${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    } else {
-      timeEl.innerHTML = `${t.minStr}:${t.secStr}<span class="centiseconds">.${t.csStr}</span>`;
-    }
-  }
-
-  // Progress bar (full when overflowing)
-  if (isActive && !isOver) {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = `${Interval.getProgress() * 100}%`;
-  } else if (isOver) {
-    progressBar.classList.remove('hidden');
-    progressFill.style.width = '100%';
-  } else {
-    progressBar.classList.add('hidden');
-  }
-
-  // Running indicator
+  // Running indicator (status-derived; only changes on a transition).
   timerDisplay.classList.toggle('is-running', status === 'running');
   appEl.classList.toggle('is-running', status === 'running');
   timerDisplay.classList.remove('pomodoro-break');
-  // Overflow visual: brief flash via timer-finished, then steady amber.
-  timerDisplay.classList.toggle('timer-finished', isOver && overshootMs <= 3000);
-  timerDisplay.classList.toggle('overshoot', isOver && overshootMs > 1000);
-  timerDisplay.classList.toggle('pomodoro-phase-complete', isOver && overshootMs <= 3000);
 
   // Buttons
   switch (status) {
@@ -389,12 +407,16 @@ function startIntervalRenderLoop() {
     const st = Interval.getStatus();
     if (st === 'running' || st === 'overflowing') {
       Interval.checkFinished();
-      updateIntervalUI();
       const after = Interval.getStatus();
+      // B4: full structural update only on a status change; otherwise the cheap
+      // painter (which still repaints phase info as the interval auto-advances).
+      if (after !== st) updateIntervalUI();
+      else paintIntervalFrame();
       if (after === 'running' || after === 'overflowing') {
         intervalRafId = requestAnimationFrame(tick);
       } else {
         intervalRafId = null;
+        updateIntervalUI(); // settle final structural state
       }
     } else {
       intervalRafId = null;
