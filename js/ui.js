@@ -198,7 +198,7 @@ const UI = (() => {
       const currentLapMs = Stopwatch.getCurrentLapMs();
       const currentElapsed = Stopwatch.getElapsedMs();
       const displayMs = showCumulative ? currentElapsed : currentLapMs;
-      html += `<div class="lap-row" id="current-lap">
+      html += `<div class="lap-row" id="current-lap" role="listitem" aria-label="Current lap">
         <div class="lap-row-inner">
           <span class="lap-label">Lap ${laps.length + 1}</span>
           <span class="lap-time" id="current-lap-time">${formatTime(displayMs)}</span>
@@ -215,7 +215,7 @@ const UI = (() => {
 
       const displayMs = showCumulative ? lap.totalMs : lap.lapMs;
       const animCls = scrollToTop && i === laps.length - 1 ? ' lap-entering' : '';
-      html += `<div class="lap-row lap-swipeable ${cls}${animCls}" data-lap-index="${i}">
+      html += `<div class="lap-row lap-swipeable ${cls}${animCls}" data-lap-index="${i}" role="listitem" tabindex="0" aria-label="Lap ${i + 1}, ${formatTime(displayMs)}" aria-keyshortcuts="Delete">
         <div class="lap-row-delete-bg">Delete</div>
         <div class="lap-row-inner">
           <span class="lap-label">Lap ${i + 1}</span>
@@ -317,6 +317,21 @@ const UI = (() => {
           inner.style.transform = `translateX(${currentX}px)`;
         }
       }, { passive: false });
+
+      // D: keyboard/SR-operable delete — rows are focusable (tabindex=0); Delete
+      // or Backspace runs the SAME delete path as the swipe. Swipe stays a
+      // touch-only progressive enhancement.
+      row.addEventListener('keydown', (e) => {
+        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+        e.preventDefault();
+        const index = parseInt(row.dataset.lapIndex, 10);
+        const stateBeforeDelete = Stopwatch.getState();
+        Stopwatch.deleteLap(index);
+        Persistence.save();
+        renderLaps();
+        announce('Lap ' + (index + 1) + ' deleted');
+        showDeleteUndoToast(stateBeforeDelete);
+      });
 
       row.addEventListener('touchend', () => {
         if (!isSwiping) return;
