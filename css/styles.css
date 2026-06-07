@@ -4435,12 +4435,14 @@ body.focus-mode .bfrb-capture { display: none; }
 .analytics-card {
   background: var(--btn-bg);
   border: 1px solid var(--btn-border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg, 14px);
   padding: 16px 20px;
   margin-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* E-polish: crisp aligned figures across every data card. */
+  font-variant-numeric: tabular-nums;
 }
 
 .analytics-card-header-row {
@@ -4452,11 +4454,15 @@ body.focus-mode .bfrb-capture { display: none; }
 }
 
 .analytics-card-header {
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  color: var(--text-secondary, var(--text));
-  opacity: 0.6;
-  font-weight: 600;
+  /* E-polish (Bold Data-Dense): uppercase, tracked, and brighter. The old
+     text-secondary @ opacity 0.6 compounded into a barely-legible label; data
+     panels deserve a crisp dashboard heading. */
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.82;
+  font-weight: 700;
 }
 
 .analytics-card-aside {
@@ -5877,10 +5883,23 @@ body.focus-mode .bfrb-capture { display: none; }
    the #11 bedtime/wake-time inputs. Theme vars keep light/dark in sync. */
 
 .rhythm-insights-surface {
-  display: flex;
-  flex-direction: column;
+  /* E-polish (Bold Data-Dense): a 2-up dashboard grid on wider viewports,
+     single column on phones. The Today briefing pins full-width atop as the
+     hero (rule below). */
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
   padding: 4px 0 24px;
+  align-items: start;
+}
+@media (min-width: 520px) {
+  .rhythm-insights-surface { grid-template-columns: 1fr 1fr; }
+}
+/* Today briefing = full-width hero with a pillar-accent rail so it reads as the
+   headline, not just another card in the grid. */
+.rhythm-insights-surface [data-insight-panel="today"] {
+  grid-column: 1 / -1;
+  border-left: 3px solid var(--chart-1);
 }
 
 .rhythm-insights-loading,
@@ -5891,7 +5910,7 @@ body.focus-mode .bfrb-capture { display: none; }
   padding: 18px 8px;
 }
 
-.rhythm-insight-card { gap: 10px; }
+.rhythm-insight-card { gap: 10px; margin-bottom: 0; } /* grid gap handles spacing */
 
 /* ── BFRB Triggers panel (order 45) ──────────────────────────────────────
    Forgiving clean-streak (reuses .analytics-streak-*; catch days get an amber
