@@ -86,6 +86,7 @@ function initPomodoroUI() {
     Platform.haptic([200, 100, 200, 100, 200]);
     const label = completedPhase === 'work' ? 'Work session complete! Time for a break.' : 'Break is over! Time to focus.';
     Platform.notify('Pomodoro', { body: label });
+    announce(label); // D: SR parity with the chime/notification
     savePomodoroState();
     updatePomodoroUI();
 

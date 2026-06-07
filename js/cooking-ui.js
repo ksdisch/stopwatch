@@ -102,6 +102,7 @@ function cookingTimerAlarm(timer) {
   setTimeout(() => SFX.beep(freq * 1.25, 500, 'sine', 0.2), 200);
   Platform.haptic([200, 100, 200, 100, 200]);
   Platform.notify(`${timer.getName()} Done`, { body: 'Your cooking timer has finished!' });
+  announce(`${timer.getName()} timer done`); // D: SR parity with the chime/notification
   History.addSession({ type: 'cooking', duration: timer.getDurationMs(), laps: [], programName: timer.getName() });
   // Mark this finished episode logged so the tab-close→reopen recovery in
   // initCookingUI doesn't double-log it (A2).

@@ -253,6 +253,7 @@ function initTimerAlarm() {
     SFX.playAlarm();
     Platform.haptic([200, 100, 200, 100, 200]);
     Platform.notify('Timer Complete', { body: 'Your countdown has finished!' });
+    announce('Timer complete'); // D: SR parity with the chime/notification
     saveTimerState();
     updateTimerUI();
   });

@@ -66,13 +66,8 @@ const UI = (() => {
     Platform.haptic(ms);
   }
 
-  function announce(msg) {
-    const el = document.getElementById('sr-announce');
-    if (el) {
-      el.textContent = '';
-      requestAnimationFrame(() => { el.textContent = msg; });
-    }
-  }
+  // announce(): shared global from js/dom-utils.js (Batch D — promoted so all
+  // modes can use the same #sr-announce live region).
 
   function onLeftClick() {
     if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;

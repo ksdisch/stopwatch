@@ -27,12 +27,16 @@ function initSequenceUI() {
       const totalMs = prog.phases.reduce((s, p) => s + p.durationMs, 0);
       History.addSession({ type: 'sequence', duration: totalMs, laps: [] });
       SFX.playAlarm();
+      announce('Sequence complete'); // D: SR parity
       stopSequenceRenderLoop();
       saveSequenceState();
       updateSequenceUI();
       return;
     }
     Sequence.start();
+    // D: announce the phase just advanced into (SR parity with the chime).
+    const ph = Sequence.getCurrentPhase();
+    if (ph) announce(ph.name);
     saveSequenceState();
     updateSequenceUI();
   });

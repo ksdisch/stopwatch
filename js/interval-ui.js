@@ -16,6 +16,7 @@ function initIntervalUI() {
       SFX.playAlarm();
       Platform.haptic([200, 100, 200, 100, 200]);
       Platform.notify('Interval Complete', { body: 'Workout finished!' });
+      announce('Workout complete'); // D: SR parity
     } else {
       SFX.playPhaseChange();
       Platform.haptic([100, 50, 100]);
@@ -25,6 +26,10 @@ function initIntervalUI() {
     if (type === 'phase' || type === 'rest' || type === 'roundEnd') {
       Interval.advancePhase();
       Interval.start();
+      // D: announce the phase the user just advanced into (SR parity with the
+      // phase-change chime, which is otherwise silent).
+      const ph = Interval.getCurrentPhase();
+      if (ph) announce(`${ph.name}, round ${Interval.getRoundIndex() + 1} of ${Interval.getTotalRounds()}`);
       BgNotify.schedule('interval', Interval.getRemainingMs(), 'Interval', 'Phase complete!');
       saveIntervalState();
       startIntervalRenderLoop();

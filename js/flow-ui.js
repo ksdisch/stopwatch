@@ -181,6 +181,7 @@ function initFlowUI() {
       ? 'Focus block complete! Time for recovery.'
       : 'Recovery complete.';
     Platform.notify('Flow Block', { body: label });
+    announce(label); // D: SR parity with the chime/notification
 
     // Save the focus block to history as soon as focus completes
     if (completedPhase === 'focus') {
