@@ -7,6 +7,18 @@ function escapeHtml(str) {
   return el.innerHTML;
 }
 
+// True when the event target is a text-entry surface — a real <input>,
+// <textarea>, or any contenteditable element. The per-mode keydown handlers used
+// to guard only on tagName === 'INPUT', so Space pressed while renaming a
+// CONTENTEDITABLE field (Compare/instance-card names, Pomodoro saved-task
+// rename) still fired the mode's primary action AND swallowed the space (C1).
+// Shared so every mode guards identically.
+function isTextEntry(target) {
+  if (!target) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable === true;
+}
+
 // Announce a message to assistive tech via the shared #sr-announce live region
 // (aria-live="assertive"). clear-then-set on the next frame so a repeated
 // identical message is still re-announced. Promoted to a shared global (Batch D)

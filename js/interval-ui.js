@@ -44,7 +44,7 @@ function initIntervalUI() {
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'interval') return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     const status = Interval.getStatus();
     switch (e.code) {
       case 'Space':

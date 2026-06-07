@@ -164,7 +164,7 @@ function initPomodoroUI() {
   // Keyboard shortcuts for Pomodoro mode
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'pomodoro') return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     const status = Pomodoro.getStatus();
     switch (e.code) {
       case 'Space':
@@ -1519,6 +1519,10 @@ function initActionsDrawer() {
   });
 
   document.getElementById('pomo-clear-all-tasks').addEventListener('click', () => {
+    // C2: this wipes the user's focus goals + break tasks + actual-work lists
+    // for the session with no undo — confirm before discarding. (Stopwatch
+    // reset/lap-delete get an undo toast; this destructive action had nothing.)
+    if (!confirm('Clear all goals, break tasks, and what-you-worked-on for this session?')) return;
     clearChecklist();
     renderChecklist();
     renderBreakChecklist();

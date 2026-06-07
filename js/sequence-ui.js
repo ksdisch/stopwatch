@@ -92,7 +92,7 @@ function initSequenceUI() {
   // Wire keyboard shortcuts for sequence mode
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'timer' || !sequenceMode) return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     const status = Sequence.getStatus();
     if (e.code === 'Space') {
       e.preventDefault();

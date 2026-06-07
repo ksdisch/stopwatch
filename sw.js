@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v117-overhaul-d-a11y';
+const CACHE_NAME = 'stopwatch-v118-overhaul-c-ux';
 const ASSETS = [
   './',
   './index.html',

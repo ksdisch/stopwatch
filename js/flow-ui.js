@@ -346,7 +346,7 @@ function initFlowUI() {
   // Keyboard shortcuts (Space for primary action)
   document.addEventListener('keydown', (e) => {
     if (appMode !== 'flow') return;
-    if (e.target.tagName === 'INPUT') return;
+    if (isTextEntry(e.target)) return;
     if (e.code === 'Space') {
       e.preventDefault();
       onFlowRight();

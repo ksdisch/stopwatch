@@ -29,7 +29,7 @@ const UI = (() => {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
+      if (isTextEntry(e.target)) return;
       if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
       switch (e.code) {
         case 'Space':
