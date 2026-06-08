@@ -174,13 +174,13 @@ const RhythmInsights = (() => {
     return dims.padL + ',' + base + ' ' + polyline(points) + ' ' + (dims.padL + dims.innerW) + ',' + base;
   }
 
-  // Sleep-quality 1→5 mapped red→green. null/unknown → muted grey. The two
-  // mid values use literal hex (no theme var for yellow), endpoints use theme
-  // vars so they track light/dark.
+  // Sleep-quality 1→5 mapped red→green. null/unknown → muted grey. Endpoints +
+  // the amber step use theme vars so they track light/dark; the two pure-yellow
+  // mid steps stay literal (no yellow token in the palette).
   function qualityColor(q) {
     switch (q) {
       case 1: return 'var(--red)';
-      case 2: return '#ff9f0a';
+      case 2: return 'var(--amber)';
       case 3: return '#ffd60a';
       case 4: return '#9acd32';
       case 5: return 'var(--green)';

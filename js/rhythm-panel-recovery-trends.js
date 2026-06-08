@@ -28,17 +28,21 @@
   // The three metrics, in display order. `field` is the row property on the
   // RecoveryFeed history rows; `stroke` is a themed CSS var so the sparkline
   // tracks light/dark; `fmt` renders the latest value with its unit.
+  // E-polish follow-up: three distinct series → the categorical --chart-1..6
+  // ramp (Bold Data-Dense), the canonical home for multi-series chart colors.
+  // chart-2=green, chart-3=amber, chart-1=blue — these resolve to the same
+  // hues as the prior --green/--orange/--active-accent and keep theming.
   const METRICS = [
     {
-      field: 'hrv_ms', label: 'HRV', unit: 'ms', stroke: 'var(--green)',
+      field: 'hrv_ms', label: 'HRV', unit: 'ms', stroke: 'var(--chart-2)',
       fmt: (v) => Math.round(v) + ' ms',
     },
     {
-      field: 'acwr', label: 'ACWR', unit: '', stroke: 'var(--orange)',
+      field: 'acwr', label: 'ACWR', unit: '', stroke: 'var(--chart-3)',
       fmt: (v) => v.toFixed(2),
     },
     {
-      field: 'rhr_bpm', label: 'RHR', unit: 'bpm', stroke: 'var(--active-accent)',
+      field: 'rhr_bpm', label: 'RHR', unit: 'bpm', stroke: 'var(--chart-1)',
       fmt: (v) => Math.round(v) + ' bpm',
     },
   ];

@@ -161,7 +161,7 @@ const WellnessCookingUI = (() => {
 
     if (sessions.length === 0) {
       recentEl.innerHTML = `
-        <div class="wcook-recent-empty">
+        <div class="wcook-recent-empty tempo-empty">
           <div class="wcook-recent-empty-mark" aria-hidden="true">\uD83D\uDD52</div>
           <p>No finished cooking timers yet. Tap a preset above to start.</p>
         </div>
@@ -175,7 +175,7 @@ const WellnessCookingUI = (() => {
   function renderRecentRow(session) {
     const name = escapeHtml(session.programName || 'Cooking timer');
     const when = formatWhen(session.date);
-    const dur = formatDuration(session.duration || 0);
+    const dur = Utils.formatHuman(session.duration || 0);
     return `
       <div class="wcook-recent-row">
         <div class="wcook-recent-row-main">
@@ -202,16 +202,7 @@ const WellnessCookingUI = (() => {
     return `${dateStr} · ${time}`;
   }
 
-  function formatDuration(ms) {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const hours = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    const secs = totalSec % 60;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    if (mins > 0)  return `${mins}m ${secs}s`;
-    return `${secs}s`;
-  }
-
+  // Duration humanizer: shared Utils.formatHuman (E-polish follow-up E10 dedup).
   // escapeHtml: shared global from js/dom-utils.js (Batch E reuse dedup).
 
   return { init, PRESETS };

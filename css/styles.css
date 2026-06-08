@@ -1854,7 +1854,10 @@ input:focus:not(:focus-visible) {
 
 .pomo-stat-chart-title {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  /* E-polish follow-up: brighten dim chart heading (text-secondary → text @ 0.82). */
+  color: var(--text);
+  opacity: 0.82;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 8px;
 }
@@ -2325,11 +2328,13 @@ input:focus:not(:focus-visible) {
 
 .recovery-section-title {
   font-size: 0.78rem;
-  font-weight: 600;
+  /* E-polish follow-up: crisp dashboard heading — opacity 0.72 → 0.82, weight
+     600 → 700 (matches .analytics-card-header). */
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text);
-  opacity: 0.72;
+  opacity: 0.82;
   margin: 0;
 }
 
@@ -4634,7 +4639,8 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .analytics-distraction-bar-flow {
   height: 100%;
-  background: #007aff;
+  /* E-polish follow-up (E20): pillar token, not a light-mode hex literal. */
+  background: var(--productivity-accent);
 }
 
 .analytics-distraction-bar-pomo {
@@ -4673,7 +4679,7 @@ body.focus-mode .bfrb-capture { display: none; }
   vertical-align: middle;
 }
 
-.analytics-distraction-legend-dot.is-flow { background: #007aff; }
+.analytics-distraction-legend-dot.is-flow { background: var(--productivity-accent); }
 .analytics-distraction-legend-dot.is-pomo { background: #ff6b6b; }
 
 .analytics-distraction-hour-title {
@@ -5139,7 +5145,10 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .analytics-section-title {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  /* E-polish follow-up: crisp dashboard heading (matches .analytics-card-header). */
+  color: var(--text);
+  opacity: 0.82;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 12px 0 6px;
@@ -5806,8 +5815,10 @@ body.focus-mode .bfrb-capture { display: none; }
 .rhythm-summary {
   color: var(--text-primary, #f5f5f7);
 }
-.rhythm-entry--productivity .rhythm-dot { color: #007aff; }
-.rhythm-entry--wellness .rhythm-dot { color: #30d158; }
+/* E-polish follow-up (E20): pillar tokens — the bare hex was the light-mode
+   value of these pillar accents, so the dots never re-themed in dark presets. */
+.rhythm-entry--productivity .rhythm-dot { color: var(--productivity-accent); }
+.rhythm-entry--wellness .rhythm-dot { color: var(--wellness-accent); }
 .rhythm-entry--session-end .rhythm-dot { opacity: 0.55; }
 .rhythm-now-line {
   position: relative;
@@ -5863,9 +5874,12 @@ body.focus-mode .bfrb-capture { display: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rhythm-readiness-band--well_recovered { border-left: 3px solid #30d158; }
+/* E-polish follow-up: themed tokens for the readiness rails where one exists.
+   --green/--red track light/dark; neutral (yellow #ffd60a) and insufficient
+   (grey border) have no clean token, kept literal. */
+.rhythm-readiness-band--well_recovered { border-left: 3px solid var(--green); }
 .rhythm-readiness-band--neutral { border-left: 3px solid #ffd60a; }
-.rhythm-readiness-band--strained { border-left: 3px solid #ff453a; }
+.rhythm-readiness-band--strained { border-left: 3px solid var(--red); }
 .rhythm-readiness-band--insufficient_data { border-left: 3px solid #8e8e93; }
 
 @media (prefers-color-scheme: light) {

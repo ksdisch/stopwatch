@@ -59,7 +59,7 @@
         const labelTxt = (i % 3 === 0) ? d.label : '';
         const stack = heightPct > 0
           ? '<div class="analytics-bar-stack" style="height:' + heightPct.toFixed(1) + '%">'
-              + '<div class="analytics-bar-segment" style="height:100%;background:var(--active-accent,#007aff)"></div>'
+              + '<div class="analytics-bar-segment" style="height:100%;background:var(--productivity-accent)"></div>'
             + '</div>'
           : '<div class="analytics-bar-stack" style="height:0%"></div>';
         return '<div class="analytics-bar-col" data-day="' + escapeHtml(d.key) + '"'

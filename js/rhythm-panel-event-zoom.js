@@ -116,11 +116,14 @@
         const prodPct = d.total > 0 ? (d.productivity / d.total) * totalPct : 0;
         const wellPct = d.total > 0 ? (d.wellness / d.total) * totalPct : 0;
 
+        // E-polish follow-up: explicit pillar tokens (was --active-accent /
+        // --green) so productivity stays blue and wellness green regardless of
+        // the active-pillar accent, and both drop the dead hex fallback.
         const segs =
           '<div class="rhythm-zoom-segment" style="height:' + prodPct.toFixed(1)
-            + '%;background:var(--active-accent,#007aff)"></div>'
+            + '%;background:var(--productivity-accent)"></div>'
           + '<div class="rhythm-zoom-segment" style="height:' + wellPct.toFixed(1)
-            + '%;background:var(--green)"></div>';
+            + '%;background:var(--wellness-accent)"></div>';
 
         // Label every ~3rd day to keep the 14-wide axis uncrowded.
         const labelTxt = (i % 3 === 0) ? d.label : '';
@@ -146,8 +149,8 @@
       // swatches (coordinator owns styles.css; no new CSS classes here).
       const sw = 'display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle';
       const legend = '<div style="display:flex;gap:12px;font-size:10px;color:var(--text-secondary);margin-top:6px">'
-        + '<span><span style="' + sw + ';background:var(--active-accent,#007aff)"></span>Productivity</span>'
-        + '<span><span style="' + sw + ';background:var(--green)"></span>Wellness</span>'
+        + '<span><span style="' + sw + ';background:var(--productivity-accent)"></span>Productivity</span>'
+        + '<span><span style="' + sw + ';background:var(--wellness-accent)"></span>Wellness</span>'
         + '</div>';
 
       let body = peak + '<div class="rhythm-zoom-strip">' + cols + '</div>' + legend;

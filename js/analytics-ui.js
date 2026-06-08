@@ -351,11 +351,11 @@ function renderBFRBTrend(trend, selectedDays) {
     const areaPoly = `${PAD_L},${PAD_T + innerH} ${poly} ${PAD_L + innerW},${PAD_T + innerH}`;
     const dots = points
       .filter(p => p.count > 0)
-      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#ff9f0a"><title>${p.date}: ${p.count}</title></circle>`)
+      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="var(--amber)"><title>${p.date}: ${p.count}</title></circle>`)
       .join('');
     chartBody = `
       <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
-      <polyline points="${poly}" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/>
+      <polyline points="${poly}" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linejoin="round"/>
       ${dots}
     `;
   }
@@ -512,11 +512,11 @@ function renderOvershootCard(stats) {
     const areaPoly = `${PAD_L},${PAD_T + innerH} ${poly} ${PAD_L + innerW},${PAD_T + innerH}`;
     const dots = points
       .filter(p => p.totalMs > 0)
-      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#ff9f0a"><title>${p.date}: +${fmtSec(p.totalMs)}</title></circle>`)
+      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="var(--amber)"><title>${p.date}: +${fmtSec(p.totalMs)}</title></circle>`)
       .join('');
     chartBody = `
       <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
-      <polyline points="${poly}" fill="none" stroke="#ff9f0a" stroke-width="1.5" stroke-linejoin="round"/>
+      <polyline points="${poly}" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linejoin="round"/>
       ${dots}
     `;
   }

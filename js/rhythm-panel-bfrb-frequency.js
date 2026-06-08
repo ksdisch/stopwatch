@@ -88,7 +88,7 @@
         .filter(x => (x.d && x.d.count) > 0)
         .map(x =>
           '<circle cx="' + x.p.x.toFixed(1) + '" cy="' + x.p.y.toFixed(1) + '" r="2"'
-          + ' fill="var(--orange)"'
+          + ' fill="var(--amber)"'
           + ' data-day="' + escapeHtml(x.d.date) + '"'
           + ' data-tip="' + escapeHtml(shortDate(x.d.date) + ' · ' + x.d.count
             + ' catch' + (x.d.count === 1 ? '' : 'es')) + '"/>')
@@ -103,7 +103,7 @@
         + yAxisSvg
         + xAxisSvg
         + '<polygon points="' + areaPoly + '" fill="rgba(255,159,10,0.18)"/>'
-        + '<polyline points="' + linePoly + '" fill="none" stroke="var(--orange)"'
+        + '<polyline points="' + linePoly + '" fill="none" stroke="var(--amber)"'
         + ' stroke-width="1.5" stroke-linejoin="round"/>'
         + dots
         + '</svg>';
