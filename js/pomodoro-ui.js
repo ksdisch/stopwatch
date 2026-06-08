@@ -586,12 +586,15 @@ function startPomodoroRenderLoop() {
         pomodoroRafId = requestAnimationFrame(tick);
       } else {
         pomodoroRafId = null;
+        Platform.keepAwake(false); // F-pwa
         updatePomodoroUI(); // settle the final structural state
       }
     } else {
       pomodoroRafId = null;
+      Platform.keepAwake(false); // F-pwa
     }
   }
+  Platform.keepAwake(true); // F-pwa: keep screen on while timing
   pomodoroRafId = requestAnimationFrame(tick);
 }
 
@@ -600,6 +603,7 @@ function stopPomodoroRenderLoop() {
     cancelAnimationFrame(pomodoroRafId);
     pomodoroRafId = null;
   }
+  Platform.keepAwake(false); // F-pwa
 }
 
 function getPomodoroTotalDuration() {

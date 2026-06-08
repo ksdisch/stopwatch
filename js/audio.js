@@ -34,7 +34,20 @@ const SFX = (() => {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    // F-pwa: a context created outside a user gesture starts 'suspended', and
+    // iOS/Safari suspends it on background. Resume on every access so the
+    // completion alarm is audible after a lock/unlock.
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx.resume().catch(() => {});
+    }
     return ctx;
+  }
+
+  // F-pwa: explicit resume hook for the visibilitychange:visible handler.
+  function resume() {
+    if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx.resume().catch(() => {});
+    }
   }
 
   // Per-sound volume tuning (0.0–1.0). Global sounds default to 0.15
@@ -341,7 +354,7 @@ const SFX = (() => {
   }
 
   return {
-    beep,
+    beep, resume,
     playStart, playStop, playLap, playReset, playAlarm, playPhaseChange, playBFRBEnd,
     isMuted, toggleMute, getProfile, setProfile, getProfiles,
     getBFRBVolume, setBFRBVolume,

@@ -63,14 +63,37 @@ const FocusUI = (() => {
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
+    // F-pwa: Focus is meant to stay on-screen — hold a wake lock for its
+    // whole lifetime so the display doesn't sleep mid-session.
+    Platform.keepAwake(true);
+
     startLoop();
     updateFocus();
+  }
+
+  // F-pwa: is the underlying mode's engine still actively timing? Used on
+  // Focus exit so we only drop the wake lock when nothing is running (the
+  // mode's own render loop holds it otherwise).
+  function _engineRunning() {
+    try {
+      if (appMode === 'stopwatch') return Stopwatch.getStatus() === 'running';
+      if (appMode === 'timer') return Timer.getStatus() === 'running';
+      if (appMode === 'pomodoro') return Pomodoro.getStatus() === 'running';
+      if (appMode === 'interval' && typeof Interval !== 'undefined') return Interval.getStatus() === 'running';
+      if (appMode === 'flow' && typeof Flow !== 'undefined') {
+        const s = Flow.getStatus();
+        return s === 'running' || s === 'recovery';
+      }
+    } catch (_e) {}
+    return false;
   }
 
   function exit() {
     if (!active) return;
     active = false;
     stopLoop();
+    // F-pwa: keep the lock only if the underlying engine is still timing.
+    Platform.keepAwake(_engineRunning());
 
     if (overlay) {
       overlay.remove();

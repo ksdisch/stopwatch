@@ -87,7 +87,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 4px 6px;
+  /* F-pwa: lift below the notch/status bar on iOS standalone. With
+     apple-mobile-web-app-status-bar-style=black-translucent the WebView
+     extends under the status bar, so the wordmark + icons would otherwise
+     render under the clock. env() falls back to 0 in browsers / non-notched
+     devices, preserving the original 12px top padding. */
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 4px 6px;
   min-height: var(--tempo-topbar-h);
   /* Sit above the pillar content but below any overlays. */
   position: sticky;

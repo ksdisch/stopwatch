@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,6 +13,12 @@
   <title>Tempo</title>
 </head>
 <body>
+  <noscript>
+    <div style="max-width:32rem;margin:4rem auto;padding:0 1.25rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#fff;text-align:center;line-height:1.5">
+      <h1 style="font-size:1.5rem;margin-bottom:0.75rem">Tempo</h1>
+      <p>Tempo needs JavaScript to run. Please enable JavaScript in your browser settings, then reload this page.</p>
+    </div>
+  </noscript>
   <!-- C-1: Boot-time hydrate overlay. Hidden by default. Shown when
        SyncEngine.hydrateFromCloud() is in flight (first sign-in on a
        fresh Device B). Auto-dismisses on hydrate-complete with ok=true.
@@ -1115,108 +1121,108 @@
     </button>
   </nav>
 
-  <script src="js/utils.js"></script>
-  <script src="js/dom-utils.js"></script>
-  <script src="js/platform.js"></script>
-  <script src="js/schema.js"></script>
-  <script src="js/stopwatch.js"></script>
-  <script src="js/timer.js"></script>
-  <script src="js/instance-manager.js"></script>
-  <script src="js/pomodoro.js"></script>
-  <script src="js/flow.js"></script>
-  <script src="js/interval.js"></script>
-  <script src="js/persistence.js"></script>
-  <script src="js/sync-firebase-config.js"></script>
-  <script src="js/sync-flag.js"></script>
-  <script src="js/sync-firestore.js"></script>
-  <script src="js/sync-buffer.js"></script>
-  <script src="js/sync-engine.js"></script>
-  <script src="js/sync-toast.js"></script>
-  <script src="js/sync-manual-dedupe.js"></script>
-  <script src="js/sync-merge-meds.js"></script>
-  <script src="js/sync-merge-history.js"></script>
-  <script src="js/sync-merge-rest-log.js"></script>
-  <script src="js/sync-merge-presets.js"></script>
-  <script src="js/sync-merge-bfrb.js"></script>
-  <script src="js/sync-merge-distractions.js"></script>
-  <script src="js/sync-auth.js"></script>
-  <script src="js/audio.js"></script>
-  <script src="js/themes.js"></script>
-  <script src="js/history.js?v=2"></script>
-  <script src="js/export.js"></script>
-  <script src="js/backup.js"></script>
-  <script src="js/analog.js"></script>
-  <script src="js/offset-input.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/cards-ui.js"></script>
-  <script src="js/compare-ui.js"></script>
-  <script src="js/timer-ui.js"></script>
-  <script src="js/bfrb-recovery.js"></script>
+  <script src="js/utils.js" defer></script>
+  <script src="js/dom-utils.js" defer></script>
+  <script src="js/platform.js" defer></script>
+  <script src="js/schema.js" defer></script>
+  <script src="js/stopwatch.js" defer></script>
+  <script src="js/timer.js" defer></script>
+  <script src="js/instance-manager.js" defer></script>
+  <script src="js/pomodoro.js" defer></script>
+  <script src="js/flow.js" defer></script>
+  <script src="js/interval.js" defer></script>
+  <script src="js/persistence.js" defer></script>
+  <script src="js/sync-firebase-config.js" defer></script>
+  <script src="js/sync-flag.js" defer></script>
+  <script src="js/sync-firestore.js" defer></script>
+  <script src="js/sync-buffer.js" defer></script>
+  <script src="js/sync-engine.js" defer></script>
+  <script src="js/sync-toast.js" defer></script>
+  <script src="js/sync-manual-dedupe.js" defer></script>
+  <script src="js/sync-merge-meds.js" defer></script>
+  <script src="js/sync-merge-history.js" defer></script>
+  <script src="js/sync-merge-rest-log.js" defer></script>
+  <script src="js/sync-merge-presets.js" defer></script>
+  <script src="js/sync-merge-bfrb.js" defer></script>
+  <script src="js/sync-merge-distractions.js" defer></script>
+  <script src="js/sync-auth.js" defer></script>
+  <script src="js/audio.js" defer></script>
+  <script src="js/themes.js" defer></script>
+  <script src="js/history.js?v=2" defer></script>
+  <script src="js/export.js" defer></script>
+  <script src="js/backup.js" defer></script>
+  <script src="js/analog.js" defer></script>
+  <script src="js/offset-input.js" defer></script>
+  <script src="js/ui.js" defer></script>
+  <script src="js/cards-ui.js" defer></script>
+  <script src="js/compare-ui.js" defer></script>
+  <script src="js/timer-ui.js" defer></script>
+  <script src="js/bfrb-recovery.js" defer></script>
   <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
        pomodoro_distractions stores + migration. MUST load BEFORE
        pomodoro-ui.js + flow-ui.js (which call Distractions.* synchronously). -->
-  <script src="js/distractions.js"></script>
+  <script src="js/distractions.js" defer></script>
   <!-- bl-2-todoist: Todoist engine + UI. MUST load BEFORE pomodoro-ui.js
        (calls Todoist.* synchronously) and BEFORE tempo-nav.js (calls
        TodoistUI.renderSettingsSection synchronously when the drawer
        wires up). Pure REST/fetch client; no DOM in the engine. -->
-  <script src="js/todoist.js"></script>
-  <script src="js/todoist-ui.js"></script>
-  <script src="js/pomodoro-ui.js"></script>
+  <script src="js/todoist.js" defer></script>
+  <script src="js/todoist-ui.js" defer></script>
+  <script src="js/pomodoro-ui.js" defer></script>
   <!-- tempo-coach-daily-loop: pure decision core for the daily loop. MUST load
        BEFORE flow-ui.js (pre-block readiness default calls
        TempoCoach.suggestFocusDurationMs) AND before rhythm-panel-today.js
        (calls TempoCoach.buildTodayModel). Zero DOM. -->
-  <script src="js/tempo-coach.js"></script>
-  <script src="js/flow-ui.js"></script>
-  <script src="js/alert-ui.js"></script>
-  <script src="js/bg-notify.js"></script>
-  <script src="js/interval-ui.js?v=2"></script>
-  <script src="js/cooking-ui.js"></script>
-  <script src="js/pomodoro-stats.js"></script>
-  <script src="js/history-ui.js"></script>
-  <script src="js/sequence.js"></script>
-  <script src="js/analytics.js"></script>
-  <script src="js/focus-ui.js"></script>
-  <script src="js/sequence-ui.js"></script>
-  <script src="js/analytics-ui.js"></script>
-  <script src="js/presets.js"></script>
-  <script src="js/presets-ui.js"></script>
-  <script src="js/meds.js"></script>
-  <script src="js/meds-ui.js"></script>
-  <script src="js/exercise-ui.js"></script>
-  <script src="js/mindful-ui.js"></script>
-  <script src="js/wellness-cooking-ui.js"></script>
-  <script src="js/recovery-ui.js"></script>
+  <script src="js/tempo-coach.js" defer></script>
+  <script src="js/flow-ui.js" defer></script>
+  <script src="js/alert-ui.js" defer></script>
+  <script src="js/bg-notify.js" defer></script>
+  <script src="js/interval-ui.js?v=2" defer></script>
+  <script src="js/cooking-ui.js" defer></script>
+  <script src="js/pomodoro-stats.js" defer></script>
+  <script src="js/history-ui.js" defer></script>
+  <script src="js/sequence.js" defer></script>
+  <script src="js/analytics.js" defer></script>
+  <script src="js/focus-ui.js" defer></script>
+  <script src="js/sequence-ui.js" defer></script>
+  <script src="js/analytics-ui.js" defer></script>
+  <script src="js/presets.js" defer></script>
+  <script src="js/presets-ui.js" defer></script>
+  <script src="js/meds.js" defer></script>
+  <script src="js/meds-ui.js" defer></script>
+  <script src="js/exercise-ui.js" defer></script>
+  <script src="js/mindful-ui.js" defer></script>
+  <script src="js/wellness-cooking-ui.js" defer></script>
+  <script src="js/recovery-ui.js" defer></script>
   <!-- Recovery feed: read-only consumer of the personal-health-elt
        pipeline's mart_recovery_state. Caches the latest day + last-14
        history in localStorage; Rhythm renders a readiness band off
        RecoveryFeed.getLatest(). MUST load before rhythm-ui.js. -->
-  <script src="js/recovery-feed.js"></script>
+  <script src="js/recovery-feed.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
-  <script src="js/rhythm-engine.js"></script>
+  <script src="js/rhythm-engine.js" defer></script>
   <!-- Rhythm Insights (#12): foundation engine (registry + chart helpers +
        DI data layer) loads after rhythm-engine; self-registering panel
        modules load after the foundation; rhythm-ui (the only consumer of
        RhythmInsights.renderInto) loads last. Panel script order is irrelevant
        — getPanels() sorts by each panel's `order` field. -->
-  <script src="js/rhythm-insights.js"></script>
+  <script src="js/rhythm-insights.js" defer></script>
   <!-- tempo-coach-daily-loop: the "Today" briefing panel (order 5, pins atop
        Insights). Self-registers with RhythmInsights; calls TempoCoach (loaded
        above with flow-ui). Panel script order is irrelevant to getPanels()
        — only load-before-rhythm-ui.js matters. -->
-  <script src="js/rhythm-panel-today.js"></script>
-  <script src="js/rhythm-panel-meds-sleep.js"></script>
-  <script src="js/rhythm-panel-recovery-trends.js"></script>
-  <script src="js/rhythm-panel-focus-minutes.js"></script>
-  <script src="js/rhythm-panel-bfrb-frequency.js"></script>
-  <script src="js/rhythm-panel-bfrb-triggers.js"></script>
-  <script src="js/rhythm-panel-distraction-rollup.js"></script>
-  <script src="js/rhythm-panel-event-zoom.js"></script>
-  <script src="js/rhythm-panel-correlations.js"></script>
-  <script src="js/rhythm-ui.js"></script>
+  <script src="js/rhythm-panel-today.js" defer></script>
+  <script src="js/rhythm-panel-meds-sleep.js" defer></script>
+  <script src="js/rhythm-panel-recovery-trends.js" defer></script>
+  <script src="js/rhythm-panel-focus-minutes.js" defer></script>
+  <script src="js/rhythm-panel-bfrb-frequency.js" defer></script>
+  <script src="js/rhythm-panel-bfrb-triggers.js" defer></script>
+  <script src="js/rhythm-panel-distraction-rollup.js" defer></script>
+  <script src="js/rhythm-panel-event-zoom.js" defer></script>
+  <script src="js/rhythm-panel-correlations.js" defer></script>
+  <script src="js/rhythm-ui.js" defer></script>
   <!-- Global BFRB tally + competing-response routine. Always visible,
        floats above all modes and pages. Tap or keyboard shortcut B
        triggers the tally and kicks off a 60s countdown. -->
@@ -1233,12 +1239,12 @@
 
   <!-- E-1d-f3: BfrbEvents owns the consolidated bfrb_events store + migration.
        MUST load BEFORE global-bfrb.js (which calls BfrbEvents.log synchronously). -->
-  <script src="js/bfrb-events.js"></script>
+  <script src="js/bfrb-events.js" defer></script>
   <!-- Slice B: pure pace-risk decision core. No load-order deps (events are
        passed in); placed next to its only consumer, global-bfrb.js. -->
-  <script src="js/bfrb-risk.js"></script>
-  <script src="js/global-bfrb.js"></script>
-  <script src="js/tempo-nav.js?v=2"></script>
-  <script src="js/app.js"></script>
+  <script src="js/bfrb-risk.js" defer></script>
+  <script src="js/global-bfrb.js" defer></script>
+  <script src="js/tempo-nav.js?v=2" defer></script>
+  <script src="js/app.js" defer></script>
 </body>
 </html>
