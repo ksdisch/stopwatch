@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 // scripts/hooks/pre-commit-guard.mjs — Claude Code PreToolUse(Bash) hook.
 //
-// Purpose: enforce the two mechanical invariants that make Tempo ship cleanly,
-// at the exact moment Claude tries to commit — so a forgotten cache bump or a
-// rotted asset list can never reach `main`:
+// Purpose: enforce the mechanical invariants that make Tempo ship cleanly,
+// at the exact moment Claude tries to commit — so a forgotten cache bump, a
+// rotted asset list, or a stale always-loaded doc can never reach `main`:
 //   1. scripts/check-sw-bump.mjs       — any changed cached web file requires a
 //                                         sw.js CACHE_NAME bump in the same diff.
 //   2. scripts/check-asset-integrity.mjs — sw.js ASSETS js-set must equal the
 //                                         index.html <script src="js/*"> set.
+//   3. scripts/check-load-order.mjs    — the CLAUDE.md "Script Load Order" chain
+//                                         must equal the index.html <script> order.
 //
 // Wiring: .claude/settings.json registers this on PreToolUse with matcher "Bash".
 // It reads the hook payload on stdin, runs ONLY when the Bash command is a
-// `git commit`, and exits 2 (block + feed stderr back to Claude) if either
+// `git commit`, and exits 2 (block + feed stderr back to Claude) if any
 // check fails. Every other Bash command is a sub-millisecond no-op.
 //
 // Pure Node, no deps. Mirrors the no-op-on-no-git-context behavior of the
@@ -50,6 +52,7 @@ try { process.chdir(root); } catch { /* keep current cwd */ }
 const CHECKS = [
   'scripts/check-sw-bump.mjs',
   'scripts/check-asset-integrity.mjs',
+  'scripts/check-load-order.mjs',
 ];
 
 const failures = [];
@@ -65,8 +68,9 @@ for (const script of CHECKS) {
 if (failures.length) {
   process.stderr.write(
     `\nCommit blocked by Tempo pre-commit guard.\n\n${failures.join('\n\n')}\n\n` +
-    `Fix the above — typically bump CACHE_NAME in sw.js (and update its ASSETS list) ` +
-    `in this same commit — then retry. See CLAUDE.md "Service-worker cache bump rule".\n`,
+    `Fix the issue(s) above in this same commit, then retry — typically: bump CACHE_NAME ` +
+    `in sw.js (and update its ASSETS list), or re-sync the CLAUDE.md "Script Load Order" ` +
+    `chain with the index.html <script> order. See CLAUDE.md.\n`,
   );
   process.exit(2); // PreToolUse: 2 = block the tool call, surface stderr to Claude.
 }

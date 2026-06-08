@@ -12,7 +12,8 @@
     "test:serve": "python3 -m http.server 8765",
     "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project=demo-tempo 'node --test tests/rules/firestore-rules.test.mjs'",
     "check:assets": "node scripts/check-asset-integrity.mjs",
-    "check:sw-bump": "node scripts/check-sw-bump.mjs"
+    "check:sw-bump": "node scripts/check-sw-bump.mjs",
+    "check:load-order": "node scripts/check-load-order.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^6.3.1",
