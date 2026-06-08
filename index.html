@@ -256,6 +256,18 @@
              per brief decision #2. -->
         <section id="settings-todoist" class="tempo-settings-item tempo-todoist-section"
                  aria-label="Todoist"></section>
+        <!-- Life-OS Phase 0 (debug) — TEMPORARY, remove in Phase 1.
+             Proves the council → Firestore → PWA read path on a phone by
+             surfacing the 'home' synthesis record's headline + producedAt.
+             Filled by the inline init script at the bottom of <body> from
+             SynthesisFeed.getRecord('home'); a no-op (stays "—") when sync is
+             off / signed out / the council hasn't pushed yet. -->
+        <div id="synthesis-debug" class="tempo-settings-item" role="group"
+             aria-label="Synthesis (debug)">
+          <div class="tempo-cloud-sync-heading">Synthesis (debug) — Phase 0, remove in Phase 1</div>
+          <div id="synthesis-debug-headline" class="tempo-settings-item-meta">—</div>
+          <div id="synthesis-debug-produced" class="tempo-settings-item-meta"></div>
+        </div>
       </div>
     </header>
 
@@ -1199,6 +1211,11 @@
        history in localStorage; Rhythm renders a readiness band off
        RecoveryFeed.getLatest(). MUST load before rhythm-ui.js. -->
   <script src="js/recovery-feed.js" defer></script>
+  <!-- Life-OS Phase 0: read-only consumer of the council's per-node synthesis
+       records (users/{uid}/synthesis/{nodeId}). Mirrors recovery-feed.js:
+       getDoc → localStorage cache → SynthesisFeed.getRecord(). No write path.
+       Loaded immediately after recovery-feed.js for parity. -->
+  <script src="js/synthesis-feed.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
@@ -1246,5 +1263,39 @@
   <script src="js/global-bfrb.js" defer></script>
   <script src="js/tempo-nav.js?v=2" defer></script>
   <script src="js/app.js" defer></script>
+  <!-- Life-OS Phase 0 (debug) — TEMPORARY, remove in Phase 1.
+       Inits SynthesisFeed and renders the 'home' record into #synthesis-debug
+       so the council read path is provable on a phone. DOMContentLoaded fires
+       AFTER all defer scripts above, so SynthesisFeed + escapeHtml exist.
+       Fully guarded — a no-op when sync is off / SynthesisFeed is absent. -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      if (typeof SynthesisFeed === 'undefined') return;
+      var headlineEl = document.getElementById('synthesis-debug-headline');
+      var producedEl = document.getElementById('synthesis-debug-produced');
+      var esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return s; };
+      function render() {
+        if (!headlineEl) return;
+        var rec = null;
+        try { rec = SynthesisFeed.getRecord('home'); } catch (_) { rec = null; }
+        if (rec && rec.headline) {
+          headlineEl.textContent = rec.headline;
+          if (producedEl) producedEl.textContent = rec.producedAt ? ('as of ' + rec.producedAt) : '';
+        } else {
+          headlineEl.textContent = '— (no synthesis record yet)';
+          if (producedEl) producedEl.textContent = '';
+        }
+        // textContent already escapes; esc() referenced only to honor the
+        // reuse convention if a future tweak switches to innerHTML.
+        void esc;
+      }
+      try { SynthesisFeed.init(); } catch (_) {}
+      render();
+      // Best-effort live refresh — no-op when sync is off / signed out.
+      try {
+        SynthesisFeed.refresh('home').then(render).catch(function () {});
+      } catch (_) {}
+    });
+  </script>
 </body>
 </html>

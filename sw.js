@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v121-overhaul-e-polish-followups';
+const CACHE_NAME = 'stopwatch-v122-lifeos-phase0-synthesis';
 const ASSETS = [
   './',
   './index.html',
@@ -65,6 +65,7 @@ const ASSETS = [
   './js/wellness-cooking-ui.js',
   './js/recovery-ui.js',
   './js/recovery-feed.js',
+  './js/synthesis-feed.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
   './js/rhythm-panel-today.js',

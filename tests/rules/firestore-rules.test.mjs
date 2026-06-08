@@ -9,11 +9,15 @@
 // WHAT IT GUARDS (the two guarantees firestore.rules encodes):
 //   1. Per-user isolation — a signed-in user may read/write only their own
 //      users/{uid}/** documents (firestore.rules:15-17 catch-all).
-//   2. recovery_state is READ-ONLY for clients — the external personal-health-elt
-//      Admin-SDK pipeline writes it (bypassing rules); every client write is
-//      denied by `allow write: if false` (firestore.rules:11-14). Block ORDER is
-//      load-bearing: the recovery_state match is declared BEFORE the catch-all so
-//      its narrower write rule governs. See docs/reference/recovery-state-contract.md
+//   2. recovery_state and synthesis are READ-ONLY for clients — external
+//      Admin-SDK producers write them (bypassing rules); every client write is
+//      denied. Block ORDER is NOT load-bearing: Firestore evaluates rules
+//      CUMULATIVELY (a write is allowed if ANY matching rule grants it; a
+//      more-specific `allow write: if false` does NOT subtract a broader grant;
+//      match-block order is irrelevant). The read-only guarantee comes from the
+//      catch-all excluding these collections from its write grant
+//      (`collection != 'recovery_state' && collection != 'synthesis'`), NOT from
+//      the dedicated `if false` blocks. See docs/reference/recovery-state-contract.md
 //      and docs/runbooks/firestore-rules-publish.md.
 //
 // HOW TO RUN:
@@ -133,4 +137,40 @@ test('a user cannot read another user\'s recovery_state feed', async () => {
   await seedBypassingRules('users/alice/recovery_state/history', { rows: [] });
   const bob = clientFor('bob');
   await assertFails(getDoc(doc(bob, 'users/alice/recovery_state/history')));
+});
+
+// ── synthesis: client-write denial (the read-only council feed) ──────────────
+
+test('owner CANNOT write their own synthesis feed (allow write: if false)', async () => {
+  const alice = clientFor('alice');
+  await assertFails(
+    setDoc(doc(alice, 'users/alice/synthesis/home'), { node: 'home' })
+  );
+});
+
+test('owner CAN read their own synthesis feed (Admin-SDK-seeded)', async () => {
+  // Simulate a council job's Admin-SDK push of a synthesis-record node.
+  await seedBypassingRules('users/alice/synthesis/home', {
+    contractVersion: 1,
+    node: 'home',
+    producer: 'council/nightly-light',
+    producedAt: '2026-06-08T06:00:12Z',
+    window: '2026-06-01..2026-06-07',
+    state: { band: 'steady', score: 72 },
+    headline: 'Holding steady this week.',
+    signals: ['sleep on track', 'focus minutes up'],
+    provenance: { sources: ['history', 'rest_log'], coverage: 0.86 },
+    confidence: 'high',
+  });
+  const alice = clientFor('alice');
+  await assertSucceeds(getDoc(doc(alice, 'users/alice/synthesis/home')));
+});
+
+test('a user cannot read another user\'s synthesis feed', async () => {
+  await seedBypassingRules('users/alice/synthesis/physicals__sleep', {
+    contractVersion: 1,
+    node: 'physicals/sleep',
+  });
+  const bob = clientFor('bob');
+  await assertFails(getDoc(doc(bob, 'users/alice/synthesis/physicals__sleep')));
 });

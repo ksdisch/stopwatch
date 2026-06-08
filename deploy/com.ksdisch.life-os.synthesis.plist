@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ksdisch.life-os.synthesis</string>
+
+    <!-- Fire the council synthesis run at 06:00 local time. launchd
+         StartCalendarInterval fires at the system's local wall-clock time and
+         re-evaluates across DST, so this stays 06:00 *local* in both EST and
+         EDT. If the Mac is asleep at 06:00, launchd runs the job at next wake.
+         06:00 means the 'home' synthesis record is fresh in Firestore before
+         the morning open. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/kyledisch/Projects/stopwatch/council/run-synthesis.sh</string>
+    </array>
+
+    <!-- run-synthesis.sh is CWD-independent (it resolves REPO from its own
+         path), but set WorkingDirectory for cleanliness. -->
+    <key>WorkingDirectory</key>
+    <string>/Users/kyledisch/Projects/stopwatch</string>
+
+    <!-- Only fire on the calendar trigger - never at load/login/boot. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Wrapper-level stdout/stderr (the "✔ council run succeeded" /
+         "COUNCIL FAILED" lines run-synthesis.sh echoes to >&2). The council's
+         own per-run output still goes to council/logs/nightly/<UTC-date>.log.
+         Run `mkdir -p council/logs/launchd` before loading - launchd will NOT
+         create these directories and the job fails to launch without them. -->
+    <key>StandardOutPath</key>
+    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/err.log</string>
+</dict>
+</plist>
