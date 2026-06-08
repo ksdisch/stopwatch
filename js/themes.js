@@ -76,16 +76,36 @@ const Themes = (() => {
       Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v));
     }
 
-    // Update theme-color meta tag
-    const bg = theme.vars ? theme.vars['--bg'] : null;
-    if (bg) {
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.content = bg;
+    updateThemeColorMeta(themeId, theme);
+  }
+
+  // Update the theme-color meta (PWA / iOS status-bar tint). F-pwa: the 'auto'
+  // preset has vars:null, so it previously left the meta stale on the prior
+  // theme's color. Resolve 'auto' from the live prefers-color-scheme using the
+  // same :root values as styles.css (#000000 dark / #f2f2f7 light).
+  function updateThemeColorMeta(themeId, theme) {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    let bg = theme && theme.vars ? theme.vars['--bg'] : null;
+    if (!bg && themeId === 'auto') {
+      const light = typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-color-scheme: light)').matches;
+      bg = light ? '#f2f2f7' : '#000000';
     }
+    if (bg) meta.content = bg;
   }
 
   function init() {
     apply(getThemeId());
+    // F-pwa: when on the 'auto' theme, keep the status-bar tint in sync with a
+    // live system light/dark switch.
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      try {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+          if (getThemeId() === 'auto') updateThemeColorMeta('auto', presets.auto);
+        });
+      } catch (_e) {}
+    }
   }
 
   function getPresets() {

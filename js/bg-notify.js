@@ -16,11 +16,24 @@ const BgNotify = (() => {
     return typeof Platform !== 'undefined' && Platform.isNative;
   }
 
-  function getRegistration() {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      return navigator.serviceWorker.controller;
+  // Post a message to the active service worker. Prefers the live controller
+  // (fast path) but falls back to navigator.serviceWorker.ready — F-pwa: on
+  // the very first page load the SW hasn't claimed the page yet, so
+  // `controller` is null and a timer started before any reload would schedule
+  // NOTHING. `ready` resolves to the registration whose `.active` worker can
+  // receive the message even pre-claim.
+  function postToSW(message) {
+    if (!('serviceWorker' in navigator)) return;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(message);
+      return;
     }
-    return null;
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        const target = (reg && reg.active) || navigator.serviceWorker.controller;
+        if (target) target.postMessage(message);
+      })
+      .catch(() => {});
   }
 
   function requestPermission() {
@@ -41,16 +54,13 @@ const BgNotify = (() => {
       return;
     }
     requestPermission();
-    const sw = getRegistration();
-    if (sw) {
-      sw.postMessage({
-        type: 'scheduleNotification',
-        id: id,
-        delayMs: delayMs,
-        title: title,
-        body: body,
-      });
-    }
+    postToSW({
+      type: 'scheduleNotification',
+      id: id,
+      delayMs: delayMs,
+      title: title,
+      body: body,
+    });
   }
 
   function cancel(id) {
@@ -58,13 +68,10 @@ const BgNotify = (() => {
       Platform.cancelNotification(id);
       return;
     }
-    const sw = getRegistration();
-    if (sw) {
-      sw.postMessage({
-        type: 'cancelNotification',
-        id: id,
-      });
-    }
+    postToSW({
+      type: 'cancelNotification',
+      id: id,
+    });
   }
 
   return { schedule, cancel, requestPermission };

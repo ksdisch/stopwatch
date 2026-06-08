@@ -583,6 +583,89 @@ const Platform = (() => {
     onChange: networkOnChange,
   };
 
+  // ── Wake Lock (F-pwa) ──────────────────────────────────────────────────
+  //
+  // Keeps the screen awake while a timing engine is actively running so the
+  // in-page audio alarm + RAF render loops don't die when the display sleeps.
+  // Mirrors the haptic/notify/network shim pattern.
+  //
+  // - Web build: `navigator.wakeLock.request('screen')` (feature-detected).
+  //   The OS releases the sentinel whenever the page is hidden, so we track a
+  //   desired state and re-acquire on `visibilitychange:visible`.
+  // - Native build (Capacitor iOS): routes to
+  //   `window.Capacitor.Plugins.KeepAwake` (@capacitor-community/keep-awake)
+  //   if present; no-op when the plugin is absent.
+  //
+  // Contract:
+  //   - `keepAwake(true)`  → request/desire screen-on (idempotent).
+  //   - `keepAwake(false)` → release/clear the desire (idempotent).
+  //   - Safe no-op where neither path is available.
+
+  let _wakeDesired = false;
+  let _wakeSentinel = null;        // web WakeLockSentinel
+  let _wakeVisInstalled = false;
+
+  function _wakeSupportedWeb() {
+    return typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+  }
+
+  function _wakeAcquireWeb() {
+    if (!_wakeSupportedWeb() || _wakeSentinel) return;
+    try {
+      navigator.wakeLock.request('screen').then((sentinel) => {
+        // If desire was cleared while the request was in flight, drop it.
+        if (!_wakeDesired) { sentinel.release().catch(() => {}); return; }
+        _wakeSentinel = sentinel;
+        sentinel.addEventListener('release', () => {
+          if (_wakeSentinel === sentinel) _wakeSentinel = null;
+        });
+      }).catch(() => {});
+    } catch (_e) {}
+  }
+
+  function _wakeReleaseWeb() {
+    if (_wakeSentinel) {
+      try { _wakeSentinel.release().catch(() => {}); } catch (_e) {}
+      _wakeSentinel = null;
+    }
+  }
+
+  function _wakeInstallVisibility() {
+    if (_wakeVisInstalled || typeof document === 'undefined') return;
+    _wakeVisInstalled = true;
+    try {
+      document.addEventListener('visibilitychange', () => {
+        // The OS auto-releases the screen wake lock on background; re-acquire
+        // when we come back to the foreground if we still want to stay awake.
+        if (document.visibilityState === 'visible' && _wakeDesired && !_wakeSentinel) {
+          _wakeAcquireWeb();
+        }
+      });
+    } catch (_e) {}
+  }
+
+  function keepAwake(on) {
+    on = !!on;
+    if (isNative) {
+      const KA = plugins.KeepAwake;
+      if (!KA) return;
+      try {
+        if (on) { if (typeof KA.keepAwake === 'function') KA.keepAwake().catch(() => {}); }
+        else    { if (typeof KA.allowSleep === 'function') KA.allowSleep().catch(() => {}); }
+      } catch (_e) {}
+      _wakeDesired = on;
+      return;
+    }
+    // Web
+    _wakeDesired = on;
+    if (on) {
+      _wakeInstallVisibility();
+      _wakeAcquireWeb();
+    } else {
+      _wakeReleaseWeb();
+    }
+  }
+
   return {
     isNative,
     haptic,
@@ -592,5 +675,6 @@ const Platform = (() => {
     requestNotificationPermission,
     auth,
     network,
+    keepAwake,
   };
 })();

@@ -103,6 +103,18 @@ RhythmUI.init();
 // (see js/platform.js + js/bg-notify.js).
 if (!Platform.isNative && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  // F-pwa: SW update-to-reload. sw.js calls skipWaiting()+clients.claim() so a
+  // freshly-deployed worker takes control of this open tab immediately, but
+  // without a controllerchange handshake the running document keeps executing
+  // the OLD cached modules until every tab is closed. Reload once when control
+  // passes to a new worker. The `swReloading` guard prevents a reload loop.
+  let swReloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloading) return;
+    swReloading = true;
+    window.location.reload();
+  });
 }
 
 // ── Native notification permission (Capacitor iOS) ──
@@ -147,6 +159,38 @@ function showInstallBanner() {
     banner.remove();
   });
 }
+
+// F-pwa: iOS install affordance. iOS Safari never fires `beforeinstallprompt`,
+// so the Chromium banner above never appears for iPhone/iPad web users. Detect
+// iOS + not-already-installed and show a one-line "Add to Home Screen" hint
+// (reuses the .install-banner styles + the shared install_dismissed key).
+(function maybeShowIosInstallHint() {
+  if (Platform.isNative) return;
+  if (localStorage.getItem('install_dismissed')) return;
+  const ua = navigator.userAgent || '';
+  const isIos = /iP(hone|ad|od)/.test(navigator.platform || '')
+    || (/Macintosh/.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+  if (!isIos) return;
+  const isStandalone = navigator.standalone === true
+    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (isStandalone) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'install-banner';
+  banner.className = 'install-banner';
+  banner.innerHTML = `
+    <span>Install Tempo: tap Share <span aria-hidden="true">&#x2191;</span> then “Add to Home Screen”</span>
+    <button id="install-dismiss" class="install-dismiss" aria-label="Dismiss">&times;</button>
+  `;
+  const app = document.getElementById('app');
+  if (!app) return;
+  app.prepend(banner);
+  requestAnimationFrame(() => banner.classList.add('install-visible'));
+  document.getElementById('install-dismiss').addEventListener('click', () => {
+    localStorage.setItem('install_dismissed', '1');
+    banner.remove();
+  });
+})();
 
 // ── App Mode Switching (Stopwatch / Timer / Pomodoro) ──
 function initAppMode() {

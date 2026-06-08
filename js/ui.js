@@ -18,13 +18,28 @@ const UI = (() => {
     btnRight.addEventListener('click', onRightClick);
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        if ((typeof appMode === 'undefined' || appMode === 'stopwatch') && Stopwatch.getStatus() === 'running') {
-          startRenderLoop();
-        }
-        if (typeof appMode !== 'undefined' && appMode === 'pomodoro' && typeof Pomodoro !== 'undefined' && Pomodoro.getStatus() === 'running' && typeof startPomodoroRenderLoop === 'function') {
-          startPomodoroRenderLoop();
-        }
+      if (document.visibilityState !== 'visible') return;
+      // F-pwa: a backgrounded AudioContext stays suspended on return; resume
+      // it so the completion alarm is audible after a lock/unlock.
+      if (typeof SFX !== 'undefined' && typeof SFX.resume === 'function') SFX.resume();
+
+      // F-pwa: re-arm the active mode's render loop. RAF is throttled while
+      // hidden, so the display is frozen until something ticks again. Only the
+      // running engine for the current mode is restarted (mirrors applyAppMode).
+      const mode = (typeof appMode !== 'undefined') ? appMode : 'stopwatch';
+      if (mode === 'stopwatch' && Stopwatch.getStatus() === 'running') {
+        startRenderLoop();
+      } else if (mode === 'pomodoro' && typeof Pomodoro !== 'undefined' && Pomodoro.getStatus() === 'running' && typeof startPomodoroRenderLoop === 'function') {
+        startPomodoroRenderLoop();
+      } else if (mode === 'timer' && typeof Timer !== 'undefined' && Timer.getStatus() === 'running' && typeof startTimerRenderLoop === 'function') {
+        startTimerRenderLoop();
+      } else if (mode === 'flow' && typeof Flow !== 'undefined' && (Flow.getStatus() === 'running' || Flow.getStatus() === 'recovery') && typeof startFlowRenderLoop === 'function') {
+        startFlowRenderLoop();
+      } else if (mode === 'interval' && typeof Interval !== 'undefined' && Interval.getStatus() === 'running' && typeof startIntervalRenderLoop === 'function') {
+        startIntervalRenderLoop();
+      } else if (mode === 'cooking' && typeof cookingTimers !== 'undefined' && typeof startCookingRenderLoop === 'function'
+                 && cookingTimers.some(ct => ct.timer.getStatus() === 'running')) {
+        startCookingRenderLoop();
       }
     });
 
@@ -450,8 +465,10 @@ const UI = (() => {
         rafId = requestAnimationFrame(tick);
       } else {
         rafId = null;
+        Platform.keepAwake(false);   // F-pwa: release when no longer running
       }
     }
+    Platform.keepAwake(true);        // F-pwa: keep screen on while timing
     rafId = requestAnimationFrame(tick);
   }
 
@@ -460,6 +477,7 @@ const UI = (() => {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    Platform.keepAwake(false);       // F-pwa: release wake lock on pause/reset
   }
 
   function showUndoToast() {

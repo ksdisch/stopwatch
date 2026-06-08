@@ -296,8 +296,10 @@ function startCookingRenderLoop() {
       cookingRafId = requestAnimationFrame(tick);
     } else {
       cookingRafId = null;
+      Platform.keepAwake(false); // F-pwa
     }
   }
+  Platform.keepAwake(true); // F-pwa: keep screen on while timing
   cookingRafId = requestAnimationFrame(tick);
 }
 
@@ -306,4 +308,5 @@ function stopCookingRenderLoop() {
     cancelAnimationFrame(cookingRafId);
     cookingRafId = null;
   }
+  Platform.keepAwake(false); // F-pwa
 }
