@@ -4639,7 +4639,7 @@ body.focus-mode .bfrb-capture { display: none; }
 
 .analytics-distraction-bar-flow {
   height: 100%;
-  /* E-polish follow-up (E20): pillar token, not a light-mode hex literal. */
+  /* E-polish follow-up (E20): pillar token (centralizes the productivity hue). */
   background: var(--productivity-accent);
 }
 
@@ -5815,8 +5815,10 @@ body.focus-mode .bfrb-capture { display: none; }
 .rhythm-summary {
   color: var(--text-primary, #f5f5f7);
 }
-/* E-polish follow-up (E20): pillar tokens — the bare hex was the light-mode
-   value of these pillar accents, so the dots never re-themed in dark presets. */
+/* E-polish follow-up (E20): centralize the pillar hue in the pillar tokens
+   (the bare hex duplicated the token value). --productivity/--wellness-accent
+   are :root brand constants (same hue across all themes), so this is
+   consolidation — not a re-theming change. */
 .rhythm-entry--productivity .rhythm-dot { color: var(--productivity-accent); }
 .rhythm-entry--wellness .rhythm-dot { color: var(--wellness-accent); }
 .rhythm-entry--session-end .rhythm-dot { opacity: 0.55; }

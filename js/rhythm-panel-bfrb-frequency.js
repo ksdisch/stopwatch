@@ -102,7 +102,7 @@
         + grid
         + yAxisSvg
         + xAxisSvg
-        + '<polygon points="' + areaPoly + '" fill="rgba(255,159,10,0.18)"/>'
+        + '<polygon points="' + areaPoly + '" fill="var(--amber-tint)"/>'
         + '<polyline points="' + linePoly + '" fill="none" stroke="var(--amber)"'
         + ' stroke-width="1.5" stroke-linejoin="round"/>'
         + dots

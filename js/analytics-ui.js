@@ -354,7 +354,7 @@ function renderBFRBTrend(trend, selectedDays) {
       .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="var(--amber)"><title>${p.date}: ${p.count}</title></circle>`)
       .join('');
     chartBody = `
-      <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
+      <polygon points="${areaPoly}" fill="var(--amber-tint)"/>
       <polyline points="${poly}" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linejoin="round"/>
       ${dots}
     `;
@@ -423,7 +423,9 @@ function renderBFRBTrend(trend, selectedDays) {
   let sourceSection = '';
   if (bySource) {
     const sourceEntries = [
-      { key: 'flow',     label: 'Flow',     color: '#007aff', count: bySource.flow || 0 },
+      // Flow → pillar token, matching the swapped .analytics-distraction-bar-flow
+      // CSS sibling (E-polish follow-up). Pomodoro coral + idle grey left as-is.
+      { key: 'flow',     label: 'Flow',     color: 'var(--productivity-accent)', count: bySource.flow || 0 },
       { key: 'pomodoro', label: 'Pomodoro', color: '#ff6b6b', count: bySource.pomodoro || 0 },
       { key: 'idle',     label: 'Idle',     color: '#8e8e93', count: bySource.idle || 0 },
     ];
@@ -515,7 +517,7 @@ function renderOvershootCard(stats) {
       .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="var(--amber)"><title>${p.date}: +${fmtSec(p.totalMs)}</title></circle>`)
       .join('');
     chartBody = `
-      <polygon points="${areaPoly}" fill="rgba(255,159,10,0.18)"/>
+      <polygon points="${areaPoly}" fill="var(--amber-tint)"/>
       <polyline points="${poly}" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linejoin="round"/>
       ${dots}
     `;
