@@ -233,6 +233,34 @@ describe('SynthesisFeed.refresh — happy path', () => {
   });
 });
 
+describe('SynthesisFeed.onUpdate — repaint signal', () => {
+  it('notifies subscribers after a record is written through to cache', async () => {
+    sfClearCache();
+    const fired = [];
+    SynthesisFeed.onUpdate((node) => fired.push(node));
+    sfStubGate({
+      uid: 'user-abc',
+      firestore: sfFirestoreReturning({
+        'users/user-abc/synthesis/home': sfRecord('home', 'Steady week.'),
+      }),
+    });
+    await SynthesisFeed.refresh('home');
+    assert(fired.indexOf('home') !== -1, 'expected onUpdate to fire with the written node');
+  });
+
+  it('does NOT notify when the doc is missing (nothing written through)', async () => {
+    sfClearCache();
+    let count = 0;
+    SynthesisFeed.onUpdate(() => { count += 1; });
+    sfStubGate({
+      uid: 'user-abc',
+      firestore: { getDoc: async () => ({ id: 'missing', data: null }) },
+    });
+    await SynthesisFeed.refresh('home');
+    assertEqual(count, 0);
+  });
+});
+
 describe('SynthesisFeed.refresh — dedup', () => {
   it('returns the same in-flight promise for concurrent same-node calls', async () => {
     sfClearCache();

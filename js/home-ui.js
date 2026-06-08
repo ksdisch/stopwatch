@@ -383,8 +383,29 @@ window.HomeUI = (() => {
     }
   }
 
+  // Subscribe once so Home repaints the moment fresh synthesis records land in
+  // the cache. render() reads the cache synchronously, but SynthesisFeed
+  // .refreshAll() fills it asynchronously after boot / sign-in — without this, a
+  // cold load shows the empty state until the user navigates away and back. Only
+  // repaints when Home is the visible pillar; the navigate-to-Home path
+  // (TempoNav → render()) covers the hidden case. Idempotent.
+  let _subscribed = false;
+  function init() {
+    if (_subscribed) return;
+    _subscribed = true;
+    if (typeof SynthesisFeed !== 'undefined' && typeof SynthesisFeed.onUpdate === 'function') {
+      SynthesisFeed.onUpdate(() => {
+        const sec = document.querySelector('.tempo-pillar[data-pillar-id="home"]');
+        if (sec && sec.dataset.active === 'true') {
+          try { render(); } catch (_) { /* never break the feed's notify loop */ }
+        }
+      });
+    }
+  }
+
   return {
     render,
+    init,
     _internals: {
       titleCase,
       bandColorVar,

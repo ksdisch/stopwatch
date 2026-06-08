@@ -35,6 +35,22 @@ const SynthesisFeed = (() => {
 
   const _inFlight = {};        // dedup concurrent refresh() calls, keyed by encoded nodeId
 
+  // ── Update notification ───────────────────────────────────────────
+  // Subscribers notified after a record is written through to cache, so a UI
+  // that rendered from an empty cache can repaint the moment data lands. This
+  // closes the cold-load "empty flash": render() reads the cache synchronously,
+  // but refreshAll() fills it asynchronously after boot / sign-in. UI-agnostic
+  // — the feed only emits; consumers decide whether to re-render.
+  const _updateListeners = [];
+  function onUpdate(cb) {
+    if (typeof cb === 'function') _updateListeners.push(cb);
+  }
+  function _notifyUpdate(node) {
+    _updateListeners.forEach((cb) => {
+      try { cb(node); } catch (_) { /* a bad listener must not break the feed */ }
+    });
+  }
+
   // ── Node id encoding ──────────────────────────────────────────────
 
   // Firestore document IDs cannot contain '/', so the council encodes the
@@ -136,6 +152,7 @@ const SynthesisFeed = (() => {
           const data = snap.data;
           if (data.node && data.headline) {
             _writeJSON(cacheKey(node), data);
+            _notifyUpdate(node);   // repaint any UI rendered from the empty cache
             return data;
           }
         }
@@ -215,8 +232,9 @@ const SynthesisFeed = (() => {
     refreshAll,
     getRecord,
     getAllPillarRecords,
+    onUpdate,
     PILLAR_NODES,
     // Exposed for tests; not part of the public surface for app code.
-    _internals: { CACHE_PREFIX, PILLAR_NODES, _canFetch, _clearCache, encodeNodeId, cacheKey, refreshAll, getAllPillarRecords },
+    _internals: { CACHE_PREFIX, PILLAR_NODES, _canFetch, _clearCache, encodeNodeId, cacheKey, refreshAll, getAllPillarRecords, onUpdate, _notifyUpdate },
   };
 })();
