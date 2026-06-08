@@ -1,0 +1,39 @@
+{
+  "_comment": "Physicals pillar SCORING config (Phase 2). Separate from balance.json (which holds the cross-pillar importance/target the Balance engine ranks by). This file tunes how the Physicals synthesizer (lib/physicals-synthesizer.mjs) turns recovery_state + Tempo's synced wellness stores into the 4 Area sub-scores and the composite. Kyle's tuning surface — edit values here, no code change. NOTE: sleep.targetHours and weights are council-invented defaults ratified 2026-06-08 (the Tempo app has no sleep-debt formula and never composites these metrics); recovery/ACWR/meds mirror existing app semantics (tempo-coach readinessBand, recovery_state ACWR display, analytics.getMedAdherence).",
+  "windowDays": 14,
+  "weights": {
+    "recovery": 0.40,
+    "sleep": 0.25,
+    "meds": 0.20,
+    "training": 0.15
+  },
+  "recovery": {
+    "signalScores": {
+      "well_recovered": 90,
+      "neutral": 65,
+      "strained": 35
+    }
+  },
+  "training": {
+    "optimalLow": 0.8,
+    "optimalHigh": 1.3,
+    "elevatedHigh": 1.5,
+    "scores": {
+      "optimal": 90,
+      "elevated": 65,
+      "high": 35,
+      "low": 70
+    }
+  },
+  "sleep": {
+    "targetHours": 7.5,
+    "hoursWeight": 0.6,
+    "qualityWeight": 0.4
+  },
+  "meds": {
+    "expected": {
+      "once-daily": 1,
+      "twice-daily": 2
+    }
+  }
+}

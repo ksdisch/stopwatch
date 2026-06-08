@@ -42,6 +42,10 @@ if (typeof SynthesisFeed !== 'undefined') SynthesisFeed.init();
 // records land (refreshAll is async — without this a cold load shows the empty
 // state until the user re-navigates). Init AFTER SynthesisFeed so onUpdate exists.
 if (typeof HomeUI !== 'undefined' && typeof HomeUI.init === 'function') HomeUI.init();
+// Physicals hub (Life-OS Phase 2): same onUpdate-subscription pattern as HomeUI
+// so the hub repaints when the council's `physicals` record lands. Init AFTER
+// SynthesisFeed so onUpdate exists.
+if (typeof PhysicalsUI !== 'undefined' && typeof PhysicalsUI.init === 'function') PhysicalsUI.init();
 
 // C-1: boot-trigger backstop for hydrate-from-cloud.
 //
