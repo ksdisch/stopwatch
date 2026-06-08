@@ -942,6 +942,16 @@
       <div class="recovery-container" data-wellness-sub="recovery" hidden></div>
     </section>
 
+    <!-- ── Physicals pillar (Life-OS Phase 2) ── The dedicated deep-dive for the
+         `physicals` domain pillar. PhysicalsUI.render() (called by
+         TempoNav.applyRoute when active) renders the council's `physicals`
+         synthesis record — composite hero + 4 Area cards + this week's moves —
+         from cache into #physicals-pillar-body. Mirrors the Home hub: the body
+         div is the renderer's sole DOM target. -->
+    <section class="tempo-pillar" data-pillar-id="physicals" data-active="false">
+      <div id="physicals-pillar-body" class="physicals-pillar-body"></div>
+    </section>
+
     <!-- ── Rhythm pillar ── Single placeholder surface, no sub-nav. -->
     <section class="tempo-pillar" data-pillar-id="rhythm" data-active="false">
       <div class="tempo-placeholder">
@@ -1120,6 +1130,13 @@
       </svg>
       <span>Wellness</span>
     </button>
+    <button class="tempo-tab" data-pillar-target="physicals" aria-label="Physicals">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 20 C12 20 4 14.5 4 9 A4 4 0 0 1 12 7 A4 4 0 0 1 20 9 C20 14.5 12 20 12 20 Z"/>
+      </svg>
+      <span>Physicals</span>
+    </button>
     <button class="tempo-tab" data-pillar-target="rhythm" aria-label="Rhythm">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1227,6 +1244,12 @@
        only; no live Firestore on the render path. TempoNav routes #/home (the
        default landing) to HomeUI.render(). -->
   <script src="js/home-ui.js" defer></script>
+  <!-- Life-OS Phase 2: the Physicals hub. Renders the council's `physicals`
+       synthesis record (composite hero + 4 Area cards + this week's moves) from
+       the SynthesisFeed cache. Render-from-cache only; no live Firestore on the
+       render path. TempoNav routes #/physicals to PhysicalsUI.render(). Loaded
+       after home-ui.js (sibling SynthesisFeed consumer). -->
+  <script src="js/physicals-ui.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->

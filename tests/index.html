@@ -77,6 +77,11 @@
        Loaded after synthesis-feed.js (reads SynthesisFeed.PILLAR_NODES at
        module scope). -->
   <script src="../js/home-ui.js"></script>
+  <!-- Physicals hub (Life-OS Phase 2): pure helpers (titleCase / bandForScore /
+       bandLabel / bandColorVar / areaCardModel / areaModelsFrom / heroModel) on
+       PhysicalsUI._internals. render() is a DOM wrapper covered by Playwright,
+       not this suite. Loaded after synthesis-feed.js for parity with runtime. -->
+  <script src="../js/physicals-ui.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -174,6 +179,7 @@
   <script src="recovery-feed.test.js"></script>
   <script src="synthesis-feed.test.js"></script>
   <script src="home-ui.test.js"></script>
+  <script src="physicals-ui.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v124-lifeos-home-autorefresh';
+const CACHE_NAME = 'stopwatch-v125-physicals-pillar';
 const ASSETS = [
   './',
   './index.html',
@@ -67,6 +67,7 @@ const ASSETS = [
   './js/recovery-feed.js',
   './js/synthesis-feed.js',
   './js/home-ui.js',
+  './js/physicals-ui.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
   './js/rhythm-panel-today.js',

@@ -27,6 +27,7 @@ import admin from 'firebase-admin';
 
 import { validateSynthesisRecord } from './lib/synthesis-record.mjs';
 import { buildHomeRecord } from './lib/home-synthesizer.mjs';
+import { buildPhysicalsRecord } from './lib/physicals-synthesizer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,6 +55,70 @@ function resolveMode() {
   return mode === 'daily' ? 'daily' : 'weekly';
 }
 
+/**
+ * synthesizePhysicals({ db, uid, mode }) — Phase 2: the first REAL pillar
+ * producer. Reads the live recovery_state mart (latest + history) plus Tempo's
+ * synced wellness stores (meds / rest_log / history) via the Admin SDK (reads
+ * bypass firestore.rules), rolls them into a normalized physicals synthesis
+ * record (4 Areas + composite + the additive `balance{}` stamp the PWA lenses
+ * read), validates, and WRITES users/{uid}/synthesis/physicals.
+ *
+ * Called BEFORE the pillar-read loop so the home roll-up reads the fresh record.
+ * Replaces the Phase-1 seed (seed-pillars.mjs no longer seeds physicals). The
+ * scoring math is the pure lib/physicals-synthesizer.mjs (testable, no I/O).
+ */
+async function synthesizePhysicals({ db, uid, mode }) {
+  const scoring = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'physicals.json'), 'utf8'),
+  );
+  const balanceConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'balance.json'), 'utf8'),
+  );
+
+  // recovery_state mart: two fixed docs (latest + history) — see
+  // docs/reference/recovery-state-contract.md.
+  const [latestSnap, historySnap] = await Promise.all([
+    db.doc(`users/${uid}/recovery_state/latest`).get(),
+    db.doc(`users/${uid}/recovery_state/history`).get(),
+  ]);
+  const recoveryLatest = latestSnap.exists ? latestSnap.data() : null;
+  const recoveryHistory = historySnap.exists ? historySnap.data() : null;
+
+  // Tempo's synced wellness stores: collections of per-record docs at
+  // users/{uid}/{store}/{docId}. rest_log doc id IS the YYYY-MM-DD date key.
+  const [medsSnap, restSnap, histSnap] = await Promise.all([
+    db.collection(`users/${uid}/meds`).get(),
+    db.collection(`users/${uid}/rest_log`).get(),
+    db.collection(`users/${uid}/history`).get(),
+  ]);
+  const meds = medsSnap.docs.map((d) => d.data());
+  const restLog = restSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const history = histSnap.docs.map((d) => d.data());
+
+  const producer = mode === 'daily' ? 'council/physicals-daily' : 'council/physicals-weekly';
+
+  // buildPhysicalsRecord validates + throws on a contract violation internally.
+  const record = buildPhysicalsRecord({
+    recoveryLatest,
+    recoveryHistory,
+    meds,
+    restLog,
+    history,
+    scoring,
+    balanceConfig: balanceConfig.physicals || {},
+    mode,
+    producer,
+  });
+
+  const physPath = `users/${uid}/synthesis/physicals`;
+  await db.doc(physPath).set(record);
+  console.log(
+    `OK: wrote ${mode} physicals synthesis record to ${physPath} ` +
+      `(band=${record.state.band}, score=${record.state.score}, ` +
+      `coverage=${record.provenance.coverage.toFixed(2)}, areas=${record.areas.length}).`,
+  );
+}
+
 async function main() {
   // TEMPO_UID is required — the Firebase Auth uid whose synthesis subcollection
   // we read from + write to. GOOGLE_APPLICATION_CREDENTIALS is read by
@@ -76,6 +141,11 @@ async function main() {
   const config = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'config', 'balance.json'), 'utf8'),
   );
+
+  // Phase 2: synthesize the REAL physicals pillar from the published mart +
+  // Tempo's synced stores and WRITE it BEFORE the pillar-read loop, so the home
+  // roll-up below reads the fresh record (not the retired seed).
+  await synthesizePhysicals({ db, uid, mode });
 
   // Read the five pillar records (nodeId == node for single-segment pillars).
   // A missing pillar doc is fine — the home rolls up whatever exists; coverage

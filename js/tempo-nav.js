@@ -4,6 +4,7 @@
 //   home       → Life-OS Home hub (bubble map + synthesis cards). DEFAULT landing.
 //   timers     → wraps existing Stopwatch / Timer / Pomodoro / Flow / Interval / Cooking modes
 //   wellness   → placeholder surfaces (Meds / Exercise / Mindful / Cooking / Recovery)
+//   physicals  → Life-OS Physicals hub (composite + 4 Area cards from the council)
 //   rhythm     → placeholder
 //   analytics  → opens the existing Analytics panel
 //
@@ -16,6 +17,7 @@
 //   #/timers/interval   → interval
 //   #/timers/cook       → cooking
 //   #/wellness[/:sub]   → wellness pillar, optional sub-nav
+//   #/physicals         → Physicals hub
 //   #/rhythm            → rhythm pillar
 //   #/analytics         → analytics pillar
 //
@@ -58,7 +60,7 @@ const TempoNav = (() => {
     cooking:   '#/timers/cook',
   };
 
-  let activePillar = 'home';  // 'home' | 'timers' | 'wellness' | 'rhythm' | 'analytics'
+  let activePillar = 'home';  // 'home' | 'timers' | 'wellness' | 'physicals' | 'rhythm' | 'analytics'
   let initialised  = false;
 
   function init() {
@@ -125,7 +127,7 @@ const TempoNav = (() => {
   // ── Applying a route ─────────────────────────────────────────────────
 
   function applyRoute({ pillar, sub }, { updateHash = true } = {}) {
-    if (!['home', 'timers', 'wellness', 'rhythm', 'analytics'].includes(pillar)) {
+    if (!['home', 'timers', 'wellness', 'physicals', 'rhythm', 'analytics'].includes(pillar)) {
       pillar = 'home';
     }
     activePillar = pillar;
@@ -189,6 +191,14 @@ const TempoNav = (() => {
       syncSubnavActive('rhythm', rsub);
       if (typeof RhythmUI !== 'undefined' && typeof RhythmUI.render === 'function') {
         RhythmUI.render(rsub);
+      }
+    } else if (pillar === 'physicals') {
+      // Physicals hub (Life-OS Phase 2): the composite hero + 4 Area cards from
+      // the council's `physicals` synthesis record, render-from-cache. No
+      // sub-nav. Guarded so a page without physicals-ui.js (e.g. a test harness)
+      // doesn't throw.
+      if (typeof PhysicalsUI !== 'undefined' && typeof PhysicalsUI.render === 'function') {
+        PhysicalsUI.render();
       }
     } else if (pillar === 'analytics') {
       // Placeholder shows an "Open dashboard" CTA that opens the existing

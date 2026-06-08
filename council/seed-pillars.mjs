@@ -1,12 +1,17 @@
-// PHASE 1 SEED — writes 5 CLEARLY-SEED pillar synthesis records so the home
+// PHASE 1 SEED — writes CLEARLY-SEED pillar synthesis records so the home
 // synthesizer (synthesize.mjs) and the PWA bubble map have non-trivial data to
 // roll up before the real Area/Hub synthesizers exist.
 //
 // Mirrors synthesize.mjs's boot: require TEMPO_UID, applicationDefault()
 // credential (GOOGLE_APPLICATION_CREDENTIALS → the service-account key), Admin
 // SDK writes bypass firestore.rules. Writes to users/{uid}/synthesis/{pillarId}
-// for the five domain-pillars (life_building / physicals / chickens /
-// relationships / growth — see docs/lifeos/pillars.md).
+// for the still-mock domain-pillars (life_building / chickens / relationships /
+// growth — see docs/lifeos/pillars.md).
+//
+// PHASE 2: `physicals` is NO LONGER seeded here — it has a real producer
+// (synthesize.mjs → lib/physicals-synthesizer.mjs reading the recovery_state
+// mart + Tempo's synced stores). The remaining four are seeded until their own
+// phases land real synthesizers.
 //
 // Each record is a VALID synthesis record (validated before write) and is
 // clearly synthetic: producer "council/seed", provenance.sources ["seed"]. On
@@ -42,13 +47,6 @@ const balanceConfig = JSON.parse(
 // The five seed pillar records. score → band derived; each carries its own
 // short headline + 1..3 signals + a single short move (own nudge).
 const SEED_PILLARS = [
-  {
-    node: 'physicals',
-    score: 45,
-    headline: 'SEED — Physicals strained: training outpaced recovery.',
-    signals: ['Recovery low 3 of 7 days', 'ACWR creeping high', 'Sleep debt building'],
-    nudges: [{ text: 'Swap one hard session for an easy aerobic day', priority: 1 }],
-  },
   {
     node: 'chickens',
     score: 68,

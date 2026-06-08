@@ -2144,3 +2144,28 @@ Engine suite green at **895 / 895** (two new files: `tests/tempo-coach.test.js` 
 feat(rhythm): Tempo Coach daily loop — Today panel + readiness Flow default + opt-in nudge
 (branch feat/tempo-coach-daily-loop; HIGH blast radius — committed, push/PR-open await user approval)
 ```
+
+---
+
+## 2026-06-08 — Life-OS Phase 2: Physicals — first real federated pillar (`feat/lifeos-phase-2-physicals`)
+
+### What We Built
+
+Replaced the mock `physicals` seed (score 45) with a **real, end-to-end federated pillar** — the Phase-2 gate: *"Physicals contributes a real normalized score into Balance + the bubble map, sourced from the published mart, not mock data."* **Council (Tier-2):** a new pure synthesizer `council/lib/physicals-synthesizer.mjs` (zero I/O, `node --test`) + tunable `council/config/physicals.json` turns four Areas into one 0–100 score — **Recovery** from `recovery_state.recovery_signal` (reuses `tempo-coach readinessBand` semantics: well 90 / neutral 65 / strained 35 / insufficient_data→null), **Training** from the mart's ACWR banded around the 0.8–1.3 optimal, **Sleep** from a per-night blend of hours-vs-7.5h-target (council-invented; the app has no sleep-debt formula) + the app-graded quality/5, **Meds** mirroring `analytics.getMedAdherence` (per-day-capped `min(1,taken/expected)`, excludes as-needed). The **composite reuses `balance.mjs balanceScore`** (importance-weighted mean; null Areas drop out, weights renormalize) and stamps the additive `balance:{importance,neglect,priority}` the PWA bubble-map lenses read. The I/O shell `synthesize.mjs` gained `synthesizePhysicals()` — Admin-SDK reads of `recovery_state` (latest+history) **plus** Tempo's synced `meds`/`rest_log`/`history` stores (uniform `users/{uid}/{store}/{docId}` path) — invoked **before** the home roll-up so the same daily/weekly launchd jobs refresh physicals and roll it into `home` in one pass (**no launchd re-point**); `seed-pillars.mjs` no longer seeds physicals. Every headline/signal/nudge is **descriptive-first** (observational, never an imperative medical/training instruction — the design choice that keeps a health pillar autonomously shippable). **PWA (Tier-1):** a dedicated **Physicals hub** `js/physicals-ui.js` (6th nav tab `#/physicals`) — render-from-cache only (mirrors `home-ui.js`: never throws, empty-state default, `escapeHtml` everything, `onUpdate` repaint), reading the record's additive `areas[]` (4 cards) + nudges. Areas-in-one-record = **zero `synthesis-feed.js` change** (physicals already in `refreshAll`). Full 6th-pillar wiring (section + tab + route + 4-file lockstep), CSS reusing `.home-card`/`.home-band-chip`/`--home-band-*` tokens. **Docs/deferred:** authored `docs/contracts/pillar-feed.md` (the generalized inbound-mart contract — resolves the 2 dangling links + 3 prose mentions); confirmed the `firestore.rules` synthesis carve-out (committed in #139) passes `npm run test:rules` (the live deploy remains a gated prod action). `sw.js` cache bumped `v124-lifeos-home-autorefresh` → `v125-physicals-pillar`.
+
+### Verification result
+
+Council suite green at **67 / 67** (`node --test` — `physicals-synthesizer.test.mjs`: each Area formula incl. ACWR band edges + per-day adherence cap + sleep blend + null handling, composite null-drop, balance stamp, all-null→null/unknown, weekly-vs-daily nudges, contract validity). Browser engine suite green at **PASS (1009)** / 0 failures (`physicals-ui.test.js`: the pure `_internals` helpers). Playwright: the hub renders off a seeded record (composite hero + 4 band-colored Area cards + move) at desktop **and** 320px mobile (6 tabs, no wrap), the Home bubble map reflects the physicals balance, 0 app console errors. `firestore.rules` emulator unit tests green. Pre-commit guards (load-order / asset-integrity / sw-bump) pass. A 6-lens adversarial review (council math, cross-runtime contract, reuse, wiring, UI discipline, copy-safety) returned **no blockers/majors** — cross-runtime + copy-safety CLEAN; 2 council minors fixed (ACWR history-fallback now picks max-`.day` not array-position; `coverage`/`confidence` now computed over the same present-AND-weighted set the composite uses, so a mis-set weight can't yield a "high-confidence, no-data" card).
+
+### Suggested Next Steps
+
+- **Gated prod actions, each awaiting a separate explicit OK:** (1) **push + open the PR** (committed on `feat/lifeos-phase-2-physicals`); (2) **one-time council run** to write the real `physicals` record (`set -a && . ./.env.secrets && set +a && node synthesize.mjs` from `council/`); (3) **`firebase deploy --only firestore:rules --project tempo-sync-6f7b2`** (the dormant-in-git synthesis carve-out); (4) **merge to main**.
+- Phase-2 gate confirmation on Kyle's phone: after the council run, open `#/physicals` + Home, confirm the real score (not seed 45) lands.
+- Tune `council/config/physicals.json` (the 7.5h sleep target + 4-Area weights are ratified-but-tunable) once real data is observed.
+
+### Commits
+
+```
+feat(lifeos): Phase 2 — Physicals, first real federated pillar (synthesizer + hub)
+(branch feat/lifeos-phase-2-physicals — committed; push/PR-open + prod council run + rules deploy + merge await separate user approval)
+```

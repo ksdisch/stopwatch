@@ -6463,3 +6463,85 @@ rect.rhythm-day-hi {
   font-size: var(--fs-base);
   color: var(--text-secondary);
 }
+
+/* ── Life-OS Physicals hub (Phase 2) ─────────────────────────────────────
+   The dedicated Physicals pillar: a composite hero + four Area cards
+   (Recovery / Sleep / Meds / Training load) + this week's moves. Reuses the
+   Home hub's .home-card chrome, .home-band-chip primitive, --home-band-*
+   tokens and .home-moves* list — only the layout + text classes are new. */
+.physicals-pillar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Hero (the composite Physicals read) ── */
+.physicals-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.physicals-hero-kicker {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.physicals-hero-headline {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* ── Area cards ── */
+.physicals-areas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.physicals-area-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.physicals-area-card-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.physicals-area-card-signal {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Empty state (the DEFAULT path) ── */
+.physicals-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+.physicals-empty-mark {
+  font-size: 2rem;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.physicals-empty-title {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.physicals-empty-body {
+  margin-top: var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+}
