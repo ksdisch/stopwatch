@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v123-lifeos-phase1-home';
+const CACHE_NAME = 'stopwatch-v124-lifeos-home-autorefresh';
 const ASSETS = [
   './',
   './index.html',

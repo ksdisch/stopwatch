@@ -38,6 +38,10 @@ if (typeof RecoveryFeed !== 'undefined') RecoveryFeed.init();
 // Home hub's cache. Previously kicked off by the Phase-0 #synthesis-debug
 // inline script, removed in Phase 1.
 if (typeof SynthesisFeed !== 'undefined') SynthesisFeed.init();
+// Home hub: subscribe to SynthesisFeed updates so it repaints the moment the
+// records land (refreshAll is async — without this a cold load shows the empty
+// state until the user re-navigates). Init AFTER SynthesisFeed so onUpdate exists.
+if (typeof HomeUI !== 'undefined' && typeof HomeUI.init === 'function') HomeUI.init();
 
 // C-1: boot-trigger backstop for hydrate-from-cloud.
 //
