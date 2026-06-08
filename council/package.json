@@ -1,0 +1,12 @@
+{
+  "name": "life-os-council",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "scripts": {
+    "synthesize": "node synthesize.mjs",
+    "test": "node --test"
+  }
+}

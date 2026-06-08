@@ -66,6 +66,11 @@
        — no DOM deps. Loaded BEFORE rhythm-engine.js for consistency with
        the runtime load order. -->
   <script src="../js/recovery-feed.js"></script>
+  <!-- Synthesis feed: read-only consumer of the council's per-node synthesis
+       records (users/{uid}/synthesis/{nodeId}). Stubs
+       SyncFlag/SyncAuth/SyncFirestore per-case — no DOM deps. Mirrors
+       recovery-feed.js; loaded next to it for parity with runtime order. -->
+  <script src="../js/synthesis-feed.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -161,6 +166,7 @@
   <script src="tempo-coach.test.js"></script>
   <script src="rhythm-panel-today.test.js"></script>
   <script src="recovery-feed.test.js"></script>
+  <script src="synthesis-feed.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

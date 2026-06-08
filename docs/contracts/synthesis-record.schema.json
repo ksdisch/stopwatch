@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ksdisch.github.io/stopwatch/docs/contracts/synthesis-record.schema.json",
+  "title": "Synthesis record",
+  "description": "Language-neutral SSOT for the frozen synthesis-record contract (contractVersion 1). One small structured record emitted per synthesizer node (Area, Hub, or Home) and published by a council job to Firestore at users/{uid}/synthesis/{nodeId}, where nodeId is the dotted node path with '/' replaced by '__'. Parents read their children's RECORDS, never the children's raw data. Additive-only evolution: consumers read a fixed subset and ignore unknown fields, so new properties are safe; a rename/removal is the one gated, breaking act.",
+  "type": "object",
+  "required": [
+    "contractVersion",
+    "node",
+    "producer",
+    "producedAt",
+    "window",
+    "state",
+    "headline",
+    "signals",
+    "provenance",
+    "confidence"
+  ],
+  "properties": {
+    "contractVersion": {
+      "description": "Integer; bumped ONLY on a breaking shape change. Currently 1.",
+      "type": "integer",
+      "const": 1
+    },
+    "node": {
+      "description": "Dotted tree path in the Pillar > Hub > Area tree (e.g. 'physicals/sleep'), or 'home' for the root Balance node.",
+      "type": "string",
+      "minLength": 1
+    },
+    "producer": {
+      "description": "Which council job/agent emitted this record (e.g. 'council/nightly-light').",
+      "type": "string",
+      "minLength": 1
+    },
+    "producedAt": {
+      "description": "ISO-8601 UTC timestamp the council stamped when it produced this record.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "window": {
+      "description": "The window this record summarizes: either '<ISOdate>..<ISOdate>' (a range) or a single ISO date.",
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "description": "The node's normalized read: a band bucket plus an integer 0..100 score (or null when there is no data).",
+      "type": "object",
+      "required": ["band", "score"],
+      "properties": {
+        "band": {
+          "description": "Buckets the score: thriving 80-100, steady 60-79, strained 40-59, depleted 0-39, 'unknown' when score is null / no data.",
+          "type": "string",
+          "enum": ["thriving", "steady", "strained", "depleted", "unknown"]
+        },
+        "score": {
+          "description": "Normalized 0..100 health/attention read, computed relative to the node's own target/baseline. null when there is no data (band must then be 'unknown').",
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": true
+    },
+    "headline": {
+      "description": "One-line human summary of the window, <= 140 chars.",
+      "type": "string",
+      "maxLength": 140
+    },
+    "signals": {
+      "description": "Top-N evidence strings; the 'discard non-useful info' lever. MAX 5 items.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 5
+    },
+    "nudges": {
+      "description": "Prospective suggested moves. Optional; defaults to []. Each item has text plus an integer priority (1 = highest).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "priority"],
+        "properties": {
+          "text": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": true
+      },
+      "default": []
+    },
+    "provenance": {
+      "description": "What this record was derived from: the contributing sources and how complete the input data was.",
+      "type": "object",
+      "required": ["sources", "coverage"],
+      "properties": {
+        "sources": {
+          "description": "Identifiers of the inputs this record drew on (child node paths and/or feed names, e.g. 'recovery_state', 'rest_log').",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "coverage": {
+          "description": "Fraction 0..1 of expected input data that was actually present; lets a parent down-weight a thin-data child.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "confidence": {
+      "description": "Guards against over-claiming on thin data.",
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    }
+  },
+  "additionalProperties": true
+}

@@ -19,3 +19,8 @@ ios/App/Podfile.lock
 service-account.json
 *-firebase-adminsdk-*.json
 .firebaserc
+
+# Life-OS council (Tier-2 local runtime) — deps, secrets, logs (NEVER commit)
+council/node_modules/
+council/.env.secrets
+council/logs/

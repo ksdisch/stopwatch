@@ -23,13 +23,30 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Synthesis feed: the council jobs write here with a Firebase Admin
+    // service-account credential (which bypasses these rules), and the signed-in
+    // Tempo client only ever READS the synthesized node summaries. Same shape and
+    // same cumulative-evaluation caveat as recovery_state above — the `if false`
+    // here does NOT subtract the catch-all's broader grant on its own; the
+    // `collection != 'synthesis'` exclusion below is what actually makes the feed
+    // read-only (a rules-unit test pins this in
+    // tests/rules/firestore-rules.test.mjs).
+    match /users/{userId}/synthesis/{docId} {
+      allow read: if isOwner(userId);
+      allow write: if false;   // councils write via Firebase Admin SDK (bypasses these rules)
+    }
+
     // Everything else under a user's tree — meds, history, rest_log, presets,
     // bfrb_events, distractions, all written as `users/{uid}/{store}/{id}` — is
     // full read/write for the owner, and read-isolated from other users. The
-    // `collection != 'recovery_state'` exclusion keeps the feed above read-only.
+    // `collection != 'recovery_state'` / `collection != 'synthesis'` exclusions
+    // keep the two read-only feeds above read-only: Firestore evaluates rules
+    // cumulatively, so this recursive `{docId=**}` would otherwise re-grant the
+    // very writes those blocks deny, and a more-specific `if false` cannot
+    // subtract a broader grant (order is irrelevant).
     match /users/{userId}/{collection}/{docId=**} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId) && collection != 'recovery_state';
+      allow write: if isOwner(userId) && collection != 'recovery_state' && collection != 'synthesis';
     }
   }
 }
