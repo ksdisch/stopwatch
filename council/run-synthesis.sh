@@ -9,9 +9,13 @@
 # is deploy/com.ksdisch.life-os.synthesis.plist — see
 # docs/runbooks/council-launchd.md.
 #
-# Phase 0 runs synthesize.mjs, which writes a DUMMY 'home' synthesis record to
-# users/{TEMPO_UID}/synthesis/home via the Admin SDK. Phase 1 swaps the dummy
-# body for the real Home Synthesizer; this wrapper is unchanged by that.
+# Phase 1 runs synthesize.mjs, which READS the five pillar synthesis records and
+# rolls them up into the 'home' Balance record via the Admin SDK. The run mode is
+# controlled by SYNTH_MODE (daily = passive nightly glance, no nudges; weekly =
+# Sunday-evening recap with 1-3 cross-pillar moves). SYNTH_MODE defaults to
+# "weekly" inside synthesize.mjs when unset. Each launchd plist sets SYNTH_MODE in
+# its EnvironmentVariables (the daily glance plist and the weekly recap plist);
+# this wrapper forwards whatever the scheduler / shell exports.
 
 set -uo pipefail
 
@@ -100,7 +104,11 @@ if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" || ! -f "${GOOGLE_APPLICATION_CRE
 fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────
-if node "${REPO}/council/synthesize.mjs" >>"${LOG_FILE}" 2>&1; then
+# Forward SYNTH_MODE to the node entry (launchd sets it per-plist in
+# EnvironmentVariables; an interactive shell can `SYNTH_MODE=daily ./run-synthesis.sh`).
+# Unset → synthesize.mjs defaults to "weekly". Exported so node inherits it.
+export SYNTH_MODE="${SYNTH_MODE:-}"
+if SYNTH_MODE="${SYNTH_MODE}" node "${REPO}/council/synthesize.mjs" >>"${LOG_FILE}" 2>&1; then
   echo "✔ council run succeeded — see ${LOG_FILE}" >&2
   exit 0
 else

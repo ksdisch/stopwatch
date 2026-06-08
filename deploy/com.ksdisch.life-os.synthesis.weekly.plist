@@ -3,30 +3,32 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ksdisch.life-os.synthesis</string>
+    <string>com.ksdisch.life-os.synthesis.weekly</string>
 
-    <!-- DAILY GLANCE. Fire the nightly passive council run at 06:00 local time.
-         launchd StartCalendarInterval fires at the system's local wall-clock
-         time and re-evaluates across DST, so this stays 06:00 *local* in both
-         EST and EDT. If the Mac is asleep at 06:00, launchd runs the job at next
-         wake. 06:00 means the 'home' synthesis record is fresh in Firestore
-         before the morning open. The weekly recap is a separate plist
-         (com.ksdisch.life-os.synthesis.weekly). -->
+    <!-- WEEKLY RECAP. Fire the council synthesis run at 18:00 local on Sunday
+         (Weekday 0). launchd StartCalendarInterval fires at the system's local
+         wall-clock time and re-evaluates across DST, so this stays 18:00 *local*
+         year-round. If the Mac is asleep at the trigger, launchd runs the job at
+         next wake. Sunday evening means the weekly Balance recap (with 1-3
+         cross-pillar moves) is fresh in Firestore for the week ahead. The daily
+         glance is the separate com.ksdisch.life-os.synthesis plist. -->
     <key>StartCalendarInterval</key>
     <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
         <key>Hour</key>
-        <integer>6</integer>
+        <integer>18</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
 
-    <!-- SYNTH_MODE=daily → synthesize.mjs runs the passive nightly glance (no
-         nudges). Without this, synthesize.mjs defaults to "weekly"; this plist
-         pins it to the daily glance explicitly. -->
+    <!-- SYNTH_MODE=weekly → synthesize.mjs runs the recap and emits the top
+         1-3 cross-pillar nudges. (This is also synthesize.mjs's default, but the
+         plist pins it explicitly so the job's intent is unambiguous.) -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>SYNTH_MODE</key>
-        <string>daily</string>
+        <string>weekly</string>
     </dict>
 
     <key>ProgramArguments</key>
@@ -47,10 +49,11 @@
          "COUNCIL FAILED" lines run-synthesis.sh echoes to >&2). The council's
          own per-run output still goes to council/logs/nightly/<UTC-date>.log.
          Run `mkdir -p council/logs/launchd` before loading - launchd will NOT
-         create these directories and the job fails to launch without them. -->
+         create these directories and the job fails to launch without them.
+         (Shared with the daily plist; both write here.) -->
     <key>StandardOutPath</key>
-    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/out.log</string>
+    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/weekly-out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/err.log</string>
+    <string>/Users/kyledisch/Projects/stopwatch/council/logs/launchd/weekly-err.log</string>
 </dict>
 </plist>
