@@ -1,13 +1,15 @@
 // Tempo navigation — pillar tabs + sub-nav + hash routing.
 //
 // Pillars:
+//   home       → Life-OS Home hub (bubble map + synthesis cards). DEFAULT landing.
 //   timers     → wraps existing Stopwatch / Timer / Pomodoro / Flow / Interval / Cooking modes
 //   wellness   → placeholder surfaces (Meds / Exercise / Mindful / Cooking / Recovery)
 //   rhythm     → placeholder
 //   analytics  → opens the existing Analytics panel
 //
 // Hash routing (per docs/TEMPO-PLAN §10):
-//   #/timers            → stopwatch (default)
+//   #/home              → Home hub (default landing — no hash → here)
+//   #/timers            → stopwatch
 //   #/timers/countdown  → timer
 //   #/timers/pomodoro   → pomodoro
 //   #/timers/flow       → flow
@@ -56,7 +58,7 @@ const TempoNav = (() => {
     cooking:   '#/timers/cook',
   };
 
-  let activePillar = 'timers';  // 'timers' | 'wellness' | 'rhythm' | 'analytics'
+  let activePillar = 'home';  // 'home' | 'timers' | 'wellness' | 'rhythm' | 'analytics'
   let initialised  = false;
 
   function init() {
@@ -71,13 +73,13 @@ const TempoNav = (() => {
     wireWellnessPlaceholderCTA();
     wireAnalyticsPillarOpener();
 
-    // Resolve initial route from URL hash. If none, honour the persisted
-    // app_mode that app.js already restored — otherwise a fresh load with
-    // no hash would reset the user from (say) pomodoro back to stopwatch.
+    // Resolve initial route from URL hash. With no hash, land on the Home hub
+    // (the Life-OS default landing). A hash always wins, so a deep-link or a
+    // bookmarked Timers mode still routes there.
     const hash = window.location.hash;
     const route = hash
       ? parseHash(hash)
-      : { pillar: 'timers', sub: MODE_TO_SUB[currentAppMode()] ?? '' };
+      : { pillar: 'home', sub: '' };
     applyRoute(route);
 
     window.addEventListener('hashchange', () => {
@@ -123,8 +125,8 @@ const TempoNav = (() => {
   // ── Applying a route ─────────────────────────────────────────────────
 
   function applyRoute({ pillar, sub }, { updateHash = true } = {}) {
-    if (!['timers', 'wellness', 'rhythm', 'analytics'].includes(pillar)) {
-      pillar = 'timers';
+    if (!['home', 'timers', 'wellness', 'rhythm', 'analytics'].includes(pillar)) {
+      pillar = 'home';
     }
     activePillar = pillar;
 
@@ -143,7 +145,7 @@ const TempoNav = (() => {
     if (appEl) appEl.dataset.pillar = tokenPillar;
 
     // 3) Sub-nav — show only the buttons for this pillar. Pillars with
-    //    no sub-nav (rhythm, analytics) hide the whole strip.
+    //    no sub-nav (home, rhythm, analytics) hide the whole strip.
     const subnav = document.querySelector('.tempo-subnav');
     if (subnav) {
       subnav.dataset.pillar = pillar;
@@ -159,7 +161,14 @@ const TempoNav = (() => {
     });
 
     // 5) Pillar-specific behaviour.
-    if (pillar === 'timers') {
+    if (pillar === 'home') {
+      // Home hub: render the bubble map + synthesis cards from cache. No
+      // sub-nav. Guarded so a page without home-ui.js (e.g. a test harness)
+      // doesn't throw.
+      if (typeof HomeUI !== 'undefined' && typeof HomeUI.render === 'function') {
+        HomeUI.render();
+      }
+    } else if (pillar === 'timers') {
       const desc = TIMERS_MODES[sub] || TIMERS_MODES['stopwatch'];
       // Delegate to the existing mode-switch flow so render loops, DOM
       // hide/show, etc. all run.
@@ -221,6 +230,7 @@ const TempoNav = (() => {
         const route = (target === 'timers')
           ? resumeTimersRoute()
           : { pillar: target, sub: (target === 'wellness') ? 'meds' : '' };
+        // home / rhythm / analytics → sub '' (handled by the ternary above).
         applyRoute(route);
       });
     });

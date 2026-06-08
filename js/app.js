@@ -32,6 +32,12 @@ SyncAuth.init();
 // personal-health-elt. Init AFTER SyncAuth so it can hook the auth-change
 // event SyncAuth emits via the SyncEngine bus.
 if (typeof RecoveryFeed !== 'undefined') RecoveryFeed.init();
+// Synthesis feed (Life-OS): read-only consumer of the council's per-node
+// synthesis records. Init AFTER SyncAuth (same auth-change hook as the
+// recovery feed) so sign-in / boot triggers a refreshAll() that fills the
+// Home hub's cache. Previously kicked off by the Phase-0 #synthesis-debug
+// inline script, removed in Phase 1.
+if (typeof SynthesisFeed !== 'undefined') SynthesisFeed.init();
 
 // C-1: boot-trigger backstop for hydrate-from-cloud.
 //

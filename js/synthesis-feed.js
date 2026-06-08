@@ -27,6 +27,12 @@ const SynthesisFeed = (() => {
   // by the ENCODED nodeId so the cache key matches the Firestore doc id 1:1.
   const CACHE_PREFIX = 'tempo_synthesis_';
 
+  // The five Life-OS domain-pillars the Home hub rolls up (the Balance
+  // currency). The 'home' record is the cross-pillar Balance node; these are
+  // its children. Kept as dotted node paths (encodeNodeId handles the
+  // Firestore doc-id encoding). See docs/lifeos/phase-1-plan.md.
+  const PILLAR_NODES = ['life_building', 'physicals', 'chickens', 'relationships', 'growth'];
+
   const _inFlight = {};        // dedup concurrent refresh() calls, keyed by encoded nodeId
 
   // ── Node id encoding ──────────────────────────────────────────────
@@ -134,12 +140,42 @@ const SynthesisFeed = (() => {
           }
         }
         return null;
+      } catch (_) {
+        // Transport error (network / permission-denied) — degrade silently to
+        // null, matching this feed's silent-degrade contract and the documented
+        // surface ("returns null when the gate is closed or the doc is absent").
+        // A previously-cached record keeps serving via getRecord.
+        return null;
       } finally {
         delete _inFlight[encoded];
       }
     })();
 
     return _inFlight[encoded];
+  }
+
+  // Refresh the 'home' record plus every domain-pillar record the Home hub
+  // needs, concurrently. Each node fetch is independent (reuses the per-node
+  // refresh + its in-flight dedup) so a missing child doc never voids the
+  // rest — a quiet pillar just stays uncached/null while the others land.
+  // Resolves once all settle; never rejects (per-node errors are swallowed
+  // into a null result, same posture as refresh()).
+  async function refreshAll() {
+    const nodes = ['home'].concat(PILLAR_NODES);
+    const results = await Promise.all(
+      nodes.map((node) => refresh(node).catch(() => null))
+    );
+    return results;
+  }
+
+  // Synchronous read of every domain-pillar's cached record. Returns a plain
+  // object keyed by the dotted pillar node, each value the cached record or
+  // null (never fetched / signed out / never produced). The renderer hides a
+  // pillar card on null. Never throws.
+  function getAllPillarRecords() {
+    const out = {};
+    PILLAR_NODES.forEach((node) => { out[node] = getRecord(node); });
+    return out;
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────
@@ -157,7 +193,9 @@ const SynthesisFeed = (() => {
       try {
         SyncEngine.on('auth-change', (user) => {
           if (user && user.uid) {
-            refresh('home').catch(() => { /* swallow — briefing just doesn't update */ });
+            // Sign-in pulls the home record AND each domain-pillar record so
+            // the Home bubble map has its full set without a render-path fetch.
+            refreshAll().catch(() => { /* swallow — briefing just doesn't update */ });
           } else {
             _clearCache();
           }
@@ -167,15 +205,18 @@ const SynthesisFeed = (() => {
 
     // Best-effort initial fetch if the user is already signed in at boot.
     if (_canFetch()) {
-      refresh('home').catch(() => { /* swallow */ });
+      refreshAll().catch(() => { /* swallow */ });
     }
   }
 
   return {
     init,
     refresh,
+    refreshAll,
     getRecord,
+    getAllPillarRecords,
+    PILLAR_NODES,
     // Exposed for tests; not part of the public surface for app code.
-    _internals: { CACHE_PREFIX, _canFetch, _clearCache, encodeNodeId, cacheKey },
+    _internals: { CACHE_PREFIX, PILLAR_NODES, _canFetch, _clearCache, encodeNodeId, cacheKey, refreshAll, getAllPillarRecords },
   };
 })();

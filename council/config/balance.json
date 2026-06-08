@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-pillar Balance weights for the home synthesizer (ADR-0004: Priority = Importance × Neglect). 'importance' is user-set (1..5, slow-moving, encodes Kyle's values). 'target' is the 0..100 score each pillar's Neglect is measured against. NOTE: the targets here are Phase-1 PLACEHOLDERS (open-Q10) — the real per-pillar targets are authored in Phase 2+ via the approve-on-change loop (pillars.md 'Targets are per-Area and user-set initially').",
+  "life_building": { "importance": 4, "target": 70 },
+  "physicals": { "importance": 5, "target": 75 },
+  "chickens": { "importance": 5, "target": 75 },
+  "relationships": { "importance": 4, "target": 70 },
+  "growth": { "importance": 3, "target": 70 }
+}
