@@ -105,7 +105,10 @@ every record-derived string; no write path; no live Firestore on the render path
 > **Cross-runtime decision:** the bubble lenses need `importance`/`neglect`/`priority` per pillar. To avoid
 > duplicating the Balance engine on the client, the **council stamps an additive `balance` object** onto each pillar
 > record (`{ importance, neglect, priority }`) — additive-only, contract-safe. The client reads it; if absent
-> (older record), the bubble falls back to sizing by `score`.
+> (older record), the bubble falls back to sizing by `score`. **Phase-2 obligation:** the recurring `synthesize.mjs`
+> job only writes `home` and never re-stamps pillars, so any real Phase-2 Area/Hub pillar synthesizer that replaces
+> the seed **MUST** stamp `balance` (via `council/lib/balance.mjs`) or the device's Importance/Neglect lenses silently
+> degenerate to uniform bubbles (the Needs-attention/Priority lens still works off the `score`-shortfall fallback).
 
 ---
 

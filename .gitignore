@@ -24,3 +24,7 @@ service-account.json
 council/node_modules/
 council/.env.secrets
 council/logs/
+
+# Local browser-verification scratch (Playwright MCP output, ad-hoc screenshots)
+.playwright-mcp/
+/home-hub-needs-attention.png
