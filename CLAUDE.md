@@ -318,3 +318,7 @@ so it will **not** work in a cloud/web session.
 
 **Hooks** (`.claude/settings.json`, committed — repo-specific):
 - `pre-commit-guard` (`PreToolUse` on `Bash`, script `scripts/hooks/pre-commit-guard.mjs`) — before any `git commit`, runs `scripts/check-sw-bump.mjs` + `scripts/check-asset-integrity.mjs` + `scripts/check-load-order.mjs` and **blocks** the commit if a cached web file changed without a `CACHE_NAME` bump, if `sw.js` ASSETS and the `index.html` `<script>` set disagree, or if the `CLAUDE.md` "Script Load Order" chain drifts from the `index.html` `<script>` order.
+
+**MCP servers** (`.mcp.json`, committed — project-scoped so cloud/web sessions + collaborators inherit them; Claude Code prompts to approve project MCP servers on first use):
+- `playwright` (`npx @playwright/mcp@latest`) — a deterministic browser for any session: run the engine suite (`tests/index.html`), screenshot/drive the app for `/screenshot-iterate` + `match-the-mock`, and sidestep the stale-SW-cache trap. Makes the 💻 browser-dependent commands work in cloud/web too.
+- `firebase` (`npx firebase-tools@latest experimental:mcp --only firestore,auth`) — Firestore/Auth tooling that auto-detects `firebase.json`; turns manual Firebase-console sync debugging (`docs/playbooks/sync-divergence.md`) into in-session queries. Reuses the `firebase-tools` already wired for `npm run test:rules`.
