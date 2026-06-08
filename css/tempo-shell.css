@@ -53,6 +53,34 @@
   );
 }
 
+/* ---------- Shared base layer (E-polish follow-up, finding E25) ---------- */
+/* The app had 44 bespoke `*-card` selectors and 17 `*-empty` ones, each
+   re-declaring the same surface chrome. These two base classes capture the
+   DOMINANT convention so card/empty families can `extend` (carry the base
+   class in markup + keep only family-specific props) rather than redefine.
+   CSS-first + opt-in incrementally — adopting families: .med-card,
+   .mindful-pattern-card, .exercise-recent-empty, .wcook-recent-empty.
+   The rest opt in over time; the base values match their current chrome so
+   adoption is a zero-visual-change edit. */
+.tempo-card {
+  padding: 16px;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+}
+.tempo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: var(--text-secondary);
+  border: 1px dashed var(--separator);
+  border-radius: 14px;
+}
+
 /* ---------- Top bar ------------------------------------------------------ */
 .tempo-topbar {
   display: flex;
@@ -640,13 +668,10 @@
 }
 
 .med-card {
+  /* surface chrome (padding/bg/border/radius) from .tempo-card base */
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px;
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .med-card-flash {
@@ -1005,10 +1030,13 @@
 }
 .exercise-section-title {
   font-size: 0.78rem;
-  font-weight: 600;
+  /* E-polish follow-up: crisp dashboard heading (matches .analytics-card-header)
+     — was text-secondary @ implicit full opacity, barely legible. */
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text);
+  opacity: 0.82;
   margin: 0 2px;
 }
 
@@ -1080,18 +1108,7 @@
   font-size: 0.85rem;
   padding: 8px 2px;
 }
-.exercise-recent-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 6px;
-  padding: 24px 16px;
-  color: var(--text-secondary);
-  border: 1px dashed var(--separator);
-  border-radius: 14px;
-}
+/* .exercise-recent-empty — boxed empty-state chrome from .tempo-empty base. */
 .exercise-recent-empty p { margin: 0; font-size: 0.88rem; line-height: 1.4; }
 .exercise-recent-empty-mark { font-size: 1.4rem; }
 
@@ -1167,10 +1184,12 @@
 }
 .mindful-section-title {
   font-size: 0.78rem;
-  font-weight: 600;
+  /* E-polish follow-up: crisp dashboard heading (see .exercise-section-title). */
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text);
+  opacity: 0.82;
   margin: 0 2px;
 }
 
@@ -1183,14 +1202,11 @@
 .mindful-patterns[hidden] { display: none; }
 
 .mindful-pattern-card {
+  /* surface chrome (padding/bg/border/radius) from .tempo-card base */
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 16px;
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 14px;
   font-family: inherit;
   text-align: left;
   color: var(--text);
@@ -1406,10 +1422,12 @@
 }
 .wcook-section-title {
   font-size: 0.78rem;
-  font-weight: 600;
+  /* E-polish follow-up: crisp dashboard heading (see .exercise-section-title). */
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text);
+  opacity: 0.82;
   margin: 0 2px;
 }
 
@@ -1487,18 +1505,7 @@
   font-size: 0.85rem;
   padding: 8px 2px;
 }
-.wcook-recent-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 6px;
-  padding: 24px 16px;
-  color: var(--text-secondary);
-  border: 1px dashed var(--separator);
-  border-radius: 14px;
-}
+/* .wcook-recent-empty — boxed empty-state chrome from .tempo-empty base. */
 .wcook-recent-empty p { margin: 0; font-size: 0.88rem; line-height: 1.4; }
 .wcook-recent-empty-mark { font-size: 1.4rem; }
 

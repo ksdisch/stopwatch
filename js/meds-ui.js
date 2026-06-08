@@ -101,7 +101,7 @@ const MedsUI = (() => {
           </div>
         </div>` : '';
     return `
-      <article class="med-card" data-med-id="${id}">
+      <article class="tempo-card med-card" data-med-id="${id}">
         <header class="med-card-header">
           <div class="med-card-heading">
             <h3 class="med-card-name">${name}</h3>
@@ -164,7 +164,7 @@ const MedsUI = (() => {
         statusText = 'Never taken';
         statusClass = 'med-status-none';
       } else {
-        statusText = `Last taken ${formatDuration(sinceMs)} ago`;
+        statusText = `Last taken ${Utils.formatHuman(sinceMs)} ago`;
         statusClass = 'med-status-asneeded';
       }
     }
@@ -478,18 +478,9 @@ const MedsUI = (() => {
   }
 
   // ── Formatting helpers ──────────────────────────────────────────────
-
-  function formatDuration(ms) {
-    const totalSec = Math.max(0, Math.floor(ms / 1000));
-    const days  = Math.floor(totalSec / 86400);
-    const hours = Math.floor((totalSec % 86400) / 3600);
-    const mins  = Math.floor((totalSec % 3600) / 60);
-    const secs  = totalSec % 60;
-    if (days > 0)  return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    if (mins > 0)  return `${mins}m`;
-    return `${secs}s`;
-  }
+  // Duration humanizer: shared Utils.formatHuman (E-polish follow-up E10
+  // dedup). Replaced the local days/hours/mins/secs copy; the days tier is
+  // covered by formatHuman so "Last taken 3d 4h ago" still renders.
 
   function formatLastDose(ts) {
     const d = new Date(ts);

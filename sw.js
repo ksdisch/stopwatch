@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v120-overhaul-f-pwa';
+const CACHE_NAME = 'stopwatch-v121-overhaul-e-polish-followups';
 const ASSETS = [
   './',
   './index.html',

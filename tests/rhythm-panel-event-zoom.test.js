@@ -141,8 +141,9 @@
       assert(/rhythm-zoom-strip/.test(html), 'strip class present');
       const colMatches = html.match(/rhythm-zoom-col/g) || [];
       assertEqual(colMatches.length, 14);
-      assert(/var\(--active-accent/.test(html), 'productivity segment color present');
-      assert(/var\(--green\)/.test(html), 'wellness segment color present');
+      // E-polish follow-up: explicit pillar tokens (was --active-accent / --green).
+      assert(/var\(--productivity-accent\)/.test(html), 'productivity segment color present');
+      assert(/var\(--wellness-accent\)/.test(html), 'wellness segment color present');
       assert(new RegExp(grandTotal + ' sessions · 14d').test(html), 'aside total present');
       // populated model should NOT append the "No sessions" note
       assert(!/No sessions in the last 14 days\./.test(html), 'no empty note when populated');

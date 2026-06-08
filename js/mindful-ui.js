@@ -116,7 +116,7 @@ const MindfulUI = (() => {
 
   function renderPatterns() {
     patternsEl.innerHTML = BREATH_PATTERNS.map(p => `
-      <button class="mindful-pattern-card" data-pattern-id="${p.id}" type="button">
+      <button class="tempo-card mindful-pattern-card" data-pattern-id="${p.id}" type="button">
         <div class="mindful-pattern-name">${escapeHtml(p.name)}</div>
         <div class="mindful-pattern-summary">${escapeHtml(p.summary)}</div>
       </button>
