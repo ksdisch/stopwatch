@@ -71,6 +71,12 @@
        SyncFlag/SyncAuth/SyncFirestore per-case — no DOM deps. Mirrors
        recovery-feed.js; loaded next to it for parity with runtime order. -->
   <script src="../js/synthesis-feed.js"></script>
+  <!-- Home hub (Life-OS Phase 1): pure helpers (titleCase / lensValue /
+       normalizeRadii / pillarCardModel / band mapping) on HomeUI._internals.
+       render() is a DOM wrapper covered by Playwright, not this suite.
+       Loaded after synthesis-feed.js (reads SynthesisFeed.PILLAR_NODES at
+       module scope). -->
+  <script src="../js/home-ui.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -167,6 +173,7 @@
   <script src="rhythm-panel-today.test.js"></script>
   <script src="recovery-feed.test.js"></script>
   <script src="synthesis-feed.test.js"></script>
+  <script src="home-ui.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

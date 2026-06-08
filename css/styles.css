@@ -64,6 +64,16 @@
      variant below. */
   --chart-1: #0a84ff; --chart-2: var(--green); --chart-3: var(--amber);
   --chart-4: var(--red); --chart-5: var(--text-secondary); --chart-6: #bf5af2;
+  /* ── Life-OS Balance band colors (Home hub) ────────────────────────────
+     One color per synthesis-record band. Aliased to the existing themed
+     tokens so they re-theme across all 6 themes + light with no per-theme
+     overrides. thriving=green, steady=blue, strained=amber, depleted=red,
+     unknown=muted. The Home bubble fills + band chips reference ONLY these. */
+  --home-band-thriving: var(--green);
+  --home-band-steady: var(--chart-1);
+  --home-band-strained: var(--amber);
+  --home-band-depleted: var(--red);
+  --home-band-unknown: var(--text-secondary);
 }
 
 @media (prefers-color-scheme: light) {
@@ -6243,4 +6253,213 @@ rect.rhythm-day-hi {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ── Life-OS Home hub (Phase 1) ──────────────────────────────────────────
+   The default-landing dashboard: bubble map + synthesis cards + 3 moves.
+   Themed entirely via design-system vars + the --home-band-* tokens; no
+   hardcoded hex outside those band vars (defined in :root). */
+.home-pillar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Shared card chrome — reuses the surface/radius/shadow token language. */
+.home-card {
+  background: var(--surface);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+
+/* ── Bubble map ── */
+.home-bubblemap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.home-lens-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.home-lens-btn {
+  flex: 1 1 auto;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-standard),
+              background var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard);
+}
+.home-lens-btn:hover {
+  color: var(--text-primary);
+}
+.home-lens-btn.is-active {
+  color: var(--text-primary);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+.home-bubblemap-figure {
+  width: 100%;
+}
+.home-bubblemap-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.home-bubble-circle {
+  transition: r var(--dur-base) var(--ease-standard);
+  opacity: 0.9;
+}
+.home-bubble-label {
+  fill: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+/* ── Band chips ── */
+.home-band-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  color: var(--bg);
+  white-space: nowrap;
+}
+.home-band-chip[data-band="thriving"] { background: var(--home-band-thriving); }
+.home-band-chip[data-band="steady"]   { background: var(--home-band-steady); }
+.home-band-chip[data-band="strained"] { background: var(--home-band-strained); }
+.home-band-chip[data-band="depleted"] { background: var(--home-band-depleted); }
+.home-band-chip[data-band="unknown"]  { background: var(--home-band-unknown); }
+
+/* ── Hero card ── */
+.home-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.home-hero-kicker {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.home-hero-headline {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* ── Per-pillar cards ── */
+.home-pillar-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.home-pillar-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.home-pillar-card-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.home-pillar-card-headline {
+  margin-top: var(--space-2);
+  font-size: var(--fs-base);
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.home-pillar-card-signal {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── This week's 3 moves ── */
+.home-moves-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+.home-moves-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  counter-reset: home-move;
+}
+.home-move-row {
+  position: relative;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-8);
+  font-size: var(--fs-base);
+  line-height: 1.35;
+  color: var(--text-primary);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-md);
+  counter-increment: home-move;
+}
+.home-move-row::before {
+  content: counter(home-move);
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+/* ── Empty state (the DEFAULT path) ── */
+.home-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+.home-empty-mark {
+  font-size: 2rem;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.home-empty-title {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.home-empty-body {
+  margin-top: var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
 }

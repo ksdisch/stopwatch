@@ -256,18 +256,6 @@
              per brief decision #2. -->
         <section id="settings-todoist" class="tempo-settings-item tempo-todoist-section"
                  aria-label="Todoist"></section>
-        <!-- Life-OS Phase 0 (debug) — TEMPORARY, remove in Phase 1.
-             Proves the council → Firestore → PWA read path on a phone by
-             surfacing the 'home' synthesis record's headline + producedAt.
-             Filled by the inline init script at the bottom of <body> from
-             SynthesisFeed.getRecord('home'); a no-op (stays "—") when sync is
-             off / signed out / the council hasn't pushed yet. -->
-        <div id="synthesis-debug" class="tempo-settings-item" role="group"
-             aria-label="Synthesis (debug)">
-          <div class="tempo-cloud-sync-heading">Synthesis (debug) — Phase 0, remove in Phase 1</div>
-          <div id="synthesis-debug-headline" class="tempo-settings-item-meta">—</div>
-          <div id="synthesis-debug-produced" class="tempo-settings-item-meta"></div>
-        </div>
       </div>
     </header>
 
@@ -330,11 +318,20 @@
     <main id="tempo-main" class="tempo-main" tabindex="-1">
     <h1 class="sr-only">Tempo</h1>
 
+    <!-- ── Home pillar (Life-OS Phase 1) ── The default landing surface. The
+         bubble map + synthesis cards render from cache into #home-pillar-body
+         (HomeUI.render(), called by TempoNav.applyRoute when this pillar is
+         active). Mirrors the Rhythm section: the pillar wrapper carries
+         data-active; the body div is the renderer's sole DOM target. -->
+    <section class="tempo-pillar" data-pillar-id="home" data-active="true">
+      <div id="home-pillar-body" class="home-pillar-body"></div>
+    </section>
+
     <!-- ── Timers pillar ── Wraps the existing Stopwatch / Timer / Pomodoro /
          Flow / Interval / Cooking content. display:contents on [data-active]
          means the wrapper doesn't create its own box — the flex layout of
          #app continues to work against its great-grandchildren unchanged. -->
-    <section class="tempo-pillar" data-pillar-id="timers" data-active="true">
+    <section class="tempo-pillar" data-pillar-id="timers" data-active="false">
     <div id="timer-display" role="timer" aria-label="Elapsed time">
       <div id="auto-advance-overlay" class="auto-advance-overlay hidden"></div>
       <span id="time">00:00<span class="centiseconds">.00</span></span>
@@ -1098,7 +1095,15 @@
        data-pillar-target; tempo-nav.js sets aria-current + switches the
        visible pillar. -->
   <nav class="tempo-tabbar" aria-label="Primary">
-    <button class="tempo-tab" data-pillar-target="timers" aria-current="page" aria-label="Timers">
+    <button class="tempo-tab" data-pillar-target="home" aria-current="page" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 11 L12 4 L20 11"/>
+        <path d="M6 10 L6 19 L18 19 L18 10"/>
+      </svg>
+      <span>Home</span>
+    </button>
+    <button class="tempo-tab" data-pillar-target="timers" aria-label="Timers">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="13" r="8"/>
@@ -1216,6 +1221,12 @@
        getDoc → localStorage cache → SynthesisFeed.getRecord(). No write path.
        Loaded immediately after recovery-feed.js for parity. -->
   <script src="js/synthesis-feed.js" defer></script>
+  <!-- Life-OS Phase 1: the Home hub. Renders the council's 'home' Balance
+       record + the five domain-pillar records (bubble map + synthesis cards +
+       this week's 3 moves) from the SynthesisFeed cache. Render-from-cache
+       only; no live Firestore on the render path. TempoNav routes #/home (the
+       default landing) to HomeUI.render(). -->
+  <script src="js/home-ui.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
@@ -1263,39 +1274,5 @@
   <script src="js/global-bfrb.js" defer></script>
   <script src="js/tempo-nav.js?v=2" defer></script>
   <script src="js/app.js" defer></script>
-  <!-- Life-OS Phase 0 (debug) — TEMPORARY, remove in Phase 1.
-       Inits SynthesisFeed and renders the 'home' record into #synthesis-debug
-       so the council read path is provable on a phone. DOMContentLoaded fires
-       AFTER all defer scripts above, so SynthesisFeed + escapeHtml exist.
-       Fully guarded — a no-op when sync is off / SynthesisFeed is absent. -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      if (typeof SynthesisFeed === 'undefined') return;
-      var headlineEl = document.getElementById('synthesis-debug-headline');
-      var producedEl = document.getElementById('synthesis-debug-produced');
-      var esc = (typeof escapeHtml === 'function') ? escapeHtml : function (s) { return s; };
-      function render() {
-        if (!headlineEl) return;
-        var rec = null;
-        try { rec = SynthesisFeed.getRecord('home'); } catch (_) { rec = null; }
-        if (rec && rec.headline) {
-          headlineEl.textContent = rec.headline;
-          if (producedEl) producedEl.textContent = rec.producedAt ? ('as of ' + rec.producedAt) : '';
-        } else {
-          headlineEl.textContent = '— (no synthesis record yet)';
-          if (producedEl) producedEl.textContent = '';
-        }
-        // textContent already escapes; esc() referenced only to honor the
-        // reuse convention if a future tweak switches to innerHTML.
-        void esc;
-      }
-      try { SynthesisFeed.init(); } catch (_) {}
-      render();
-      // Best-effort live refresh — no-op when sync is off / signed out.
-      try {
-        SynthesisFeed.refresh('home').then(render).catch(function () {});
-      } catch (_) {}
-    });
-  </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v122-lifeos-phase0-synthesis';
+const CACHE_NAME = 'stopwatch-v123-lifeos-phase1-home';
 const ASSETS = [
   './',
   './index.html',
@@ -66,6 +66,7 @@ const ASSETS = [
   './js/recovery-ui.js',
   './js/recovery-feed.js',
   './js/synthesis-feed.js',
+  './js/home-ui.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
   './js/rhythm-panel-today.js',
