@@ -12,7 +12,7 @@ Backend-agnostic strategy for evolving Tempo's local-first storage to multi-devi
 
 **Medium stakes** — append-only event streams and user-curated content.
 
-- Append-only event logs: `bfrbs_global`, `flow_bfrbs`, `pomodoro_bfrbs`, `pomodoro_distractions`, `flow_distractions`.
+- Append-only event logs: `bfrbs_global`, `flow_bfrbs`, `pomodoro_bfrbs`, `pomodoro_distractions`, `flow_distractions`, `mood_events` (Life-OS Phase 3, ADR-0008).
 - Curated content: `quick_presets`, `offset_presets`, `pomodoro_saved_tasks`, `pomodoro_task_templates`, `sequence_templates`.
 
 **Excluded from sync** — per-device by design.
@@ -35,6 +35,7 @@ Backend-agnostic strategy for evolving Tempo's local-first storage to multi-devi
 | `wellness_rest_log[date].naps` | Append-merge, dedup by `(deviceId, startedAt)` | Append-only events. |
 | BFRB events | Append-merge, dedup by `(deviceId, loggedAt)` | Either consolidate `bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` into one tagged stream with `context: 'flow' \| 'pomodoro' \| 'global'`, or exclude the session-local buckets entirely and treat `session.bfrbs` (in the synced history row) as canonical (F3). Decision deferred to implementation; both shapes preserve correctness. |
 | Distraction logs | Append-merge with session tombstones | Either move to `sessionId`-keyed storage (UI filters by current session, never reset) or emit explicit session-cleared tombstone events into the same stream so reset is representable in append-merge (F8). |
+| Mood events (`mood_events`) | Append-merge, dedup by `(deviceId, at)`; deterministic doc id `deviceId-at` | Life-OS Phase 3 — the 7th synced store (ADR-0008). Append-only, immutable; NOTE the timestamp field is `at` (not `takenAt`). No F15 arrival toast (high-frequency precedent). Reserved additive-nullable `energy`. `js/sync-merge-mood.js` clones `js/sync-merge-bfrb.js`. |
 | Templates / presets / saved tasks | LWW per-record by `id` + `updatedAt`, with tombstones for deletes | Records carry `schemaVersion`; loaders pass unknown fields through `__forward` (schema rules F19a/b). |
 | Engine state, per-session checklists, primary pointers | **Excluded from sync** | Q4 resolution. `loadState` recoveries (auto-advance, `focusEndedAt`, `alarmFired`) are local rendering only, never persisted back (F7). `alarmFired` is intrinsically per-device — Device B must still play the chime even after Device A fires (F21). |
 | UI prefs (low-stakes block) | **Excluded from sync** | Per-device taste. |
