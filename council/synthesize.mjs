@@ -28,6 +28,7 @@ import admin from 'firebase-admin';
 import { validateSynthesisRecord } from './lib/synthesis-record.mjs';
 import { buildHomeRecord } from './lib/home-synthesizer.mjs';
 import { buildPhysicalsRecord } from './lib/physicals-synthesizer.mjs';
+import { buildChickensRecord } from './lib/chickens-synthesizer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -119,6 +120,84 @@ async function synthesizePhysicals({ db, uid, mode }) {
   );
 }
 
+/**
+ * synthesizeChickens({ db, uid, mode }) — Phase 3: the second REAL pillar
+ * producer. Reads Tempo's synced stores (mood_events / bfrb_events / history /
+ * rest_log) via the Admin SDK PLUS the `physicals` synthesis RECORD (the
+ * borrowed Stress Load Area — the contract's recursion rule: read the sibling's
+ * record, never its raw stores), folds in the thin Tier-3 weekly reflection
+ * file when present, rolls them into a normalized chickens synthesis record
+ * (5 Areas + composite + the additive `balance{}` stamp the PWA lenses read),
+ * validates, and WRITES users/{uid}/synthesis/chickens.
+ *
+ * Called AFTER synthesizePhysicals and BEFORE the pillar-read loop so the home
+ * roll-up reads the fresh record. Replaces the Phase-1 seed (seed-pillars.mjs
+ * no longer seeds chickens). The scoring math is the pure
+ * lib/chickens-synthesizer.mjs (testable, no I/O).
+ */
+async function synthesizeChickens({ db, uid, mode }) {
+  const scoring = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'chickens.json'), 'utf8'),
+  );
+  const balanceConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'balance.json'), 'utf8'),
+  );
+
+  // Tempo's synced stores (collections of per-record docs) + the physicals
+  // RECORD read back from Firestore (decoupled from synthesizePhysicals's
+  // in-process result on purpose). NOTE: if physicals threw this run, this
+  // read returns the PRIOR (stale) physicals record — acceptable: a stale
+  // Stress Load read degrades gracefully rather than nulling the Area.
+  const [moodSnap, bfrbSnap, histSnap, restSnap, physSnap] = await Promise.all([
+    db.collection(`users/${uid}/mood_events`).get(),
+    db.collection(`users/${uid}/bfrb_events`).get(),
+    db.collection(`users/${uid}/history`).get(),
+    db.collection(`users/${uid}/rest_log`).get(),
+    db.doc(`users/${uid}/synthesis/physicals`).get(),
+  ]);
+  const moodEvents = moodSnap.docs.map((d) => d.data());
+  const bfrbEvents = bfrbSnap.docs.map((d) => d.data());
+  const history = histSnap.docs.map((d) => d.data());
+  const restLog = restSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const physicalsRecord = physSnap.exists ? physSnap.data() : null;
+
+  // Thin Tier-3 reflection ({weekKey: {rating, note}}) — a local gitignored
+  // file written during the Monday ritual. Missing/malformed is fine: it only
+  // ever folds into confidence/headline, never a scored Area.
+  let reflection = null;
+  try {
+    reflection = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'data', 'reflections', 'chickens.json'), 'utf8'),
+    );
+  } catch {
+    reflection = null;
+  }
+
+  const producer = mode === 'daily' ? 'council/chickens-daily' : 'council/chickens-weekly';
+
+  // buildChickensRecord validates + throws on a contract violation internally.
+  const record = buildChickensRecord({
+    moodEvents,
+    bfrbEvents,
+    history,
+    restLog,
+    physicalsRecord,
+    reflection,
+    scoring,
+    balanceConfig: balanceConfig.chickens || {},
+    mode,
+    producer,
+  });
+
+  const chickensPath = `users/${uid}/synthesis/chickens`;
+  await db.doc(chickensPath).set(record);
+  console.log(
+    `OK: wrote ${mode} chickens synthesis record to ${chickensPath} ` +
+      `(band=${record.state.band}, score=${record.state.score}, ` +
+      `coverage=${record.provenance.coverage.toFixed(2)}, areas=${record.areas.length}).`,
+  );
+}
+
 async function main() {
   // TEMPO_UID is required — the Firebase Auth uid whose synthesis subcollection
   // we read from + write to. GOOGLE_APPLICATION_CREDENTIALS is read by
@@ -145,7 +224,28 @@ async function main() {
   // Phase 2: synthesize the REAL physicals pillar from the published mart +
   // Tempo's synced stores and WRITE it BEFORE the pillar-read loop, so the home
   // roll-up below reads the fresh record (not the retired seed).
-  await synthesizePhysicals({ db, uid, mode });
+  //
+  // Phase 3: a physicals failure is logged but NON-FATAL — chickens (which
+  // borrows the physicals RECORD for its Stress Load Area) then reads the
+  // PRIOR record from Firestore, which degrades gracefully (stale, not blank),
+  // and the home roll-up still runs.
+  try {
+    await synthesizePhysicals({ db, uid, mode });
+  } catch (err) {
+    console.error('ERROR: physicals synthesis failed (chickens/home continue on the prior record):', err);
+  }
+
+  // Phase 3: synthesize the REAL chickens pillar (mood / mindfulness / BFRB /
+  // focus + the borrowed physicals stress read) AFTER physicals and BEFORE the
+  // pillar-read loop, so the home roll-up reads the fresh record. Same
+  // NON-FATAL posture as physicals: a chickens failure (contract-validation
+  // throw, Firestore error) must not blank the entire home refresh — the
+  // roll-up reads the prior chickens record from Firestore instead.
+  try {
+    await synthesizeChickens({ db, uid, mode });
+  } catch (err) {
+    console.error('ERROR: chickens synthesis failed (home continues on the prior record):', err);
+  }
 
   // Read the five pillar records (nodeId == node for single-segment pillars).
   // A missing pillar doc is fine — the home rolls up whatever exists; coverage

@@ -24,6 +24,8 @@ service-account.json
 council/node_modules/
 council/.env.secrets
 council/logs/
+# Tier-3 weekly reflections (personal — NEVER commit; .gitkeep keeps the dir tracked)
+council/data/reflections/*.json
 
 # Local browser-verification scratch (Playwright MCP output, ad-hoc screenshots)
 .playwright-mcp/

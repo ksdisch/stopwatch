@@ -1,0 +1,26 @@
+{
+  "_comment": "Chickens pillar SCORING config (Phase 3). Separate from balance.json (which holds the cross-pillar importance/target the Balance engine ranks by). This file tunes how the Chickens synthesizer (lib/chickens-synthesizer.mjs) turns mood_events + bfrb_events + history + the borrowed physicals RECORD into the 5 Area sub-scores and the composite. Kyle's tuning surface — edit values here, no code change. NOTE: weights + targets are council-invented defaults ratified at the Phase-3 gate (mood target ~3.8/5 → 70, mindfulness 4 sessions/14d, focus 600 min/14d); the stress Area is deliberately low-weighted (0.10) so Chickens isn't dominated by Physicals double-counting. bfrb.bands are last-7d/prior-7d trend-ratio cutoffs paired index-wise with bfrb.scores (the final score is the else-bracket).",
+  "windowDays": 14,
+  "weights": {
+    "mood": 0.30,
+    "bfrb": 0.25,
+    "mindfulness": 0.20,
+    "focus": 0.15,
+    "stress": 0.10
+  },
+  "mood": {
+    "minLogs": 3
+  },
+  "mindfulness": {
+    "targetSessions": 4
+  },
+  "bfrb": {
+    "quietThreshold": 5,
+    "quietScore": 85,
+    "bands": [0.7, 1.15, 1.6],
+    "scores": [90, 70, 50, 30]
+  },
+  "focus": {
+    "targetMinutes": 600
+  }
+}
