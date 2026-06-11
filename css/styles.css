@@ -1484,6 +1484,20 @@ input:focus:not(:focus-visible) {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Toast action button (Phase 3 stress nudge — Toast.action). Rides inside the
+   existing .sync-toast slot; `--amber` is an existing theme token. */
+.sync-toast-action-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--amber);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0 0 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .undo-btn {
   background: none;
   border: none;
@@ -2881,6 +2895,78 @@ body.focus-mode .bfrb-recovery-plan {
 .bfrb-capture-done:hover { text-decoration: underline; }
 
 body.focus-mode .bfrb-capture { display: none; }
+
+/* ── Mood capture popover (Life-OS Phase 3) ──────────────────────────────
+   Topbar-anchored sibling of the BFRB capture popover. Reuses the
+   position-independent .bfrb-chip / .bfrb-capture-* classes for the innards;
+   ONLY the positioning differs (.bfrb-capture is bottom-anchored above the
+   FAB — the mood icon lives in the topbar, so this anchors below it,
+   right-aligned). Visual tokens (border, background, radius, shadow,
+   animation) mirror .bfrb-capture exactly. */
+.mood-capture {
+  position: fixed;
+  right: 16px;
+  top: calc(var(--tempo-topbar-h, 52px) + 8px);
+  z-index: 2001;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px 14px 10px;
+  background: var(--bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  animation: mood-capture-in 0.14s ease;
+}
+
+/* Drop-in mirror of bfrb-capture-in, inverted (slides DOWN from the topbar
+   instead of up from the FAB). */
+@keyframes mood-capture-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mood-capture[hidden] { display: none; }
+
+/* "+ note" reveal toggle — quiet text affordance, matches .bfrb-capture-done
+   styling but left-aligned with the chip rows. */
+.mood-note-toggle {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--amber);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 4px 0;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.mood-note-toggle:hover { text-decoration: underline; }
+
+.mood-note-toggle[hidden] { display: none; }
+
+/* Optional ≤280-char note. Theme-token styled to match the chips. */
+.mood-note-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid var(--btn-border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  resize: none;
+}
+
+.mood-note-input:focus { outline: none; border-color: var(--amber); }
+
+.mood-note-input[hidden] { display: none; }
+
+/* Focus / ambient mode hides every floating affordance (mirrors the
+   body.focus-mode .bfrb-capture rule). */
+body.focus-mode .mood-capture { display: none; }
 
 /* BFRB chime volume slider in the settings drawer. */
 .tempo-settings-slider {
@@ -6544,4 +6630,106 @@ rect.rhythm-day-hi {
   margin-top: var(--space-2);
   font-size: var(--fs-base);
   color: var(--text-secondary);
+}
+
+/* ── Life-OS Chickens hub (Phase 3) ──────────────────────────────────────
+   The dedicated Chickens pillar: a composite hero + five Area cards
+   (Mood / Mindfulness / BFRB regulation / Focus engagement / Stress load) +
+   this week's moves. Mirrors the Physicals hub exactly — reuses the Home
+   hub's .home-card chrome, .home-band-chip primitive, --home-band-* tokens
+   and .home-moves* list; only the layout + text classes are new. */
+.chickens-pillar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Hero (the composite Chickens read) ── */
+.chickens-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.chickens-hero-kicker {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.chickens-hero-headline {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* ── Area cards ── */
+.chickens-areas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.chickens-area-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.chickens-area-card-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.chickens-area-card-signal {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Empty state (the DEFAULT path) ── */
+.chickens-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+.chickens-empty-mark {
+  font-size: 2rem;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.chickens-empty-title {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.chickens-empty-body {
+  margin-top: var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+}
+
+/* Display-only mood trend line on the Mood Area card (local stream). */
+.chickens-mood-delta {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+/* ── 7-tab tabbar fallback (Phase 3) ─────────────────────────────────────
+   With Chickens the phone tabbar holds 7 tabs; at ≤374px each gets ~45px
+   and the longest labels ("Analytics") risk truncation. Ratified fallback:
+   icon-only on very small phones. The .tempo-tabbar prefix is load-bearing:
+   tempo-shell.css loads AFTER this file, so its base .tempo-tab rule (equal
+   specificity, later source order) would otherwise win the cascade and the
+   gap/padding override would never apply. Desktop sidebar unaffected. */
+@media (max-width: 374px) {
+  .tempo-tabbar .tempo-tab span { display: none; }
+  .tempo-tabbar .tempo-tab { gap: 0; padding: 10px 2px; }
 }

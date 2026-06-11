@@ -48,6 +48,13 @@ const GlobalBFRB = (() => {
   // this single line to retune the wording (the engine, throttle, and gate are
   // copy-agnostic).
   const SUPPORT_COPY = 'A few catches close together today. Your 60-second reset is here whenever you want it.';
+  // PHASE 3 ESCALATED COPY (working draft — ratification surface at the Phase 3
+  // gate, same contract as SUPPORT_COPY above): shown INSTEAD of SUPPORT_COPY
+  // when BfrbRisk also reports sleepDown (catches clustering AND last night ran
+  // short). The toast is tappable — 'Open' routes to Wellness › Mindful. The
+  // same opt-in toggle + the same once-per-day throttle key govern both
+  // variants; the mindful variant takes precedence by being the if-branch.
+  const MINDFUL_COPY = 'Catches are clustering and last night ran short. A 5-minute breather is one tap away.';
   const SUPPORT_ENABLED_KEY = 'bfrb_support_enabled';     // '1' = on; default OFF (absent)
   const SUPPORT_TOAST_DAY_KEY = 'bfrb_support_last_toast_day'; // 'YYYY-MM-DD' throttle stamp
 
@@ -270,14 +277,47 @@ const GlobalBFRB = (() => {
       }
     } catch (_) { recoveryState = null; }
 
+    const today = _todayKey();
+
+    // Phase 3 (stress nudge): source today's rest row + the past-14-day sleep
+    // history from wellness_rest_log so BfrbRisk can decide sleepDown without
+    // ever touching localStorage itself (the module stays pure — the caller
+    // owns the read). Best-effort: a missing/corrupt log just means no sleep
+    // signal (sleepDown false; the clustered-only nudge still works).
+    let restRow = null;
+    const sleepNightsHistory = [];
+    try {
+      const raw = localStorage.getItem('wellness_rest_log');
+      const log = raw ? JSON.parse(raw) : null;
+      if (log && typeof log === 'object') {
+        restRow = log[today] || null;
+        // Past 14 local days, EXCLUDING today — only numeric sleep.hours count.
+        const now = new Date();
+        for (let i = 1; i <= 14; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+          const k = d.getFullYear() + '-'
+            + String(d.getMonth() + 1).padStart(2, '0') + '-'
+            + String(d.getDate()).padStart(2, '0');
+          const entry = log[k];
+          if (entry && entry.sleep && typeof entry.sleep.hours === 'number') {
+            sleepNightsHistory.push(entry.sleep.hours);
+          }
+        }
+      }
+    } catch (_) { restRow = null; }
+
     let decision = null;
     try {
-      decision = BfrbRisk.assess({ events: events, now: Date.now(), recoveryState: recoveryState });
+      decision = BfrbRisk.assess({
+        events: events, now: Date.now(), recoveryState: recoveryState,
+        restRow: restRow, sleepNightsHistory: sleepNightsHistory,
+      });
     } catch (_) { return; }
     if (!decision || decision.band !== 'clustered') return;
 
-    // Once-per-day throttle — at most one supportive toast per local day.
-    const today = _todayKey();
+    // Once-per-day throttle — at most one supportive toast per local day. The
+    // single day key covers BOTH variants (mindful + clustered-only); the
+    // mindful variant takes precedence by being the if-branch below.
     let last = null;
     try { last = localStorage.getItem(SUPPORT_TOAST_DAY_KEY); } catch (_) {}
     if (last === today) return;
@@ -285,7 +325,19 @@ const GlobalBFRB = (() => {
     // Stamp the day ONLY after a successful paint, so the throttle records a
     // toast that was SHOWN — not merely attempted. If Toast is somehow absent
     // or throws, the day stays un-consumed and the nudge can still fire later.
-    if (typeof Toast !== 'undefined' && typeof Toast.notice === 'function') {
+    if (decision.mindfulSuggested
+        && typeof Toast !== 'undefined' && typeof Toast.action === 'function') {
+      // Escalated variant (Phase 3): catches clustering AND last night ran
+      // short → a tappable toast that routes straight to Wellness › Mindful.
+      try {
+        Toast.action(MINDFUL_COPY, 'Open', () => {
+          if (typeof TempoNav !== 'undefined' && typeof TempoNav.applyRoute === 'function') {
+            TempoNav.applyRoute({ pillar: 'wellness', sub: 'mindful' });
+          }
+        });
+        localStorage.setItem(SUPPORT_TOAST_DAY_KEY, today);
+      } catch (_) {}
+    } else if (typeof Toast !== 'undefined' && typeof Toast.notice === 'function') {
       try {
         Toast.notice(SUPPORT_COPY);
         localStorage.setItem(SUPPORT_TOAST_DAY_KEY, today);

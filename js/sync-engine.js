@@ -104,8 +104,9 @@ const SyncEngine = (() => {
   // ── Store registry ────────────────────────────────────────────────────
   //
   // Hardcoded list of synced-eligible stores. Order: meds → history →
-  // rest_log → presets → bfrb_events → distractions. For snapshot the
-  // order is purely cosmetic; B-3's hydrate ordering can diverge.
+  // rest_log → presets → bfrb_events → distractions → mood_events. For
+  // snapshot the order is purely cosmetic; B-3's hydrate ordering can
+  // diverge.
   //
   // E-1d-f3 added `bfrb_events` as the 5th entry — the consolidated BFRB
   // stream (F3) replacing the legacy 3-key routing (`bfrbs_global` /
@@ -115,10 +116,14 @@ const SyncEngine = (() => {
   // shape (`flow_distractions` / `pomodoro_distractions`). Both maps
   // travel under one snapshot envelope; the per-store merge resolves
   // per-(context, sessionId).
+  // Life-OS Phase 3 added `mood_events` as the 7th entry — the mood
+  // capture stream (ADR-0008). Append-only events deduped by
+  // (deviceId, at); merge in js/sync-merge-mood.js.
   //
-  // Hydrate is NOT added to HYDRATE_STORE_ORDER for E-1d-f3 or E-1d-f8;
-  // the load-time migrations in js/bfrb-events.js + js/distractions.js
-  // cover cold-start, and the steady-state merge cycle covers
+  // Hydrate is NOT added to HYDRATE_STORE_ORDER for E-1d-f3, E-1d-f8,
+  // or mood_events; the load-time migrations in js/bfrb-events.js +
+  // js/distractions.js cover cold-start (mood_events has no migration —
+  // it starts fresh), and the steady-state merge cycle covers
   // cross-device propagation post-sign-in (E-1e revisits hydrate
   // expansion alongside rest_log + presets cleanup).
   //
@@ -142,6 +147,7 @@ const SyncEngine = (() => {
     { key: 'presets',      adapter: { read: () => Presets.snapshotForSync(),      write: writeStub } },
     { key: 'bfrb_events',  adapter: { read: () => BfrbEvents.snapshotForSync(),   write: writeStub } },
     { key: 'distractions', adapter: { read: () => Distractions.snapshotForSync(), write: writeStub } },
+    { key: 'mood_events',  adapter: { read: () => Mood.snapshotForSync(),         write: writeStub } },
   ];
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -303,6 +309,7 @@ const SyncEngine = (() => {
   //   - presets:      payload.presets[]
   //   - bfrb_events:  payload.events[]
   //   - distractions: payload.flow{sessionId: [entries]} + payload.pomodoro{...}
+  //   - mood_events:  payload.events[]
   //
   // Returns a NEW snapshot with the filtered payload + a `__skipped`
   // counter for observability. The dispatcher logs the skip count via
@@ -394,6 +401,12 @@ const SyncEngine = (() => {
         }
         out.payload[ctx] = filteredMap;
       }
+    } else if (key === 'mood_events') {
+      out.payload = Object.assign({}, snapshot.payload);
+      const arr = Array.isArray(snapshot.payload.events) ? snapshot.payload.events : null;
+      if (arr) {
+        out.payload.events = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
+      }
     } else {
       // Unknown store key — pass through verbatim (defensive forward-compat
       // for future stores added by E-2+ work).
@@ -405,7 +418,7 @@ const SyncEngine = (() => {
     // E-3: F19a observability emit — surface the dispatcher's local-side
     // refuse-writeback event so `js/sync-toast.js`'s `downlevelWarning`
     // listener can paint a user-facing message. Once-per-store emit
-    // (the dispatcher sees ≤6 future-schema events per cycle even in
+    // (the dispatcher sees ≤7 future-schema events per cycle even in
     // worst-case bursts; the toast's `_downlevelWarningShown` dedup
     // collapses cross-store duplicates to one toast per session).
     if (skipped > 0) {
@@ -1881,7 +1894,7 @@ const SyncEngine = (() => {
   // Payload shapes are the same per-store envelopes consumed by
   // `_filterFutureRecordsInSnapshot` — meds[], history.sessions[],
   // rest_log{date}, presets[], bfrb_events.events[],
-  // distractions.flow{}/.pomodoro{}.
+  // distractions.flow{}/.pomodoro{}, mood_events.events[].
   function _enqueueDirtyRecordsForStore(storeKey, snapshot) {
     if (!snapshot || typeof snapshot !== 'object' || !snapshot.payload) return;
     const payload = snapshot.payload;
@@ -1935,6 +1948,17 @@ const SyncEngine = (() => {
         const recordId = dev + '-' + r.takenAt;
         const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.takenAt;
         _maybeBufferOnOffline('bfrb_events', recordId, wc);
+      }
+      return;
+    }
+    if (storeKey === 'mood_events') {
+      const arr = Array.isArray(payload.events) ? payload.events : [];
+      for (const r of arr) {
+        if (!r || typeof r.at !== 'number') continue;
+        const dev = (typeof r.deviceId === 'string' && r.deviceId) ? r.deviceId : 'no-device';
+        const recordId = dev + '-' + r.at;
+        const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.at;
+        _maybeBufferOnOffline('mood_events', recordId, wc);
       }
       return;
     }
@@ -2026,7 +2050,7 @@ const SyncEngine = (() => {
     if (_offlineBuffered) return;
 
     _steadyRunInFlight = true;
-    const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null, distractions: null };
+    const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null, distractions: null, mood_events: null };
 
     // E-1c: F13 dispatcher-wide write gate flip (Pick B on E-1c-PROMPT
     // TODO #2). Flip SyncState to 'hydrating' BEFORE the per-store loop
@@ -2057,6 +2081,7 @@ const SyncEngine = (() => {
       presets:      (typeof SyncMergePresets      !== 'undefined') ? SyncMergePresets      : null,
       bfrb_events:  (typeof SyncMergeBfrb         !== 'undefined') ? SyncMergeBfrb         : null,
       distractions: (typeof SyncMergeDistractions !== 'undefined') ? SyncMergeDistractions : null,
+      mood_events:  (typeof SyncMergeMood         !== 'undefined') ? SyncMergeMood         : null,
     };
 
     // E-1c: collect async per-store promises so we can chain a single
@@ -2074,7 +2099,8 @@ const SyncEngine = (() => {
     // catches sync merge errors as before.
     try {
       // Iterate in canonical order: meds → history → rest_log → presets
-      // → bfrb_events → distractions (matches SYNCED_STORES registry).
+      // → bfrb_events → distractions → mood_events (matches SYNCED_STORES
+      // registry).
       for (const { key, adapter } of SYNCED_STORES) {
         const mod = moduleByKey[key];
         if (!mod || typeof mod.merge !== 'function') {
@@ -2087,8 +2113,8 @@ const SyncEngine = (() => {
         }
 
         // E-1e: dispatcher-level F19a snapshot gate (Pick C on TODO #4).
-        // Read the per-store snapshot synchronously when possible (5 of
-        // 6 stores return sync values; History is the async exception).
+        // Read the per-store snapshot synchronously when possible (6 of
+        // 7 stores return sync values; History is the async exception).
         // For the async case we treat the unfiltered snapshot as a
         // pass-through — the merge fn's cloud-side gate still catches
         // future-schema records over the wire. The local-side gate's
@@ -2197,14 +2223,14 @@ const SyncEngine = (() => {
   //
   // Listeners are the primary cross-device propagation mechanism per
   // Pick A on TODO #1; the 5-min `STEADY_STATE_DEFAULT_MS` poll is the
-  // defensive fallback. Per-collection subscriptions (6 total — one per
+  // defensive fallback. Per-collection subscriptions (7 total — one per
   // SYNCED_STORES entry) wire up inside `startSteadyState()` next to
   // the timer arm; they tear down inside `stopSteadyState()` and
   // pause/resume on visibility + network state changes.
   //
   // Listener-driven snapshots invoke `_runMergeCycleForStore(storeKey)`
   // — a per-store dispatch seam that runs the merge fn for ONE store
-  // only (vs `_runMergeCycle` which iterates all 6). Both paths share:
+  // only (vs `_runMergeCycle` which iterates all 7). Both paths share:
   //   - The `_steadyRunInFlight` re-entry guard (concurrent listener +
   //     timer cycles can't race).
   //   - The F19a `_filterFutureRecordsInSnapshot` snapshot pre-filter.
@@ -2251,6 +2277,7 @@ const SyncEngine = (() => {
       presets:      (typeof SyncMergePresets      !== 'undefined') ? SyncMergePresets      : null,
       bfrb_events:  (typeof SyncMergeBfrb         !== 'undefined') ? SyncMergeBfrb         : null,
       distractions: (typeof SyncMergeDistractions !== 'undefined') ? SyncMergeDistractions : null,
+      mood_events:  (typeof SyncMergeMood         !== 'undefined') ? SyncMergeMood         : null,
     };
     const mod = moduleByKey[storeKey];
     if (!mod || typeof mod.merge !== 'function') {

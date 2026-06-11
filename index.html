@@ -68,6 +68,17 @@
         <span>Tempo</span>
       </div>
       <div class="tempo-topbar-actions">
+        <!-- Life-OS Phase 3: ≤5s mood capture, available on every pillar.
+             Tap (or shortcut M) opens the valence popover (js/mood-ui.js). -->
+        <button id="mood-toggle" class="tempo-iconbtn" aria-label="Log mood">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M8.5 14.5 C9.5 15.8 10.6 16.4 12 16.4 C13.4 16.4 14.5 15.8 15.5 14.5"/>
+            <circle cx="9" cy="9.5" r="0.6" fill="currentColor"/>
+            <circle cx="15" cy="9.5" r="0.6" fill="currentColor"/>
+          </svg>
+        </button>
         <button id="history-toggle" class="tempo-iconbtn" aria-label="Session history">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -952,6 +963,16 @@
       <div id="physicals-pillar-body" class="physicals-pillar-body"></div>
     </section>
 
+    <!-- ── Chickens pillar (Life-OS Phase 3) ── The dedicated deep-dive for the
+         `chickens` domain pillar. ChickensUI.render() (called by
+         TempoNav.applyRoute when active) renders the council's `chickens`
+         synthesis record — composite hero + 5 Area cards + this week's moves —
+         from cache into #chickens-pillar-body. Mirrors PhysicalsUI: the body
+         div is the renderer's sole DOM target. -->
+    <section class="tempo-pillar" data-pillar-id="chickens" data-active="false">
+      <div id="chickens-pillar-body" class="chickens-pillar-body"></div>
+    </section>
+
     <!-- ── Rhythm pillar ── Single placeholder surface, no sub-nav. -->
     <section class="tempo-pillar" data-pillar-id="rhythm" data-active="false">
       <div class="tempo-placeholder">
@@ -1137,6 +1158,15 @@
       </svg>
       <span>Physicals</span>
     </button>
+    <button class="tempo-tab" data-pillar-target="chickens" aria-label="Chickens">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 4 A6.5 7.5 0 0 1 18.5 11.5 C18.5 15.5 15.6 18.5 12 18.5 C8.4 18.5 5.5 15.5 5.5 11.5 A6.5 7.5 0 0 1 12 4 Z"/>
+        <path d="M9.5 18.5 L9.5 20.5"/>
+        <path d="M14.5 18.5 L14.5 20.5"/>
+      </svg>
+      <span>Chickens</span>
+    </button>
     <button class="tempo-tab" data-pillar-target="rhythm" aria-label="Rhythm">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1179,6 +1209,7 @@
   <script src="js/sync-merge-presets.js" defer></script>
   <script src="js/sync-merge-bfrb.js" defer></script>
   <script src="js/sync-merge-distractions.js" defer></script>
+  <script src="js/sync-merge-mood.js" defer></script>
   <script src="js/sync-auth.js" defer></script>
   <script src="js/audio.js" defer></script>
   <script src="js/themes.js" defer></script>
@@ -1250,6 +1281,12 @@
        render path. TempoNav routes #/physicals to PhysicalsUI.render(). Loaded
        after home-ui.js (sibling SynthesisFeed consumer). -->
   <script src="js/physicals-ui.js" defer></script>
+  <!-- Life-OS Phase 3: the Chickens hub. Renders the council's `chickens`
+       synthesis record (composite hero + 5 Area cards + this week's moves)
+       from the SynthesisFeed cache. Render-from-cache only; no live Firestore
+       on the render path. TempoNav routes #/chickens to ChickensUI.render().
+       Loaded after physicals-ui.js (sibling SynthesisFeed consumer). -->
+  <script src="js/chickens-ui.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
@@ -1295,6 +1332,11 @@
        passed in); placed next to its only consumer, global-bfrb.js. -->
   <script src="js/bfrb-risk.js" defer></script>
   <script src="js/global-bfrb.js" defer></script>
+  <!-- Life-OS Phase 3: Mood owns the mood_events store (7th synced store,
+       ADR-0008). MUST load BEFORE mood-ui.js (which calls Mood.log
+       synchronously via the deferred commit). -->
+  <script src="js/mood.js" defer></script>
+  <script src="js/mood-ui.js" defer></script>
   <script src="js/tempo-nav.js?v=2" defer></script>
   <script src="js/app.js" defer></script>
 </body>

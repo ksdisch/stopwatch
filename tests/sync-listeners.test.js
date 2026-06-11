@@ -10,7 +10,7 @@
 //     4. Returns a function (the deferred-unsubscribe closure).
 //
 //   SyncEngine listener lifecycle
-//     5. _subscribeAllStores registers 6 unsubscribes + emits 'listener-connected' per store.
+//     5. _subscribeAllStores registers 7 unsubscribes + emits 'listener-connected' per store.
 //     6. _subscribeAllStores idempotent — second call when listeners armed does NOT re-subscribe.
 //     7. _subscribeAllStores per-store subscribe failure emits 'listener-disconnected'.
 //     8. _unsubscribeAllStores walks registry + emits 'listener-disconnected' per store.
@@ -59,12 +59,14 @@ function _e3_saveEnv() {
     merge_presets: SyncMergePresets.merge,
     merge_bfrb: SyncMergeBfrb.merge,
     merge_distractions: SyncMergeDistractions.merge,
+    merge_mood: SyncMergeMood.merge,
     prev_syncState: window.SyncState,
     prev_history: window.History,
     prev_recoveryUI: window.RecoveryUI,
     bfrb_events: localStorage.getItem('bfrb_events'),
     bfrb_marker: localStorage.getItem('tempo_bfrb_events_migration_v1'),
     meds_state: localStorage.getItem('wellness_meds'),
+    mood_events: localStorage.getItem('mood_events'),
   };
 }
 
@@ -81,6 +83,7 @@ function _e3_restore(saved) {
   SyncMergePresets.merge = saved.merge_presets;
   SyncMergeBfrb.merge = saved.merge_bfrb;
   SyncMergeDistractions.merge = saved.merge_distractions;
+  SyncMergeMood.merge = saved.merge_mood;
   if (saved.sync_flag_storage === null) localStorage.removeItem('tempo_sync_enabled');
   else localStorage.setItem('tempo_sync_enabled', saved.sync_flag_storage);
   if (saved.prev_syncState === undefined) delete window.SyncState;
@@ -95,6 +98,8 @@ function _e3_restore(saved) {
   else localStorage.setItem('tempo_bfrb_events_migration_v1', saved.bfrb_marker);
   if (saved.meds_state === null) localStorage.removeItem('wellness_meds');
   else localStorage.setItem('wellness_meds', saved.meds_state);
+  if (saved.mood_events === null) localStorage.removeItem('mood_events');
+  else localStorage.setItem('mood_events', saved.mood_events);
 }
 
 // Install signed-in user + sync-enabled flag for tests that exercise the
@@ -158,7 +163,7 @@ function _e3_makeSubscribeSpy() {
   return spy;
 }
 
-// Stub the 6 per-store merge fns + record which were called.
+// Stub the 7 per-store merge fns + record which were called.
 function _e3_stubAllMerges() {
   const order = [];
   const make = (k) => function () { order.push(k); return { ok: true, count: 0 }; };
@@ -168,6 +173,7 @@ function _e3_stubAllMerges() {
   SyncMergePresets.merge = make('presets');
   SyncMergeBfrb.merge = make('bfrb_events');
   SyncMergeDistractions.merge = make('distractions');
+  SyncMergeMood.merge = make('mood_events');
   return order;
 }
 
@@ -244,7 +250,7 @@ describe('SyncFirestore.subscribe — wrapper guards', () => {
 
 describe('SyncEngine listener lifecycle', () => {
 
-  it('4. _subscribeAllStores registers 6 unsubscribes + emits "listener-connected" per store', () => {
+  it('4. _subscribeAllStores registers 7 unsubscribes + emits "listener-connected" per store', () => {
     const saved = _e3_saveEnv();
     try {
       _e3_install({});
@@ -257,14 +263,14 @@ describe('SyncEngine listener lifecycle', () => {
 
       try {
         SyncEngine._subscribeAllStores();
-        assertEqual(spy.subs.length, 6,
-          'subscribe called 6 times (one per SYNCED_STORES entry)');
-        // Verify all 6 store keys appear on the captured paths.
+        assertEqual(spy.subs.length, 7,
+          'subscribe called 7 times (one per SYNCED_STORES entry)');
+        // Verify all 7 store keys appear on the captured paths.
         const stores = spy.subs.map(s => s.path.split('/').pop()).sort();
         assertArrayEqual(stores,
-          ['bfrb_events', 'distractions', 'history', 'meds', 'presets', 'rest_log'],
-          'paths cover all 6 store keys');
-        assertEqual(connectedEvents.length, 6, '6 listener-connected events emitted');
+          ['bfrb_events', 'distractions', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
+          'paths cover all 7 store keys');
+        assertEqual(connectedEvents.length, 7, '7 listener-connected events emitted');
       } finally {
         SyncEngine.off('listener-connected', cb);
       }
@@ -281,12 +287,12 @@ describe('SyncEngine listener lifecycle', () => {
       SyncFirestore.subscribe = spy;
 
       SyncEngine._subscribeAllStores();
-      assertEqual(spy.subs.length, 6, 'first call: 6 subscribes');
+      assertEqual(spy.subs.length, 7, 'first call: 7 subscribes');
 
-      // Second call must NOT add 6 more.
+      // Second call must NOT add 7 more.
       SyncEngine._subscribeAllStores();
-      assertEqual(spy.subs.length, 6,
-        'second call: still 6 (idempotent — no duplicate subscriptions)');
+      assertEqual(spy.subs.length, 7,
+        'second call: still 7 (idempotent — no duplicate subscriptions)');
     } finally {
       _e3_restore(saved);
     }
@@ -314,8 +320,8 @@ describe('SyncEngine listener lifecycle', () => {
 
       try {
         SyncEngine._subscribeAllStores();
-        // The other 5 stores wired up.
-        assertEqual(subs.length, 5, 'other 5 stores still subscribed');
+        // The other 6 stores wired up.
+        assertEqual(subs.length, 6, 'other 6 stores still subscribed');
         // Meds emitted 'listener-disconnected' with reason 'subscribe-failed'.
         const medsEvents = disconnectedEvents.filter(e => e && e.store === 'meds');
         assertEqual(medsEvents.length, 1, 'one disconnected event for meds');
@@ -337,7 +343,7 @@ describe('SyncEngine listener lifecycle', () => {
       SyncFirestore.subscribe = spy;
 
       SyncEngine._subscribeAllStores();
-      assertEqual(spy.subs.length, 6, 'arm 6 listeners');
+      assertEqual(spy.subs.length, 7, 'arm 7 listeners');
 
       const disconnectedEvents = [];
       const cb = (p) => { disconnectedEvents.push(p); };
@@ -350,8 +356,8 @@ describe('SyncEngine listener lifecycle', () => {
           assertEqual(sub.unsubCalls, 1,
             'unsub for ' + sub.path + ' called exactly once');
         }
-        // 6 disconnected events fired.
-        assertEqual(disconnectedEvents.length, 6, '6 listener-disconnected events');
+        // 7 disconnected events fired.
+        assertEqual(disconnectedEvents.length, 7, '7 listener-disconnected events');
         assertEqual(disconnectedEvents[0].reason, 'test-reason',
           'reason passed through');
 
@@ -388,7 +394,7 @@ describe('SyncEngine listener lifecycle', () => {
       };
 
       SyncEngine._subscribeAllStores();
-      assertEqual(subsRound1.length, 6, 'round 1: 6 subscribes');
+      assertEqual(subsRound1.length, 7, 'round 1: 7 subscribes');
 
       // Tear down — meds unsub throws, but the rest must still be called +
       // the registry must be cleared.
@@ -397,8 +403,8 @@ describe('SyncEngine listener lifecycle', () => {
       // Now a fresh subscribe round wires up cleanly.
       round = 2;
       SyncEngine._subscribeAllStores();
-      assertEqual(subsRound2.length, 6,
-        'round 2: 6 fresh subscribes after broken teardown');
+      assertEqual(subsRound2.length, 7,
+        'round 2: 7 fresh subscribes after broken teardown');
     } finally {
       _e3_restore(saved);
     }

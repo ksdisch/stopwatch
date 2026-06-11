@@ -160,4 +160,96 @@
       assertEqual(strained.band, 'clustered');
     });
   });
+
+  describe('BfrbRisk.assess — sleepDown + mindfulSuggested (Phase 3 stress nudge)', () => {
+    // Band fixtures (mirror the steady-vs-clustered cases above):
+    // clustered: baseline avg 2.0 (4×2) → threshold ceil(3) = 3; today = 3.
+    const clustered = onDays([1, 2, 3, 4], 2)
+      .concat([todayCatch(1), todayCatch(2), todayCatch(3)]);
+    // steady: baseline avg 1.0 (4×1); today = 2 (< floor 3).
+    const steady = onDays([1, 2, 3, 4], 1).concat([todayCatch(1), todayCatch(2)]);
+    // suppressed: only 3 active baseline days (< MIN_ACTIVE_DAYS) + a heavy today.
+    const suppressedEvents = onDays([1, 2, 3], 3)
+      .concat([todayCatch(1), todayCatch(2), todayCatch(3), todayCatch(4)]);
+    // A short night with no history → the absolute < 6.5h fallback flags it.
+    const shortNight = { sleep: { hours: 5.0 } };
+
+    it('no restRow → sleepDown false, mindfulSuggested false (never assert on missing data)', () => {
+      const r = assess(clustered);
+      assertEqual(r.band, 'clustered');
+      assertEqual(r.sleepDown, false);
+      assertEqual(r.mindfulSuggested, false);
+    });
+
+    it('restRow without a numeric sleep.hours → sleepDown false', () => {
+      const r1 = assess(clustered, { restRow: { naps: [] } });
+      const r2 = assess(clustered, { restRow: { sleep: {} } });
+      assertEqual(r1.sleepDown, false);
+      assertEqual(r1.mindfulSuggested, false);
+      assertEqual(r2.sleepDown, false);
+    });
+
+    it('clustered + sleepDown → mindfulSuggested true (the conjunct fires)', () => {
+      const r = assess(clustered, { restRow: shortNight });
+      assertEqual(r.band, 'clustered');
+      assertEqual(r.sleepDown, true);
+      assertEqual(r.mindfulSuggested, true);
+    });
+
+    it('clustered WITHOUT sleepDown → mindfulSuggested false', () => {
+      const r = assess(clustered, { restRow: { sleep: { hours: 8.0 } } });
+      assertEqual(r.band, 'clustered');
+      assertEqual(r.sleepDown, false);
+      assertEqual(r.mindfulSuggested, false);
+    });
+
+    it('steady + sleepDown → mindfulSuggested false (only fires on clustered)', () => {
+      const r = assess(steady, { restRow: shortNight });
+      assertEqual(r.band, 'steady');
+      assertEqual(r.sleepDown, true);
+      assertEqual(r.mindfulSuggested, false);
+    });
+
+    it('suppressed + sleepDown → mindfulSuggested false (the shared guard passes through)', () => {
+      const r = assess(suppressedEvents, { restRow: shortNight });
+      assertEqual(r.suppressed, true);
+      assertEqual(r.band, null);
+      assertEqual(r.sleepDown, true); // the sleep signal is still reported
+      assertEqual(r.mindfulSuggested, false);
+    });
+
+    it('the suppressed early-return shape carries both new fields', () => {
+      const r = assess(suppressedEvents);
+      assert(Object.prototype.hasOwnProperty.call(r, 'sleepDown'), 'sleepDown present');
+      assert(Object.prototype.hasOwnProperty.call(r, 'mindfulSuggested'), 'mindfulSuggested present');
+      assertEqual(r.sleepDown, false);
+      assertEqual(r.mindfulSuggested, false);
+    });
+
+    it('<5 logged nights → absolute fallback: 6.4h is down, 6.5h is not (strict <)', () => {
+      const thinNights = [8, 8, 8, 8]; // only 4 nights — not enough for a personal mean
+      const r1 = assess(clustered, { restRow: { sleep: { hours: 6.4 } }, sleepNightsHistory: thinNights });
+      const r2 = assess(clustered, { restRow: { sleep: { hours: 6.5 } }, sleepNightsHistory: thinNights });
+      assertEqual(r1.sleepDown, true);
+      assertEqual(r2.sleepDown, false);
+    });
+
+    it('≥5 nights → personal-relative: today = mean − 1.0 is down (inclusive <=)', () => {
+      // mean 8.0 → threshold 7.0. 7.0h is NOT below the 6.5h absolute floor, so
+      // only the personal-relative path can flag this night.
+      const r = assess(clustered, {
+        restRow: { sleep: { hours: 7.0 } }, sleepNightsHistory: [8, 8, 8, 8, 8],
+      });
+      assertEqual(r.sleepDown, true);
+    });
+
+    it('≥5 nights → today = mean − 0.9 is NOT down (the relative rule replaces the absolute floor)', () => {
+      // mean 6.0 → threshold 5.0. 5.1h WOULD trip the 6.5h absolute rule, but
+      // with a real personal baseline the relative rule wins → not down.
+      const r = assess(clustered, {
+        restRow: { sleep: { hours: 5.1 } }, sleepNightsHistory: [6, 6, 6, 6, 6],
+      });
+      assertEqual(r.sleepDown, false);
+    });
+  });
 })();

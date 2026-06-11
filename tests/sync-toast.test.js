@@ -228,3 +228,75 @@ describe('Toast.bufferOverflow — retroactive E-2 coverage', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// Toast.action (Phase 3 — tappable variant for the stress nudge)
+// ────────────────────────────────────────────────────────────────────────
+
+describe('Toast.action', () => {
+
+  it('1. paints message + a tappable button; tap hides the toast and invokes onTap', () => {
+    try {
+      _toast_purge();
+      let taps = 0;
+      Toast.action('Breather is one tap away.', 'Open', () => { taps++; });
+      const el = _toast_getEl();
+      assert(el !== null, 'toast painted');
+      assert(el.textContent.indexOf('Breather is one tap away.') !== -1, 'message text present');
+      const btn = el.querySelector('.sync-toast-action-btn');
+      assert(btn !== null, 'action button present');
+      assertEqual(btn.textContent, 'Open', 'button label');
+      btn.click();
+      assertEqual(taps, 1, 'onTap invoked exactly once');
+    } finally {
+      _toast_purge();
+    }
+  });
+
+  it('2. missing handler/label degrades to a message-only toast (no button)', () => {
+    try {
+      _toast_purge();
+      Toast.action('Just a message.', 'Open', null);
+      let el = _toast_getEl();
+      assert(el !== null, 'toast painted without handler');
+      assertEqual(el.querySelector('.sync-toast-action-btn'), null, 'no button without handler');
+      _toast_purge();
+      Toast.action('Still a message.', '', () => {});
+      el = _toast_getEl();
+      assert(el !== null, 'toast painted without label');
+      assertEqual(el.querySelector('.sync-toast-action-btn'), null, 'no button without label');
+    } finally {
+      _toast_purge();
+    }
+  });
+
+  it('3. a throwing onTap does not propagate out of the click handler', () => {
+    try {
+      _toast_purge();
+      Toast.action('Trouble.', 'Open', () => { throw new Error('boom'); });
+      const btn = _toast_getEl().querySelector('.sync-toast-action-btn');
+      let threw = false;
+      try { btn.click(); } catch (_) { threw = true; }
+      assertEqual(threw, false, 'click swallows the onTap throw');
+    } finally {
+      _toast_purge();
+    }
+  });
+
+  it('4. second action replaces the first (single TOAST_ID slot)', () => {
+    try {
+      _toast_purge();
+      Toast.action('First.', 'Open', () => {});
+      Toast.action('Second.', 'Go', () => {});
+      // _hide() removes the replaced toast on a 200ms fade timeout, so the
+      // old element may still be mid-removal — assert on the NEWEST one.
+      const all = document.querySelectorAll('#' + TOAST_ID);
+      const newest = all[all.length - 1];
+      assert(newest.textContent.indexOf('Second.') !== -1, 'newest toast wins the slot');
+      assertEqual(newest.querySelector('.sync-toast-action-btn').textContent, 'Go', 'newest button label');
+    } finally {
+      _toast_purge();
+    }
+  });
+
+});

@@ -136,6 +136,11 @@ const Export = (() => {
     // bfrb_support_enabled toggle is a device-local PREFERENCE → intentionally
     // NOT exported (matches tempo_coach_nudge_enabled / flow_readiness_suggest).
     'bfrb_if_then_plan',
+    // Life-OS Phase 3 mood capture stream — the 7th synced store (ADR-0008).
+    // Append-only; export captures the full stream for cross-device restore
+    // portability. No migration marker needed (mood_events starts fresh —
+    // unlike bfrb_events there are no legacy keys to consolidate).
+    'mood_events',
 
     // Preferences
     'theme', 'sound_muted', 'sound_profile', 'bfrb_volume',
