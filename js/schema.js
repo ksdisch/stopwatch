@@ -20,6 +20,7 @@
 //   - History sessions   (IndexedDB stopwatch_history_db / store 'sessions')
 //   - Medication records (localStorage 'meds/{medId}')
 //   - Quick presets      (localStorage 'quick_presets')
+//   - Mood events        (localStorage 'mood_events' — Life-OS Phase 3, ADR-0008)
 //
 // Explicitly NOT subject to schemaVersion stamping today: multi_state,
 // pomodoro_*, flow_*, interval_state, cooking_timers, sequence_*. These

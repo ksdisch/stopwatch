@@ -2169,3 +2169,28 @@ Council suite green at **67 / 67** (`node --test` — `physicals-synthesizer.tes
 feat(lifeos): Phase 2 — Physicals, first real federated pillar (synthesizer + hub)
 (branch feat/lifeos-phase-2-physicals — committed; push/PR-open + prod council run + rules deploy + merge await separate user approval)
 ```
+
+---
+
+## 2026-06-11 — Life-OS Phase 3: Chickens — mood capture + synthesizer + hub + stress nudge (`feat/lifeos-phase-3-chickens`)
+
+### What We Built
+
+Shipped the **build-heavy native pillar** end-to-end per the ratified plan (`docs/lifeos/phase-3-plan.md`, merged to main as PR #144 at session start). **Store (Tier-1):** `mood_events` is the **7th synced store** (ADR-0008) — `js/mood.js` clones `bfrb-events.js` minus migration ({ `at` (NOT `takenAt`), valence 1..5, tags ≤3, note ≤280, context, reserved additive-nullable `energy` }, F10/F13/F19a honored), `js/sync-merge-mood.js` clones `sync-merge-bfrb.js` (union-dedup `(deviceId, at)`, doc id `deviceId-at`, no F15), and `js/sync-engine.js` gained the 7th entry at every structural site (registry, dispatch, F19a filter, dirty-enqueue, storeResults, BOTH moduleByKey maps) + `js/sync-buffer.js`'s `_mergeFnFor`. **Capture:** a topbar mood icon + shortcut M opens a ≤5s popover (`js/mood-ui.js` — 5 emoji valence chips, one tap logs w/ haptic, flips to optional tag chips (6-word vocabulary) + note; 30s auto-commit/dismiss/lifecycle — ALL folded into ONE `Mood.log()` via the GlobalBFRB deferred-commit pattern). **Council (Tier-2):** `council/lib/chickens-synthesizer.mjs` + `config/chickens.json` — 5 Areas (Mood mean-valence / Mindfulness both detection paths / BFRB 7-vs-7 trend ratio + quiet-stream / Focus flow+pomo minutes / borrowed Stress from the `physicals` RECORD), composite via `balanceScore` (weights .30/.25/.20/.15/.10, null-drop renormalize), balance stamp (5/75), thin gitignored weekly reflection folding into confidence/headline only; `synthesize.mjs` runs it physicals → chickens → home (both pillar producers now NON-FATAL — home rolls up the prior record on a failure). **Hub:** `js/chickens-ui.js` (7th nav tab `#/chickens`, physicals-ui clone — render-from-cache, empty-state default) + a display-only 7d-vs-prior-7d **mood delta chip** on the Mood card (local stream). **Stress nudge (the gate's second half):** `BfrbRisk.assess()` gained pure `restRow` + `sleepNightsHistory` inputs → `sleepDown` (≥5 nights → ≤ mean−1.0h, else <6.5h absolute; no row → never assert) + `mindfulSuggested` (= clustered ∧ ¬suppressed ∧ sleepDown, guards literally shared); `maybeOfferSupport` paints the ratified copy via a new `Toast.action()` tappable variant → `#/wellness/mindful` (shared opt-in + daily throttle). Engine deltas: `timer-ui` stamps `programName` on session saves **and consumes the one-shot "Meditation …" name after save** (review catch — the sticky persistent-Timer name would otherwise mislabel every later countdown into synced history and inflate the Mindfulness Area); `mindful-ui` logs a History session (tags `['mindful']`) on breathing stop at ≥1 full cycle. `sw.js` `v125-physicals-pillar` → `v126-chickens-pillar`.
+
+### Verification result
+
+Council suite **89/89** (`node --test` — incl. NaN-valence guard). Browser engine suite **PASS (1070)** / 0 failures in a fresh Playwright context (52 new Phase-3 cases + 9 review-driven: moodDelta ×5, Toast.action ×4; the historically-flaky sync-engine pair now passes — root cause was a test-isolation leak: suites stubbing the six legacy merges let the REAL async mood merge jam the dispatcher's in-flight latch for later tests; fixed by stubbing `SyncMergeMood` in sync-merge-meds/history, sync-listeners, sync-buffer, and sync-engine E-2 7/8). Playwright UI smoke all green: hub renders a REAL council-built record (composite 47/strained + 5 Area cards + moves) at 390px and 320px (7 tabs, no overflow), Home bubble map shows Chickens, mood capture writes ONE stamped record, **the stress nudge fired on a fixture and its Open tap routed to `#/wellness/mindful`**, 0 console errors. 7-lens adversarial review: 0 blockers / 1 major (the sticky Meditation name — fixed) / minors fixed (chickens non-fatal, NaN guard, mood delta chip implemented, tabbar CSS specificity vs tempo-shell cascade). Verification gotcha for posterity: the Playwright MCP's default browser context pinned STALE cached test JS (even with CDP cache-disable) — always verify in a fresh `browser.newContext()`.
+
+### Gate status + deferred
+
+Gate = "real score + stress nudge fires": **both halves demonstrated on fixtures**; the real-record phone confirm awaits the gated one-time council run. Ratification surface for Kyle at the gate: `chickens.json` weights/targets, MINDFUL_COPY, capture popover strings + tag vocabulary, hub empty-state copy, 7th-tab chicken SVG. Deferred (review nits, all parity-consistent): dead `body.focus-mode` CSS selector (pre-existing pattern — KeyM during focus opens an invisible popover, no corruption), attribute-quote escaping app-wide hardening (inherited from physicals/home), a11y announce/Escape for both capture popovers, mood-pointer buffer end-to-end test. App-Store privacy labels must add mood before any iOS submission (ADR-0008).
+
+### Commits
+
+```
+feat(council): Phase 3 chickens synthesizer — 5-Area score + reflection fold-in
+feat(lifeos): Phase 3 — mood_events 7th store + capture, Chickens hub, stress nudge
+docs(lifeos): Phase 3 — 7-store registry language + session log
+(branch feat/lifeos-phase-3-chickens — push + PR-open this session; merge to main + one-time council run remain gated)
+```

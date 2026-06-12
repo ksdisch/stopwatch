@@ -51,6 +51,10 @@
        load-order deps (events passed in); uses TempoCoach.readinessBand when
        present with a local fallback. -->
   <script src="../js/bfrb-risk.js"></script>
+  <!-- Life-OS Phase 3: Mood owns the mood_events store (7th synced store,
+       ADR-0008; no migration). Loaded with the other event-store data
+       modules so the sync-engine adapter + merge tests see it. -->
+  <script src="../js/mood.js"></script>
   <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
        pomodoro_distractions stores + migration. Load before any UI deps. -->
   <script src="../js/distractions.js"></script>
@@ -82,6 +86,11 @@
        PhysicalsUI._internals. render() is a DOM wrapper covered by Playwright,
        not this suite. Loaded after synthesis-feed.js for parity with runtime. -->
   <script src="../js/physicals-ui.js"></script>
+  <!-- Chickens hub (Life-OS Phase 3): pure helpers (titleCase / bandForScore /
+       bandLabel / bandColorVar / areaCardModel / areaModelsFrom / heroModel) on
+       ChickensUI._internals. render() is a DOM wrapper covered by Playwright,
+       not this suite. Loaded after physicals-ui.js for parity with runtime. -->
+  <script src="../js/chickens-ui.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -126,6 +135,7 @@
   <script src="../js/sync-merge-presets.js"></script>
   <script src="../js/sync-merge-bfrb.js"></script>
   <script src="../js/sync-merge-distractions.js"></script>
+  <script src="../js/sync-merge-mood.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
   <!-- bl-2-todoist: Todoist REST v2 client + offline write queue.
@@ -154,6 +164,8 @@
   <script src="sync-merge-history.test.js"></script>
   <script src="bfrb-events.test.js"></script>
   <script src="sync-merge-bfrb.test.js"></script>
+  <script src="mood.test.js"></script>
+  <script src="sync-merge-mood.test.js"></script>
   <script src="distractions.test.js"></script>
   <script src="sync-merge-distractions.test.js"></script>
   <script src="sync-merge-rest-log.test.js"></script>
@@ -180,6 +192,7 @@
   <script src="synthesis-feed.test.js"></script>
   <script src="home-ui.test.js"></script>
   <script src="physicals-ui.test.js"></script>
+  <script src="chickens-ui.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

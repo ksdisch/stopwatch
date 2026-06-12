@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v125-physicals-pillar';
+const CACHE_NAME = 'stopwatch-v126-chickens-pillar';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,7 @@ const ASSETS = [
   './js/sync-merge-presets.js',
   './js/sync-merge-bfrb.js',
   './js/sync-merge-distractions.js',
+  './js/sync-merge-mood.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
@@ -68,6 +69,7 @@ const ASSETS = [
   './js/synthesis-feed.js',
   './js/home-ui.js',
   './js/physicals-ui.js',
+  './js/chickens-ui.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
   './js/rhythm-panel-today.js',
@@ -86,6 +88,8 @@ const ASSETS = [
   './js/todoist.js',
   './js/todoist-ui.js',
   './js/global-bfrb.js',
+  './js/mood.js',
+  './js/mood-ui.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',

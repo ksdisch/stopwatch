@@ -64,9 +64,22 @@ function onTimerLeft() {
         duration: elapsed,
         laps: [],
         overshootMs,
+        // Life-OS Phase 3 (additive — F19b spread keeps it lossless): the
+        // engine's name (e.g. "Meditation 5 min" set by MindfulUI) so the
+        // council's Mindfulness Area can recognize meditation timers.
+        programName: Timer.getName(),
       });
     }
     Timer.reset();
+    // One-shot meditation label: launchMeditation (mindful-ui) names the
+    // persistent primary Timer "Meditation …" and reset() keeps names, so
+    // without consuming it here the label would stick to every later plain
+    // countdown save and falsely count toward the council's Mindfulness
+    // Area. Only the session saved above carries it.
+    if (typeof Timer.getName === 'function' && typeof Timer.setName === 'function'
+        && String(Timer.getName()).startsWith('Meditation')) {
+      Timer.setName('Timer');
+    }
     BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
     stopTimerRenderLoop();

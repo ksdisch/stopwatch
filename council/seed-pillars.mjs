@@ -5,13 +5,17 @@
 // Mirrors synthesize.mjs's boot: require TEMPO_UID, applicationDefault()
 // credential (GOOGLE_APPLICATION_CREDENTIALS → the service-account key), Admin
 // SDK writes bypass firestore.rules. Writes to users/{uid}/synthesis/{pillarId}
-// for the still-mock domain-pillars (life_building / chickens / relationships /
-// growth — see docs/lifeos/pillars.md).
+// for the still-mock domain-pillars (life_building / relationships / growth —
+// see docs/lifeos/pillars.md).
 //
 // PHASE 2: `physicals` is NO LONGER seeded here — it has a real producer
 // (synthesize.mjs → lib/physicals-synthesizer.mjs reading the recovery_state
-// mart + Tempo's synced stores). The remaining four are seeded until their own
-// phases land real synthesizers.
+// mart + Tempo's synced stores).
+//
+// PHASE 3: `chickens` is NO LONGER seeded here — it has a real producer
+// (synthesize.mjs → lib/chickens-synthesizer.mjs reading mood_events /
+// bfrb_events / history + the physicals RECORD). The remaining three are
+// seeded until their own phases land real synthesizers.
 //
 // Each record is a VALID synthesis record (validated before write) and is
 // clearly synthetic: producer "council/seed", provenance.sources ["seed"]. On
@@ -44,16 +48,9 @@ const balanceConfig = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'config', 'balance.json'), 'utf8'),
 );
 
-// The five seed pillar records. score → band derived; each carries its own
-// short headline + 1..3 signals + a single short move (own nudge).
+// The remaining seed pillar records. score → band derived; each carries its
+// own short headline + 1..3 signals + a single short move (own nudge).
 const SEED_PILLARS = [
-  {
-    node: 'chickens',
-    score: 68,
-    headline: 'SEED — Chickens steady: focus holding, stress contained.',
-    signals: ['Flow blocks on track', 'BFRB events low', 'Mood capture thin'],
-    nudges: [{ text: 'Add a 5-min mindful reset before deep work', priority: 1 }],
-  },
   {
     node: 'life_building',
     score: 52,

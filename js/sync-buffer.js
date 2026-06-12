@@ -38,9 +38,9 @@
 // **Compaction** (Pick A on TODO #3) — only the four per-field-LWW stores
 // in `COMPACTABLE_STORES` dedup by `(store, recordId)` to collapse
 // repeated chatty edits (history note typing, tag toggling, sleep slider
-// flicker, presets edits). The other six storeKeys (meds, history,
-// rest_log-naps, bfrb_events, distractions) are append-only with sub-
-// second timestamps — collision is engineering-zero, no compaction.
+// flicker, presets edits). The other storeKeys (meds, history,
+// rest_log-naps, bfrb_events, distractions, mood_events) are append-only
+// with sub-second timestamps — collision is engineering-zero, no compaction.
 //
 // **Cap** (Pick A on TODO #4) — `PENDING_OP_CAP = 1000` immutable per
 // release; no localStorage override. On overflow, drop the OLDEST entry
@@ -76,7 +76,7 @@ const SyncBuffer = (() => {
 
   // Per-field-LWW stores only (Pick A on TODO #3). Repeated enqueues
   // for the same `(store, recordId)` collapse to a single pointer
-  // (latest enqueuedAt wins). The other six storeKeys are append-only
+  // (latest enqueuedAt wins). The other storeKeys are append-only
   // with sub-second timestamps — no compaction.
   const COMPACTABLE_STORES = [
     'history-note',
@@ -405,6 +405,9 @@ const SyncBuffer = (() => {
     }
     if (storeKey === 'distractions' && typeof SyncMergeDistractions !== 'undefined' && SyncMergeDistractions.merge) {
       return SyncMergeDistractions.merge;
+    }
+    if (storeKey === 'mood_events' && typeof SyncMergeMood !== 'undefined' && SyncMergeMood.merge) {
+      return SyncMergeMood.merge;
     }
     return null;
   }

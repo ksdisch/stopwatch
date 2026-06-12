@@ -80,6 +80,7 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `wellness_rest_log` | `js/recovery-ui.js:15,46` | JSON object keyed by `YYYY-MM-DD`: `{ sleep:{hours,quality?}, naps:[…] }` | **yes** (`rest_log`) | yes | Read by Rhythm (`js/rhythm-engine.js:182`). `bedtime`/`wakeTime` planned ([§6](#6-additive-nullable-fields)). |
 | `bfrb_events` | `js/bfrb-events.js:48` | JSON entry array `{ takenAt, context, sessionId?, …, deviceId, updatedAt, schemaVersion }` | **yes** (`bfrb_events`) | no (synced via adapter) | F3 consolidated stream; `context ∈ global/flow/pomodoro`. |
 | `tempo_bfrb_events_migration_v1` | `js/bfrb-events.js:49,261` | `'1'` | no | no | Idempotency marker for legacy-bucket → `bfrb_events` migration. |
+| `mood_events` | `js/mood.js` | JSON entry array `{ at, valence: 1..5, tags? (≤3), note? (≤280), context?, deviceId, updatedAt, schemaVersion }` | **yes** (`mood_events`) | yes | Life-OS Phase 3 mood stream (ADR-0008); append-only, immutable, no legacy migration. Reserved additive-nullable `energy: 1..5`. Timestamp field is `at`, NOT `takenAt`. |
 | `bfrbs_global` | `js/bfrb-events.js:50` (legacy) / `js/global-bfrb.js:46` | JSON array | no | yes | **Legacy** BFRB bucket; retained one release, no scheduled removal. |
 | `flow_bfrbs` | `js/bfrb-events.js:50` (legacy) / `js/flow-ui.js:5,84` | JSON array | no | yes | **Legacy** bucket. |
 | `pomodoro_bfrbs` | `js/bfrb-events.js:50` (legacy) / `js/pomodoro-ui.js:1264` | JSON array | no | yes | **Legacy** bucket. |
@@ -158,6 +159,7 @@ Registry: `SYNCED_STORES` in `js/sync-engine.js:138-145` (six stores). Each carr
 | `presets` | `Presets.snapshotForSync()` (`js/sync-engine.js:142`) | Full-record LWW; `deletedAt` tombstone propagation (newer wins) | preset `id` | `js/sync-merge-presets.js:9-21` |
 | `bfrb_events` | `BfrbEvents.snapshotForSync()` (`js/sync-engine.js:143`) | Union-dedup; deterministic doc id `deviceId-takenAt` | `(deviceId, takenAt)` | `js/sync-merge-bfrb.js:7,18,32` |
 | `distractions` | `Distractions.snapshotForSync()` (`js/sync-engine.js:144`) | Union-dedup within each `(context, sessionId)` pair | `(context, sessionId, deviceId, timestamp)` | `js/sync-merge-distractions.js:7,36,39` |
+| `mood_events` | `Mood.snapshotForSync()` (`js/sync-engine.js:145`) | Union-dedup; deterministic doc id `deviceId-at`; no F15 toast | `(deviceId, at)` | `js/sync-merge-mood.js` |
 
 ### Read-only recovery feed (NOT in `SYNCED_STORES`)
 

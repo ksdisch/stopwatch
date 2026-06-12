@@ -194,6 +194,25 @@ const MindfulUI = (() => {
   function stopBreathing() {
     if (stepTimer) { clearTimeout(stepTimer); stepTimer = null; }
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    // Life-OS Phase 3: log the breathing session to History when at least
+    // one full cycle completed. MUST run BEFORE currentPattern/cycleCount
+    // are reset below (they carry the pattern name + the duration basis).
+    // type:'timer' renders safely in the History UI; the 'mindful' tag
+    // carries the semantic for the council's Mindfulness Area.
+    if (cycleCount >= 1 && currentPattern
+        && typeof History !== 'undefined' && typeof History.addSession === 'function') {
+      const cycleDurationMs = currentPattern.steps.reduce((acc, s) => acc + s.sec * 1000, 0);
+      try {
+        const p = History.addSession({
+          type: 'timer',
+          duration: cycleCount * cycleDurationMs,
+          laps: [],
+          tags: ['mindful'],
+          programName: currentPattern.name,
+        });
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (_) { /* history write must never break the runner teardown */ }
+    }
     currentPattern = null;
     currentStepIdx = 0;
     cycleCount = 0;

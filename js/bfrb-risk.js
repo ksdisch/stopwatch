@@ -15,6 +15,13 @@
 // data shows; it never predicts ("expect 9 today") and never prescribes. Suppression
 // guards mirror TempoCoach.doseSleepSlope — never assert on thin data.
 //
+// PHASE 3 (Life-OS stress nudge) extends the SAME code path: assess() also accepts
+// an optional restRow (today's wellness_rest_log day entry) + a CALLER-computed
+// sleepNightsHistory, and reports sleepDown + mindfulSuggested — the clustered-AND-
+// short-night conjunct that escalates the nudge to a suggested mindful session.
+// The suppression guards are literally shared by construction; the module still
+// returns bands and numbers only (the escalated copy lives in js/global-bfrb.js).
+//
 // PURE: zero DOM, zero side-effects, zero localStorage. Every input is an argument
 // so the whole surface is unit-testable with fixtures. Empty / null / signed-out
 // recovery state is the DEFAULT path, not a fallback — Surface 1 works with no feed.
@@ -28,6 +35,10 @@ const BfrbRisk = (() => {
   // Recovery re-lens (strictly additive — only ever makes the nudge MORE available):
   const STRAINED_TODAY_FLOOR = 2;
   const STRAINED_CLUSTER_FACTOR = 1.25;
+  // Sleep signal (Phase 3 stress nudge — all inputs caller-supplied, module stays pure):
+  const SLEEP_MIN_NIGHTS = 5;      // ≥5 logged nights → trust a personal mean
+  const SLEEP_MEAN_DELTA_H = 1.0;  // personal-relative: today ≤ mean − this (inclusive)
+  const SLEEP_ABS_FLOOR_H = 6.5;   // absolute fallback below SLEEP_MIN_NIGHTS (strict <)
 
   // Local 'YYYY-MM-DD' (no UTC shift — split via the local Date fields). Matches
   // the helper in js/bfrb-events.js / js/global-bfrb.js so day-bucketing agrees.
@@ -49,10 +60,39 @@ const BfrbRisk = (() => {
       && recoveryState.recovery_signal === 'strained');
   }
 
+  // Decide whether last night ran SHORT, from caller-supplied inputs only.
+  //   restRow: today's wellness_rest_log day entry ({ sleep: { hours, ... }, naps }).
+  //   sleepNightsHistory: number[] of past-14d sleep hours, EXCLUDING today —
+  //     computed by the CALLER (this module stays zero-localStorage).
+  // No row / no numeric hours → false — never assert on missing data (the same
+  // posture as the baseline suppression guards). With ≥SLEEP_MIN_NIGHTS of
+  // history the threshold is personal-relative (today ≤ mean − SLEEP_MEAN_DELTA_H,
+  // inclusive); thinner history falls back to the absolute floor (strictly
+  // below SLEEP_ABS_FLOOR_H).
+  function _sleepDown(restRow, sleepNightsHistory) {
+    if (!restRow || !restRow.sleep
+        || typeof restRow.sleep.hours !== 'number' || !isFinite(restRow.sleep.hours)) {
+      return false;
+    }
+    const todayHours = restRow.sleep.hours;
+    const hist = Array.isArray(sleepNightsHistory)
+      ? sleepNightsHistory.filter(h => typeof h === 'number' && isFinite(h))
+      : [];
+    if (hist.length >= SLEEP_MIN_NIGHTS) {
+      let sum = 0;
+      for (let i = 0; i < hist.length; i++) sum += hist[i];
+      return todayHours <= (sum / hist.length) - SLEEP_MEAN_DELTA_H;
+    }
+    return todayHours < SLEEP_ABS_FLOOR_H;
+  }
+
   // ── assess ───────────────────────────────────────────────────────────
   // events: the live BfrbEvents.getAll() array (or any [{ takenAt }] list).
   // now: ms epoch (defaults to Date.now()).
   // recoveryState: today's recovery-feed row, or null (the default path).
+  // restRow: today's wellness_rest_log day entry, or null (optional — Phase 3).
+  // sleepNightsHistory: number[] of past-14d sleep hours EXCLUDING today,
+  //   computed by the caller (optional — Phase 3).
   //
   // Returns a decision object — NEVER throws, NEVER NaN:
   //   {
@@ -62,12 +102,15 @@ const BfrbRisk = (() => {
   //     activeDays,                            // active days in the baseline window
   //     suppressed,                            // true when band === null
   //     strainedLens,                          // true when the strained re-lens applied
+  //     sleepDown,                             // last night ran short (false on missing data)
+  //     mindfulSuggested,                      // band==='clustered' && !suppressed && sleepDown
   //   }
   function assess(input) {
     input = input || {};
     const events = Array.isArray(input.events) ? input.events : [];
     const now = (typeof input.now === 'number' && isFinite(input.now)) ? input.now : Date.now();
     const strained = _isStrained(input.recoveryState);
+    const sleepDown = _sleepDown(input.restRow, input.sleepNightsHistory);
 
     const todayKey = _localDateKey(new Date(now));
 
@@ -107,6 +150,8 @@ const BfrbRisk = (() => {
       activeDays: activeDays,
       suppressed: true,
       strainedLens: strained,
+      sleepDown: sleepDown,
+      mindfulSuggested: false,
     };
 
     // Guard 1: not enough active history to trust a baseline → suppress.
@@ -126,6 +171,10 @@ const BfrbRisk = (() => {
     // Decision: clustered when today meets/exceeds the scaled baseline threshold.
     const threshold = Math.ceil(baselineActiveAvg * factor);
     result.band = (todayCount >= threshold) ? 'clustered' : 'steady';
+    // Phase 3 escalation conjunct: clustered AND not suppressed AND a short
+    // night → suggest the mindful session. Still just a boolean — the
+    // escalated copy lives in js/global-bfrb.js (the ratification surface).
+    result.mindfulSuggested = (result.band === 'clustered' && !result.suppressed && sleepDown);
     return result;
   }
 
@@ -135,7 +184,8 @@ const BfrbRisk = (() => {
     _internals: {
       WINDOW_DAYS, MIN_ACTIVE_DAYS, MIN_TODAY_FLOOR, CLUSTER_FACTOR,
       STRAINED_TODAY_FLOOR, STRAINED_CLUSTER_FACTOR,
-      _localDateKey, _isStrained,
+      SLEEP_MIN_NIGHTS, SLEEP_MEAN_DELTA_H, SLEEP_ABS_FLOOR_H,
+      _localDateKey, _isStrained, _sleepDown,
     },
   };
 })();

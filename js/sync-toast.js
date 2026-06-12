@@ -156,6 +156,55 @@ const Toast = (() => {
     _show(text);
   }
 
+  // Public — paint a TAPPABLE notice with a single action button (Phase 3
+  // stress nudge: 'Open' → Wellness › Mindful). Deliberately a PARALLEL
+  // code path to `_show` rather than a refactor of it: same TOAST_ID /
+  // CSS_CLASS / auto-dismiss single-slot pattern, but the message rides a
+  // <span> (textContent — XSS-safe) plus a <button> child so the toast
+  // stays non-blocking while offering one optional tap. The button hides
+  // the toast FIRST, then invokes `onTap` in a try/catch (a throwing
+  // handler never strands a visible toast). No-ops on a falsy/blank
+  // message, mirroring `notice`; with no valid btnLabel/onTap it degrades
+  // to a plain message toast.
+  function action(text, btnLabel, onTap) {
+    if (typeof text !== 'string' || text.trim() === '') return;
+    if (typeof document === 'undefined' || !document.body) return;
+
+    // Clear any prior toast (single active slot — same as _show).
+    _hide();
+
+    const toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    toast.className = CSS_CLASS;
+    const msgEl = document.createElement('span');
+    msgEl.textContent = text;
+    toast.appendChild(msgEl);
+    if (typeof btnLabel === 'string' && btnLabel && typeof onTap === 'function') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sync-toast-action-btn';
+      btn.textContent = btnLabel;
+      btn.addEventListener('click', () => {
+        _hide();
+        try { onTap(); } catch (_) {}
+      });
+      toast.appendChild(btn);
+    }
+    document.body.appendChild(toast);
+
+    // Same next-frame visible-class idiom as `_show` so the CSS
+    // transition runs.
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        try { toast.classList.add(VISIBLE_CLASS); } catch (_) {}
+      });
+    } else {
+      try { toast.classList.add(VISIBLE_CLASS); } catch (_) {}
+    }
+
+    _activeTimeout = setTimeout(_hide, AUTO_DISMISS_MS);
+  }
+
   // Test-only escape hatch — resets the dedup flag + tears down any
   // visible toast so each test case starts from a clean baseline.
   // Production callers SHOULD NOT call this — the natural reset path
@@ -230,6 +279,7 @@ const Toast = (() => {
     bufferOverflow,
     downlevelWarning,
     notice,
+    action,
     // Test-only escape hatch — see `_resetForTests` definition above.
     _resetForTests,
     // Internal hooks exposed for tests + future surfaces.
