@@ -52,7 +52,7 @@ records; bubble map flexes off Balance.
 published mart (not mock data).
 **Draws on:** `pillars.md` §2, `integration-plan.md` §5, `data-sources.md`.
 
-## Phase 3 — Chickens (the build-heavy native pillar)
+## Phase 3 — Chickens (the build-heavy native pillar) — ✅ Gate passed 2026-06-12
 
 **Goal:** the pillar that needs new capture, end to end.
 **Key tasks:**

@@ -1,6 +1,6 @@
 # Life-OS Phase 3 — Chickens (the build-heavy native pillar)
 
-- **Status:** Design approved (build not started)
+- **Status:** ✅ Shipped — gate passed 2026-06-12 (built + merged as PR #145; council writes `synthesis/chickens` live; full prod smoke verified — `docs/smoke/2026-06-12-lifeos-phase-3-chickens.md`)
 - **Designed:** 2026-06-09 — both forks ratified by Kyle in-session
 - **Build branch:** `feat/lifeos-phase-3-chickens` (cut off `origin/main` when build starts)
 - **Roadmap:** [`roadmap.md`](roadmap.md) §Phase 3 · **Pillar spec:** [`pillars.md`](pillars.md) §3 · **Capture map:** [`data-sources.md`](data-sources.md)

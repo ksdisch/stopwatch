@@ -2184,6 +2184,8 @@ Council suite **89/89** (`node --test` — incl. NaN-valence guard). Browser eng
 
 ### Gate status + deferred
 
+**GATE PASSED 2026-06-12** — PR #145 merged + deployed (sw v126); Kyle ran the one-time council run himself and verified the full prod smoke checklist (`docs/smoke/2026-06-12-lifeos-phase-3-chickens.md`): mood capture → synced `mood_events` doc → real `synthesis/chickens` record → hub + bubble map render, plus the meditation-name regression check. Phase 4 (Federate Growth + Career) is unblocked.
+
 Gate = "real score + stress nudge fires": **both halves demonstrated on fixtures**; the real-record phone confirm awaits the gated one-time council run. Ratification surface for Kyle at the gate: `chickens.json` weights/targets, MINDFUL_COPY, capture popover strings + tag vocabulary, hub empty-state copy, 7th-tab chicken SVG. Deferred (review nits, all parity-consistent): dead `body.focus-mode` CSS selector (pre-existing pattern — KeyM during focus opens an invisible popover, no corruption), attribute-quote escaping app-wide hardening (inherited from physicals/home), a11y announce/Escape for both capture popovers, mood-pointer buffer end-to-end test. App-Store privacy labels must add mood before any iOS submission (ADR-0008).
 
 ### Commits
