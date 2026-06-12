@@ -7,11 +7,12 @@
 > - **Full feature backlog + shipped post-mortems + resolved tech-debt** → [`docs/BACKLOG.md`](docs/BACKLOG.md)
 > - **Chronological build history** → [`docs/BUILD-HISTORY.md`](docs/BUILD-HISTORY.md)
 > - **Glossary of terms (F-numbers, stage codes)** → [`docs/reference/glossary.md`](docs/reference/glossary.md)
-> - **Cloud-sync strategy + orchestrator workflow** → `docs/CLOUD-SYNC-STRATEGY.md`, `.claude/orchestrator-prompt.md`
+> - **Cloud-sync strategy + orchestrator workflow** → `docs/CLOUD-SYNC-STRATEGY.md`, `.claude/orchestrator.md`
+> - **Run tests / verify the app on FRESH code (stale-SW traps)** → [`docs/playbooks/browser-verification.md`](docs/playbooks/browser-verification.md)
 
 ## What This App Is
 
-A cross-platform stopwatch PWA (Progressive Web App) that works on phone and desktop, inspired by the iPhone Clock app's stopwatch. The key differentiator is the ability to **start a stopwatch with time already elapsed** — e.g., "I took my medication ~30 minutes ago, start counting from 30:00 and count up."
+A cross-platform stopwatch/timer/wellness PWA (phone + desktop), grown into the Tempo Life-OS. Original differentiator: **start a stopwatch with time already elapsed** ("took my meds ~30 min ago — start at 30:00 and count up").
 
 **Live:** https://ksdisch.github.io/stopwatch/
 **Repo:** https://github.com/ksdisch/stopwatch
@@ -31,7 +32,7 @@ index.html                      — App shell, all HTML structure
 css/styles.css (~3300 lines)    — All styling: themes, responsive, animations, a11y
 js/utils.js                     — Utils.formatMs(ms) shared time formatting
 js/dom-utils.js                 — escapeHtml(str) shared HTML-escape helper
-js/platform.js                  — Platform abstraction (web vs Capacitor native): haptic/notify/scheduleNotification + Firebase Auth shim (Platform.auth) + network shim + keepAwake (wake lock: web navigator.wakeLock / native keep-awake). Isolates all native calls.
+js/platform.js                  — Platform abstraction (web vs Capacitor native): haptic/notify/scheduleNotification + Firebase Auth shim (Platform.auth) + network shim + keepAwake wake lock. Isolates ALL native calls.
 js/schema.js                    — Sync-invariant stamping seam: SCHEMA_VERSION / stamp(record) (deviceId+updatedAt+schemaVersion) / isFutureRecord (F19a guard). ALL synced-store writes go through here.
 js/stopwatch.js                 — createStopwatch(id) factory. Drift-free wall-clock timing. Alerts.
 js/timer.js                     — createTimer(id) factory. Same pattern as Stopwatch.
@@ -44,7 +45,7 @@ js/sync-firebase-config.js      — Committed public Firebase web config (projec
 js/sync-flag.js                 — SyncFlag: master cloud-sync feature flag (`tempo_sync_enabled`), off by default.
 js/sync-firestore.js            — Firestore SDK seam (getDoc/setDoc/getCollection/runTransaction/subscribe). Web lazy-imports CDN; native routes to Capacitor plugin (runTransaction+subscribe web-only → backlog #3). Normalized errors.
 js/sync-buffer.js               — Offline write buffer. Separate IndexedDB `tempo_sync_db v1`, store `pending_ops` (≤1000 ops). Drained FIFO when network online.
-js/sync-engine.js               — SyncEngine orchestrator (~2600 lines). SYNCED_STORES = SEVEN stores (meds/history/rest_log/presets/bfrb_events/distractions/mood_events). Lifecycle: init → auth-change → hydrateFromCloud → startSteadyState (300s poll / web onSnapshot) → per-store merge → CAS writeback. LIVE by default (E-1e).
+js/sync-engine.js               — SyncEngine orchestrator (~2600 lines). SYNCED_STORES = the SEVEN stores. init → auth-change → hydrateFromCloud → startSteadyState (300s poll / web onSnapshot) → per-store merge → CAS writeback. LIVE by default (E-1e).
 js/sync-toast.js                — Toast: non-blocking sync notifications (e.g. F15 meds arrival toast) + Toast.action(text, btnLabel, onTap) tappable variant (stress nudge).
 js/sync-manual-dedupe.js        — D-1 placeholder: ManualDedupe.scan() surfaces matching history pairs across synced/imported buckets.
 js/sync-merge-meds.js           — Per-store merge: meds metadata LWW + doseLog append-merge (F1/F16) + F19a + CAS + F15. See docs/adr/0004.
@@ -69,15 +70,15 @@ js/timer-ui.js                  — Timer mode UI: button handlers, render loop,
 js/bfrb-recovery.js             — Shared 60s in-button competing-response countdown on a BFRB catch. Plays SFX.playBFRBEnd.
 js/distractions.js              — Distractions data module. sessionId-keyed maps (F8) for Flow+Pomo. 6th sync store. Owns the migration.
 js/bfrb-events.js               — BfrbEvents data module. F3 consolidated BFRB stream (`bfrb_events`), single source of truth. Synced; owns migration.
-js/bfrb-risk.js                 — BFRB Closed Loop Slice B: pure `BfrbRisk.assess()` — decides clustered vs steady vs suppressed from the live stream + (optional) recovery row. Phase 3 adds optional restRow + sleepNightsHistory inputs → sleepDown + mindfulSuggested outputs (stress-nudge decision; guards shared). Zero DOM/copy.
+js/bfrb-risk.js                 — BFRB Closed Loop Slice B: pure `BfrbRisk.assess()` — clustered vs steady vs suppressed from the live stream + optional recovery/sleep inputs → sleepDown + mindfulSuggested (stress-nudge decision). Zero DOM/copy.
 js/todoist.js                   — Todoist REST v2 client: token mgmt, getTasks/close/reopen/create/updateTask, offline queue. Device-local token, never synced.
 js/todoist-ui.js                — Todoist UI: shared picker modal (openPicker) + settings panel. Reused by Pomo saved tasks + Flow task list.
-js/global-bfrb.js               — Global BFRB FAB (always-visible + shortcut B) → bfrb_events. Wires BFRB chime volume slider. Stress nudge: mindfulSuggested → tappable toast → #/wellness/mindful (shared opt-in + daily throttle).
+js/global-bfrb.js               — Global BFRB FAB (always-visible + shortcut B) → bfrb_events; chime volume slider. Stress nudge: mindfulSuggested → tappable toast → #/wellness/mindful (opt-in + daily throttle).
 js/mood.js                      — Mood data module. Owns `mood_events`, the 7th synced store (ADR-0008): log/getAll/snapshotForSync, F10 stamping, F13 gate. Clone of bfrb-events minus migration.
-js/mood-ui.js                   — Mood capture UI (Life-OS Phase 3): topbar popover (5 valence chips → tag chips → "+ note"), deferred-commit into ONE Mood.log, shortcut M, Platform.haptic.
+js/mood-ui.js                   — Mood capture UI (Life-OS P3): topbar popover (valence chips → tags → note), deferred-commit into ONE Mood.log, shortcut M, Platform.haptic.
 js/pomodoro-ui.js               — Pomodoro mode UI: handlers, render loop, settings, checklists, saved tasks, templates, distractions, timeline.
 js/pomodoro-stats.js            — Pomodoro stats engine (streaks, daily/weekly aggregates).
-js/flow-ui.js                   — Flow Block UI: pre-block checklist, user-editable "Tasks for this block" (two-way Todoist; `flow_user_tasks`), distractions, summary, recovery, #15 readiness default.
+js/flow-ui.js                   — Flow Block UI: pre-block checklist, user task list (two-way Todoist; `flow_user_tasks`), distractions, summary, recovery, #15 readiness default.
 js/alert-ui.js                  — Alert UI: add/remove/render threshold alerts for stopwatch.
 js/bg-notify.js                 — Background notification bridge via service worker (backgrounded tabs).
 js/interval-ui.js               — Interval mode UI: phase list, templates, rounds, run info.
@@ -90,20 +91,20 @@ js/focus-ui.js                  — Focus / ambient display mode (distraction-fr
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
 js/presets-ui.js                — Presets UI: drawer grid + quick-picks row.
 js/history-ui.js                — History panel UI: session list, tag filter bar, tag/note editing, log-past-session form.
-js/meds.js                      — Medications engine. createMed(id) + MedsManager singleton. Dose logging w/ offset; opt-in prescription supply tracking (derived remaining); D-2 reconcileDoseLog (F1/F16/F14/F19a) + onMergeComplete (F4). Detail → ARCHITECTURE.md / data-dictionary.md.
+js/meds.js                      — Medications engine. createMed(id) + MedsManager singleton. Dose logging w/ offset; opt-in supply tracking (derived remaining); D-2 reconcileDoseLog + onMergeComplete (F1/F16/F14/F19a/F4). Detail → data-dictionary.
 js/meds-ui.js                   — Wellness › Meds UI: med cards, add/edit, dose logging, due-time notifications, opt-in supply badge + ▲/▼ steppers + refill.
 js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards → Interval engine. Recent Activity from History (type=interval).
-js/mindful-ui.js                — Wellness › Mindful UI: breathing exercises (animated circle) + meditation duration presets → Timer. Breathing logs a History session (tags ['mindful']) on stop when ≥1 full cycle.
+js/mindful-ui.js                — Wellness › Mindful UI: breathing exercises + meditation presets → Timer. Breathing logs a History session (tags ['mindful']) on stop when ≥1 full cycle.
 js/wellness-cooking-ui.js       — Wellness › Cooking UI: 8 named cooking presets → Cook mode (createTimer). Recent Activity from History (type=cooking). ≤8 timers.
-js/recovery-ui.js               — Wellness › Recovery UI: daily sleep log (hours+quality+bedtime/wake), nap tracker, derived focus status. Persists `wellness_rest_log`.
-js/recovery-feed.js             — RecoveryFeed: READ-ONLY consumer of external personal-health-elt pipeline (Firestore recovery_state). No write path. See docs/reference/recovery-state-contract.md.
-js/synthesis-feed.js            — SynthesisFeed: READ-ONLY consumer of council-written synthesis records (users/{uid}/synthesis/{nodeId}). Mirrors recovery-feed.js: getDoc → per-node localStorage cache → getRecord(nodeId). nodeId encodes '/'→'__'. PILLAR_NODES + refreshAll() + getAllPillarRecords() feed the Home hub. No write path. See docs/contracts/.
-js/home-ui.js                   — HomeUI (Life-OS Phase 1): the Home hub + default landing. Render-from-cache only (mirrors rhythm-panel-today): bubble map (3 lenses — priority/importance/neglect, inline SVG w/ self-contained helpers), home Balance hero + per-pillar synthesis cards, "this week's 3 moves", empty-state-as-DEFAULT. Pure helpers on _internals. Never touches Firestore on the render path.
-js/physicals-ui.js              — PhysicalsUI (Life-OS Phase 2): the dedicated Physicals pillar hub (6th nav tab #/physicals). Render-from-cache only (mirrors home-ui): composite hero + 4 Area cards (Recovery/Sleep/Meds/Training load) read from the council's `physicals` record's additive `areas[]` + the record's nudges. Reuses .home-card/.home-band-chip/--home-band-* + onUpdate repaint. Pure helpers on _internals. No fetch path (physicals already in SynthesisFeed.refreshAll).
-js/chickens-ui.js               — ChickensUI (Life-OS Phase 3): the dedicated Chickens pillar hub (7th nav tab #/chickens). Render-from-cache only (mirrors physicals-ui): composite hero + 5 Area cards (Mood/Mindfulness/BFRB/Focus/Stress) read from the council's `chickens` record's additive `areas[]` + the record's nudges. Pure helpers on _internals. No fetch path (chickens already in SynthesisFeed.refreshAll).
-js/tempo-coach.js               — Tempo Coach engine (#15): pure singleton, zero DOM/side-effects. readinessBand / suggestFocusDurationMs / doseSleepSlope (suppression-guarded) / buildTodayModel / shouldNudge. Descriptive-first. MUST load before rhythm-panel-today + flow-ui.
+js/recovery-ui.js               — Wellness › Recovery UI: daily sleep log + nap tracker + derived focus status. Persists `wellness_rest_log`.
+js/recovery-feed.js             — RecoveryFeed: READ-ONLY consumer of the external personal-health-elt pipeline (Firestore recovery_state). No write path. Contract: docs/reference/.
+js/synthesis-feed.js            — SynthesisFeed: READ-ONLY consumer of council synthesis records (users/{uid}/synthesis/{nodeId}; '/'→'__'). getDoc → per-node localStorage cache → getRecord; PILLAR_NODES + refreshAll() + getAllPillarRecords() feed the hubs. No write path. See docs/contracts/.
+js/home-ui.js                   — HomeUI (Life-OS P1): Home hub + default landing. Render-from-cache only: bubble map (3 lenses, inline SVG), Balance hero + per-pillar synthesis cards, "this week's 3 moves", empty-state-as-DEFAULT. Pure helpers on _internals; never touches Firestore on render.
+js/physicals-ui.js              — PhysicalsUI (Life-OS P2): Physicals pillar hub (6th nav tab #/physicals). Render-from-cache (mirrors home-ui): composite hero + 4 Area cards (Recovery/Sleep/Meds/Training load) from the council `physicals` record's `areas[]` + nudges; reuses .home-card chips + onUpdate repaint. No fetch path.
+js/chickens-ui.js               — ChickensUI (Life-OS P3): Chickens pillar hub (7th nav tab #/chickens). Render-from-cache (mirrors physicals-ui): composite hero + 5 Area cards (Mood/Mindfulness/BFRB/Focus/Stress) from the council `chickens` record's `areas[]` + nudges. No fetch path.
+js/tempo-coach.js               — Tempo Coach engine (#15): pure singleton, zero DOM. readinessBand / suggestFocusDurationMs / doseSleepSlope / buildTodayModel / shouldNudge. MUST load before rhythm-panel-today + flow-ui.
 js/rhythm-engine.js             — Rhythm aggregation: daily event timeline + readiness band from History / bfrb_events / distractions / RecoveryFeed.
-js/rhythm-insights.js           — Rhythm Insights foundation (#12): panel registry (sorted by `order`), DI data layer (_deps), shared inline-SVG helpers, renderInto() (Promise.allSettled per-panel isolation).
+js/rhythm-insights.js           — Rhythm Insights foundation (#12): panel registry (sorted by `order`), DI data layer (_deps), shared inline-SVG helpers, renderInto() (per-panel isolation).
 js/rhythm-panel-today.js        — Insights panel (order 5, pins atop): Tempo Coach "Today" briefing. Descriptive HTML string, never touches document. Empty-state is DEFAULT path.
 js/rhythm-panel-meds-sleep.js   — Insights panel (order 10): Meds-vs-Sleep scatter. Onset|Duration toggle; dot color=quality. Pairs dose[D] with sleep[D+1].
 js/rhythm-panel-recovery-trends.js — Insights panel (order 20): 14-day HRV/ACWR/RHR sparklines from RecoveryFeed.
@@ -147,10 +148,10 @@ utils → dom-utils → platform → schema → stopwatch → timer → instance
 
 - **Stopwatch:** `{ id, name, status: 'idle'|'running'|'paused', offsetMs, startedAt, accumulatedMs, laps[], lapStartMs, alerts[] }`
 - **Timer:** `{ id, name, status: 'idle'|'running'|'paused'|'finished', durationMs, startedAt, accumulatedMs }`
-- **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs, previousPhaseSnapshot: {phase,cycleIndex,accumulatedMs}|null }`. Snapshot captured at top of every `nextPhase()` → one-level undo via `revertPhase()`; cleared on `reset()`, overwritten each transition.
+- **Pomodoro:** `{ status: 'idle'|'running'|'paused'|'phaseComplete'|'done', phase: 'work'|'shortBreak'|'longBreak', cycleIndex, totalCycles, workMs, shortBreakMs, longBreakMs, startedAt, accumulatedMs, previousPhaseSnapshot|null }`. Snapshot taken each `nextPhase()` → one-level `revertPhase()`; cleared on `reset()`.
 - **Flow Block:** `{ status: 'idle'|'running'|'paused'|'focusComplete'|'recovery'|'recoveryPaused'|'done', phase: 'focus'|'recovery', focusDurationMs (5400000|7200000), startedAt, accumulatedMs, sessionStartedAt, focusEndedAt, goal }`
-- **Medication:** `{ id, name, dose, frequency: 'once-daily'|'twice-daily'|'as-needed', lastTakenAt, doseLog[{takenAt}], supplyStartCount?, supplyResetAt? }`. Supply fields nullable (null when not tracking); remaining is **derived** from doses on/after `supplyResetAt`, never stored. `MedsManager` singleton; persists to `wellness_meds`. No schedule/notifications in V2 — logging is always explicit. `loadState` migrates V1 schedule-based records to `frequency:'as-needed'`.
-- **Rest log:** `wellness_rest_log`, object keyed by `YYYY-MM-DD`. Each day: `sleep: {hours, quality?, bedtime?, wakeTime?}` (bedtime/wakeTime = #11 additive-nullable `"HH:MM"`) + `naps: [{startedAt, durationMs, endedEarly?}]`. No engine — `RecoveryUI` reads/writes directly; derives focus stats from `History.getSessions()`.
+- **Medication:** `{ id, name, dose, frequency: 'once-daily'|'twice-daily'|'as-needed', lastTakenAt, doseLog[{takenAt}], supplyStartCount?, supplyResetAt? }`. Supply fields nullable; remaining **derived** from doses on/after `supplyResetAt`, never stored. `MedsManager` singleton; persists **per-record** (`meds/{medId}` keys — the legacy `wellness_meds` blob was deleted in the F18 migration; never read or recreate it). Logging is always explicit; V1 schedule records migrate to `as-needed`.
+- **Rest log:** `wellness_rest_log`, keyed `YYYY-MM-DD`: `sleep: {hours, quality?, bedtime?, wakeTime?}` (additive-nullable `"HH:MM"`) + `naps: [{startedAt, durationMs, endedEarly?}]`. No engine — `RecoveryUI` reads/writes directly; focus stats derived from History.
 
 ### Persistence topology
 
@@ -158,7 +159,7 @@ utils → dom-utils → platform → schema → stopwatch → timer → instance
 - Session history → IndexedDB (`stopwatch_history_db`/`sessions`); legacy `stopwatch_history` localStorage migrated in on first load.
 - Cloud-sync offline buffer → a **separate** IndexedDB `tempo_sync_db v1`, store `pending_ops`. Two distinct IDB DBs by design (canonical history vs transient sync infra).
 - **The 7 synced stores:** `meds`, `history`, `rest_log`, `presets`, `bfrb_events`, `distractions`, `mood_events` (ADR-0008 — timestamp field is `at`, not `takenAt`). ALL writes to these stamp `deviceId`+`updatedAt`+`schemaVersion` via `js/schema.js`.
-- **Device-local, NEVER synced and NEVER exported (credentials):** `todoist_api_token` (+ other `todoist_*`). **NOT synced** (Todoist itself is cross-device truth): `flow_user_tasks`, `pomodoro_saved_tasks`. **Device-local, not synced, not exported:** `flow_readiness_suggest`, `tempo_coach_nudge_enabled` (#15).
+- **Device-local, NEVER synced/exported:** `todoist_api_token` + other `todoist_*` (credentials); `flow_user_tasks`, `pomodoro_saved_tasks` (Todoist itself is cross-device truth); `flow_readiness_suggest`, `tempo_coach_nudge_enabled` (#15).
 - Full enumeration of every localStorage/IndexedDB/Firestore key + the sync envelope + derived-vs-stored notes: [`docs/reference/data-dictionary.md`](docs/reference/data-dictionary.md).
 
 ## What Has Been Built
@@ -174,7 +175,7 @@ Full chronological detail lives in [`docs/BUILD-HISTORY.md`](docs/BUILD-HISTORY.
 - **Phase 9** — Cloud Sync (Firebase/Firestore, 6 stores, 28 PRs)
 - **Phase 10** — Post-sync burndown (Flow vibration, ambient noise, Rhythm timeline)
 - **Phase 11+** — Todoist integration, Rhythm Insights dashboard (7 panels), Tempo Coach daily loop (#15), BFRB Closed Loop (#16)
-- **Phase 12 — Tempo Life-OS (Phase 0 foundations + Phase 1 Home hub + Phase 2 Physicals pillar)** — evolved Tempo into the `life-os` trunk *in place* (ADR-0003): Firestore contracts (`docs/contracts/` — synthesis-record + pillar-feed), a local **council** runtime + launchd harness (`council/`, writes synthesis records via the Admin SDK — `recovery_state` pattern), and a read-only synthesis feed (`js/synthesis-feed.js`). **Phase 1** shipped the **Home hub** (`js/home-ui.js`): the default-landing dashboard — a Balance bubble map (3 lenses) + per-pillar synthesis cards + "this week's 3 moves", rendered read-only from the council's `home` + 5 domain-pillar records (`SynthesisFeed.refreshAll`/`getAllPillarRecords`). **Phase 2** shipped the first **real federated pillar — Physicals**: a pure council synthesizer (`council/lib/physicals-synthesizer.mjs` + `council/config/physicals.json`) reads the live `recovery_state` mart **plus** Tempo's synced `meds`/`rest_log`/`history` stores server-side via the Admin SDK, normalizes 4 Areas (Recovery/Sleep/Meds/Training load) into one 0–100 score (composite reuses `balance.mjs balanceScore`) + the additive `balance{}` stamp, and writes `synthesis/physicals` (folded into `synthesize.mjs` before the home roll-up — no launchd re-point; replaces the seed). The PWA gained a dedicated **Physicals hub** (`js/physicals-ui.js`, 6th nav tab `#/physicals`) rendering the record's `areas[]` + nudges read-from-cache. **Phase 3** shipped **Chickens** (mental/emotional — the build-heavy native pillar): the `mood_events` **7th synced store** (ADR-0008) + ≤5s topbar mood capture (`js/mood.js`/`js/mood-ui.js`/`js/sync-merge-mood.js`, shortcut M, deferred-commit → ONE `Mood.log()`), a council synthesizer (`council/lib/chickens-synthesizer.mjs` + `config/chickens.json` — 5 Areas: Mood/Mindfulness/BFRB/Focus/borrowed Stress from the `physicals` record) writing `synthesis/chickens` between physicals and the home roll-up, a **Chickens hub** (`js/chickens-ui.js`, 7th nav tab `#/chickens`), and the **stress nudge** (`BfrbRisk.assess()` sleepDown+mindfulSuggested → tappable toast → `#/wellness/mindful`). Approved plan + ADRs → [`docs/lifeos/`](docs/lifeos/); phased roadmap → [`docs/lifeos/roadmap.md`](docs/lifeos/roadmap.md).
+- **Phase 12 — Tempo Life-OS (Phases 0–3)** — evolved Tempo into the `life-os` trunk *in place* (ADR-0003). **P0 (#139):** Firestore contracts (`docs/contracts/`), local **council** runtime + launchd harness (`council/`, writes `users/{uid}/synthesis/*` via Admin SDK), read-only `js/synthesis-feed.js`. **P1 (#140/#141):** Home hub (`js/home-ui.js`) — default landing; bubble map + per-pillar cards + "this week's 3 moves", render-from-cache. **P2 (#142):** Physicals pillar — council synthesizer reads `recovery_state` + synced `meds`/`rest_log`/`history` server-side, writes `synthesis/physicals` (4 Areas → 0–100 composite); hub `js/physicals-ui.js` (`#/physicals`). **P3 (#144–#146):** Chickens pillar — `mood_events` 7th synced store (ADR-0008) + topbar mood capture (shortcut M), `chickens` synthesizer (5 Areas), hub `js/chickens-ui.js` (`#/chickens`), stress nudge (BfrbRisk → tappable toast → `#/wellness/mindful`). Full detail relocated to [`docs/BUILD-HISTORY.md`](docs/BUILD-HISTORY.md); plan + ADRs → [`docs/lifeos/`](docs/lifeos/); roadmap → [`docs/lifeos/roadmap.md`](docs/lifeos/roadmap.md).
 
 ## Feature Backlog
 
@@ -206,11 +207,11 @@ Open items only. Resolved entries (the F18 `wellness_meds` orphaned-readers fixe
 2026-05-26 browser-verification notes) are archived in
 [`docs/BACKLOG.md` § Resolved tech debt](docs/BACKLOG.md#resolved-tech-debt-kept-as-migration-pattern-reference).
 
-- **iOS sign-out doesn't fully sign out (pre-existing, surfaced 2026-05-20):** Tapping "Sign out" on iOS dismisses the popup but `SyncAuth.getCurrentUser()` still returns the account (web works). Likely the `authStateChange` listener (`js/platform.js:297-302`) races back the still-cached user because `@capacitor-firebase/authentication`'s `signOut()` returns before the Firebase iOS SDK clears its Keychain-cached state. Fix lives in the native `authSignOut` branch (await a deauth+keychain-clear, or a guard flag suppressing the next re-emit). Workaround: toggle "Enable cloud sync" off.
+- **iOS sign-out doesn't fully sign out (web OK):** the native `authStateChange` listener races back the Keychain-cached user after `signOut()`; fix belongs in `js/platform.js`'s native `authSignOut` branch. Workaround: toggle "Enable cloud sync" off. Full diagnosis: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
 - **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` (timer-ui.js) duplicate ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
-- **Engine tests only (~964 `it()` cases across 36 `tests/*.test.js`):** run via `tests/index.html` in a real browser (curl-grepping the shell does NOT execute them). Covers every timing engine, meds, analytics, Todoist client, schema helpers, distractions, bfrb-events, Tempo Coach, the full cloud-sync stack, and the Life-OS synthesis feed. Suite is green in a **foreground** tab. (A `visibilityState` test-isolation gap that failed 2 sync-engine `startSteadyState` tests only in a *backgrounded* tab was fixed in PR #125; the same 2 still flake under headless `npm test`.) The Life-OS council has its own Node validator suite (`council/lib/*.test.mjs`, run via `node --test`). Still no UI/integration tests.
-- **renderLaps does full innerHTML on lap events:** the `updateCurrentLap` perf path only applies to the RAF tick; recording a new lap rebuilds the whole list. Low impact for typical lap counts.
-- **Life-OS council runs under Homebrew node, not nvm (Phase 0):** the launchd wrapper's PATH augmentation resolves `node` to `/opt/homebrew/bin/node` (v25), not Kyle's interactive nvm node (v22, which installed `firebase-admin`). Works (firebase-admin is portable), but if Homebrew node is removed the `command -v node` preflight fails under launchd. Consider pinning node in `council/run-synthesis.sh`.
+- **No UI/integration tests:** engine suites only (see § Test commands for counts, runners, and the headless flake). UI verification is manual / via the `app-verifier` agent; a UI harness ("Tempo Proving Ground") is a backlog candidate.
+- **renderLaps does full innerHTML on lap events:** the perf path only covers the RAF tick; a new lap rebuilds the list. Low impact.
+- **Life-OS council runs under Homebrew node (v25), not nvm (v22):** works today (firebase-admin is portable), but removing Homebrew node breaks the launchd preflight — consider pinning node in `council/run-synthesis.sh`.
 
 ## Operations
 
@@ -226,6 +227,13 @@ git push  # deploys to https://ksdisch.github.io/stopwatch/
 cached web file (`index.html`, `css/styles.css`, `css/tempo-shell.css`, `manifest.json`, or
 any `js/*.js`) must bump that version string in the same PR**, or users see stale content
 until the old SW expires.
+
+### CI (PR gate ONLY — a direct push to main bypasses it and still deploys)
+
+`.github/workflows/ci.yml` runs on PRs to `main`: `engine-tests` (canonical count via `npm test`),
+`asset-integrity`, `sw-cache-bump`, `markdown-links` (lychee over curated docs — relative links
+must resolve), `mermaid-lint`, `firestore-rules`. Always ship via PR — the flow-vibrate incident
+(`docs/playbooks/stale-cache.md`) is what a direct push costs.
 
 ### iOS build (Capacitor)
 
@@ -257,35 +265,63 @@ Store paperwork (developer account, privacy nutrition labels for meds + BFRB, sc
 - Notifications: `Platform.notify(title, opts)` / `BgNotify.schedule(...)`. Do NOT call `new Notification(...)` directly.
 - Sync-invariant stamping: helpers in `js/schema.js`. ALL writes to synced stores stamp `deviceId`+`updatedAt`+`schemaVersion` through them.
 
+### Never touch / handle with care
+
+- `www/`, `ios/` build products, `node_modules/` — generated; never hand-edit.
+- `js/sync-firebase-config.js` is a **committed public** web config by design (`firestore.rules` enforces access) — do not "fix"/rotate/hide it.
+- Service-account keys (`service-account.json`, `*-firebase-adminsdk-*.json`, `council/.env.secrets`) — gitignored credentials; never commit, read, or print.
+- `council/synthesize.mjs` / `seed-pillars.mjs` / `run-synthesis.sh` write **production Firestore** — never run them as a test (that's `npm --prefix council test`).
+- Tests are the spec: never edit a test to make a failure pass — fix the code or report the failure.
+- Migration paths in data modules (History, meds, distractions, bfrb-events) keep old devices upgradable — not dead code; don't remove.
+
 ### Test commands
 
-No Node test runner. Engine tests live in `tests/*.test.js`, executed by opening
-`tests/index.html` in a **real browser** (the page title self-reports the live PASS/FAIL count).
+Engine tests (~1,070 `it()` across ~51 `tests/*.test.js` as of 2026-06-12) execute **in a real
+browser** — no Node assertion runner. `npm test` drives headless Chromium over the same page;
+its `PASS (n)` line (echoed by the CI `engine-tests` job) is the canonical count — trust it
+over any number written in docs.
 
 ```bash
-python3 -m http.server 8765    # from repo root, then open http://localhost:8765/tests/index.html
-pkill -f "python3 -m http.server 8765"   # stop when done
+npm test                      # headless: serves :8765, loads tests/index.html, polls title "PASS (n)"/"FAIL (n)"; one auto-retry
+python3 -m http.server 8765   # manual: open http://localhost:8765/tests/index.html (title = live verdict)
+npm run test:rules            # Firestore security-rules suite (emulator; needs Java)
+npm --prefix council test     # Life-OS council validator suite (pure node --test)
 ```
 
-`curl`-grepping the HTML does NOT execute the tests. If you have no browser tool, ask the user
-to open the URL and paste the counts. Test API: `describe` / `it` / `assert` / `assertEqual` /
-`assertClose` / `assertArrayEqual` (in `tests/test-runner.js`).
+**Known flake:** 1–2 sync-engine steady-state `it()`s (`_steadyRunInFlight` latch) fail
+**headless-only**; a visible tab is the source of truth — adjudication recipe + the full
+fresh-code discipline live in
+[`docs/playbooks/browser-verification.md`](docs/playbooks/browser-verification.md) (or run
+`/run-tests`). On `FAIL (n)`, n = failure count, not total. `curl`-grepping the HTML does NOT
+execute tests. Test API: `describe` / `it` / `assert` / `assertEqual` / `assertClose` /
+`assertArrayEqual` (`tests/test-runner.js`).
 
 ### Lint / typecheck / build
 
 None — vanilla JS, no toolchain. The script order in `index.html` IS the dependency graph.
 iOS: `npm run sync-www` then `npm run ios:open`.
 
+### Definition of done (any code change)
+
+1. Engine behavior covered in `tests/<module>.test.js`; suite green per § Test commands.
+2. Cached web file changed ⇒ `CACHE_NAME` bumped in `sw.js` **in the same commit** (hook + CI enforce).
+3. New `js/` module ⇒ all 4 wire-points: `index.html` `<script>` slot, CLAUDE.md file-map + chain, `sw.js` ASSETS, registered test stub (`/new-engine-module` / `/add-panel`).
+4. Synced-store writes stamp via `js/schema.js`; persisted key/shape changes update `docs/reference/data-dictionary.md`.
+5. UI-visible changes verified on FRESH code per [`docs/playbooks/browser-verification.md`](docs/playbooks/browser-verification.md) — console clean + screenshot evidence.
+6. Shipping a backlog item ⇒ update the Feature Backlog row here + `docs/BACKLOG.md`; substantial session ⇒ `docs/SESSION-LOG.md` entry.
+7. Feature branch + PR (`feat/`/`fix/`/`refactor/`/`docs/`); **never merge or push `main` without Kyle's explicit per-PR go-ahead** (`/ship-pr` walks the flow).
+
 ### Orchestrator / subagent workflow (when dispatched)
 
-A 5-subagent sync-PR pipeline (`sync-auditor` → `engine-implementer` → `engine-tester` →
-`ui-wirer` → `pr-shipper`) lives in `.claude/orchestrator-prompt.md` + `.claude/agents/`. The
+A 5-subagent PR pipeline (`auditor`/`sync-auditor` → `engine-implementer` → `engine-tester` →
+`ui-wirer` → `pr-shipper`) lives in `.claude/orchestrator.md` (general + sync routing;
+`.claude/orchestrator-prompt.md` is the sync-era variant) + `.claude/agents/`. The
 `ui-wirer` phase fires only when the audit's affected-files table includes UI files
 (`js/*-ui.js`, `index.html`, `css/*.css`, `js/tempo-nav.js`). `pr-shipper` always pauses for
 explicit push approval. Sync-PR branches: `feat/sync-<pr-id>-<slug>`; commit prefixes
 `feat`/`refactor`/`fix`/`docs`; one PR per Stage row in `docs/sync-impl/PLAN.md`, merged in
-**sequential order within a stage**. The cache-bump above is applied by `pr-shipper` only when
-`engine-implementer` reports `sw.js cache-bump needed: yes`.
+**sequential order within a stage**. `pr-shipper` applies the cache bump when the
+implementer reports it needed.
 
 **Where things live (doc index):**
 - Architecture + ADRs + diagrams → `docs/ARCHITECTURE.md`, `docs/adr/`, `docs/diagrams/`
@@ -297,14 +333,13 @@ explicit push approval. Sync-PR branches: `feat/sync-<pr-id>-<slug>`; commit pre
 - Sync implementation plan (`docs/sync-impl/PLAN.md`) + audits (`docs/sync-impl/audits/<PR-ID>-AUDIT.md`, e.g. `A-1-AUDIT.md`) + per-PR briefs (`docs/sync-impl/prompts/<PR-ID>-PROMPT.md`, e.g. `S0-1-PROMPT.md`)
 - Backend decision → `docs/sync-review/BACKEND-SELECTION.md`
 - Session log (one entry per session) → `docs/SESSION-LOG.md`
-- Orchestrator + subagent prompts → `.claude/orchestrator-prompt.md`, `.claude/agents/`, `.claude/templates/phase-brief.md`
+- Orchestrator + subagent prompts → `.claude/orchestrator.md` (general+sync), `.claude/orchestrator-prompt.md` (sync-era), `.claude/agents/`, `.claude/templates/phase-brief.md`
 
 ## Claude tooling for this repo
 
-Repo-local Claude Code commands (`/<name>`) and skills, vendored into `.claude/` so they
-work in cloud/web sessions and for collaborators — not only on the machine that defined them
-globally. **💻 = local-only**: needs a browser MCP / screenshots / a running local dev server,
-so it will **not** work in a cloud/web session.
+Repo-local commands (`/<name>`), skills, and agents vendored into `.claude/` so they work in
+cloud/web sessions and for collaborators. **💻 = local-only** (needs a browser MCP / local dev
+server; won't work in a cloud/web session).
 
 **Commands** (`.claude/commands/`):
 - `/begin` — open a session: orient on branch/commits/open PRs, recap the last `/wrap` log, route into `.claude/session-start.md`.
@@ -316,6 +351,10 @@ so it will **not** work in a cloud/web session.
 - `/autonomous-milestone [target]` — with a target: plan/build/test/verify end-to-end; with none: triage the backlog into ranked candidates. Uses ultracode multi-agent orchestration (higher token cost).
 - 💻 `/screenshot-iterate <mock + what to build>` — visual loop: implement → screenshot the running app → compare to a mock → iterate. Needs a browser MCP + local dev server.
 - `/new-engine-module <name + desc>` — **repo-specific.** Scaffold a `js/<name>.js` the Tempo way and wire all four touch-points in one shot: `<script>` tag at the correct load-order slot, CLAUDE.md file-map + load-order chain, `sw.js` ASSETS + `CACHE_NAME` bump, and a `tests/<name>.test.js` stub registered in `tests/index.html`.
+- `/fix-bug <symptom + where>` — **repo-specific.** Bug loop: triage vs the known playbooks (stale-SW first), root-cause before edit, regression test, conventions checklist, fresh-context verify, `fix/` branch.
+- `/run-tests [scope]` — **repo-specific.** Suite execution + interpretation: `npm test`, the headless-flake adjudication rule, rules + council variants. Never edits to get green.
+- `/ship-pr [scope]` — **repo-specific.** DoD pre-flight, pre-runs the 3 guard checks, branch/commit conventions, push + `gh pr create`, CI expectations, merge etiquette (worktree `--delete-branch` quirk). Stops before merge.
+- `/add-panel <key + question>` — **repo-specific.** Scaffold a Rhythm Insights panel: registry contract (pure build/render via injected deps), `order` pick, 4-point wiring, clock-pinned tests.
 
 **Skills** (`.claude/skills/`, auto-trigger or invoke explicitly):
 - `artifacts-audit` — audit which engineering artifacts (READMEs, ADRs, runbooks, ERDs…) the repo should have; writes `docs/artifacts-plan.md`. Plans only, no source edits.
@@ -324,10 +363,13 @@ so it will **not** work in a cloud/web session.
 
 **Subagents** (`.claude/agents/`) — repo-specific, beyond the 5-subagent sync-PR pipeline:
 - `sync-invariant-reviewer` — read-only reviewer of a branch diff for the three cross-cutting invariants the pipeline doesn't mechanically gate: synced-store `schema.stamp()` coverage, reuse-over-reimplementation (`Platform.haptic`/`Platform.notify`/`escapeHtml`/`Utils.formatMs`), and new-module 4-file wiring. Reports findings; never edits.
+- `test-runner` — runs the suites and reports verdict + failures verbatim; knows the headless-flake adjudication rule. Read-only; pinned to haiku.
+- `app-verifier` — drives the real app via the playwright MCP on the fresh-context recipe; returns observed-vs-expected + screenshots + console findings. Read-only.
+- `council-tester` — runs `npm --prefix council test` (Life-OS validators); hard-forbidden from `synthesize.mjs`/`seed-pillars.mjs` (production Firestore writers). Read-only; haiku.
 
 **Hooks** (`.claude/settings.json`, committed — repo-specific):
 - `pre-commit-guard` (`PreToolUse` on `Bash`, script `scripts/hooks/pre-commit-guard.mjs`) — before any `git commit`, runs `scripts/check-sw-bump.mjs` + `scripts/check-asset-integrity.mjs` + `scripts/check-load-order.mjs` and **blocks** the commit if a cached web file changed without a `CACHE_NAME` bump, if `sw.js` ASSETS and the `index.html` `<script>` set disagree, or if the `CLAUDE.md` "Script Load Order" chain drifts from the `index.html` `<script>` order.
 
 **MCP servers** (`.mcp.json`, committed — project-scoped so cloud/web sessions + collaborators inherit them; Claude Code prompts to approve project MCP servers on first use):
-- `playwright` (`npx @playwright/mcp@latest`) — a deterministic browser for any session: run the engine suite (`tests/index.html`), screenshot/drive the app for `/screenshot-iterate` + `match-the-mock`, and sidestep the stale-SW-cache trap. Makes the 💻 browser-dependent commands work in cloud/web too.
-- `firebase` (`npx firebase-tools@latest experimental:mcp --only firestore,auth`) — Firestore/Auth tooling that auto-detects `firebase.json`; turns manual Firebase-console sync debugging (`docs/playbooks/sync-divergence.md`) into in-session queries. Reuses the `firebase-tools` already wired for `npm run test:rules`.
+- `playwright` (`npx @playwright/mcp@latest`) — deterministic browser for any session: run the engine suite, drive/screenshot the app, sidestep the stale-SW trap. Makes the 💻 commands work in cloud/web too.
+- `firebase` (`npx firebase-tools@latest experimental:mcp --only firestore,auth`) — in-session Firestore/Auth queries (sync debugging per `docs/playbooks/sync-divergence.md`); reuses the firebase-tools wired for `npm run test:rules`.
