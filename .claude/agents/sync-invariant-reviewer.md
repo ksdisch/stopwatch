@@ -26,9 +26,10 @@ depends on it.
 ## The three invariants to check
 
 ### 1. Synced-store writes MUST stamp via `js/schema.js`
-The SIX synced stores are: **`meds`, `history`, `rest_log`, `presets`, `bfrb_events`,
-`distractions`** (persistence keys include `wellness_meds`, the `stopwatch_history_db` IDB,
-`wellness_rest_log`, presets store, `bfrb_events`, `distractions`). Every record written to one
+The SEVEN synced stores are: **`meds`, `history`, `rest_log`, `presets`, `bfrb_events`,
+`distractions`, `mood_events`** (persistence keys include `wellness_meds`, the `stopwatch_history_db` IDB,
+`wellness_rest_log`, presets store, `bfrb_events`, `distractions`, `mood_events` — ADR-0008; its
+timestamp field is `at`, not `takenAt`). Every record written to one
 of these must carry `deviceId` + `updatedAt` + `schemaVersion`, applied through the helpers in
 `js/schema.js` (`stamp(record)`), NOT hand-rolled.
 

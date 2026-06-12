@@ -17,7 +17,7 @@ From `$ARGUMENTS`, determine:
   - **engine factory** (`createX(id)` returning a state object; e.g. stopwatch, timer, flow);
   - **IIFE data/singleton module** (self-contained, e.g. History, SFX, Themes, schema, distractions);
   - **UI module** (`<name>-ui.js`, plain global functions wiring DOM/handlers to a tested engine).
-- **synced?** — will it write to one of the 6 synced stores (meds/history/rest_log/presets/bfrb_events/distractions)? If yes, it MUST stamp via `js/schema.js`.
+- **synced?** — will it write to one of the 7 synced stores (meds/history/rest_log/presets/bfrb_events/distractions/mood_events)? If yes, it MUST stamp via `js/schema.js`.
 
 If name or kind is unclear, ask one concise question before writing anything.
 

@@ -26,6 +26,21 @@ backlog #15. The remaining ranked candidates are the live menu for the next auto
 | 6.65 | **Tempo Proving Ground — UI test harness + kit** | Sequence under, not instead | Highest-autonomy class + real velocity floor, but zero direct user payoff; ship the harness-only slice *after* a user-facing feature. |
 | 6.0 | **HealthKit two-way bridge** | Sequence later | Removes the most-forgotten manual input, but a from-scratch Swift plugin with double-write risk; best paired after the intelligence loop proves out. |
 
+## Tooling & DX backlog (2026-06-12 factory audit)
+
+Velocity/safety investments noticed while building the repo's Claude-tooling factory
+(browser-verification playbook, `/fix-bug` `/run-tests` `/ship-pr` `/add-panel`,
+test-runner/app-verifier/council-tester agents). Kept separate from the user-facing
+feature table.
+
+| Item | Why / evidence | Effort |
+|---|---|---|
+| Branch-protection rule on `main` requiring the CI checks | CI is `on: pull_request` only — a direct push bypasses every gate and still deploys; that is the documented flow-vibrate incident path (`.github/workflows/ci.yml` header, `playbooks/stale-cache.md`). A GitHub settings change closes it. | Low |
+| Fix the 2 headless sync-engine flakes for real | `scripts/run-tests.mjs` carries a whole-page retry crutch for the `_steadyRunInFlight` latch (PR #125 fixed only the backgrounded-tab variant). Removing the crutch un-blurs CI red. | Medium |
+| `/new-synced-store` command | An 8th synced store would repeat the `mood_events` clone recipe (ADR-0008, PR #145): schema + merge module + SYNCED_STORES + firestore.rules + data-dictionary + tests. Codify it like `/new-engine-module` before it's needed. | Low |
+| Seed `.claude/settings.json` permission allowlist | Read-only loops (`npm test`, `npm run check:*`, `python3 -m http.server`, `git status/diff/log`) each prompt for permission; an allowlist cuts friction for cheap-model sessions. | Low |
+| CLAUDE.md headroom budget | At ~39.4k of the 40k always-loaded limit (2026-06-12). Next relocation candidates when it grows: State Model details → `reference/data-dictionary.md`, per-phase history → `BUILD-HISTORY.md`. Re-run `/trim-context` when >39.5k. | Low |
+
 ## Summary table
 
 | Priority | Feature | Impact | Effort | Added | Status |
