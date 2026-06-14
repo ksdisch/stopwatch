@@ -331,6 +331,77 @@ describe('Export.importAllData — restore behavior', () => {
   });
 });
 
+describe('Export.importAllData — restore robustness (H1 / M8)', () => {
+  it('skips non-object session elements instead of feeding them to addSession (M8)', async () => {
+    let stored = [];
+    window.History = {
+      getSessions: async () => stored.slice(),
+      // Real addSession dereferences session.id / spreads ...session, so a
+      // non-object would throw here. Assert we are never handed garbage.
+      addSession: async (s) => {
+        assert(s && typeof s === 'object' && !Array.isArray(s),
+          'addSession must only receive plain-object sessions');
+        stored.push(s);
+      },
+      clearAll: async () => { stored = []; },
+    };
+    const payload = JSON.stringify({
+      version: 1,
+      sessions: [{ id: 'a' }, 'garbage', null, 42, ['x'], { id: 'b' }],
+      settings: {},
+    });
+    const result = await Export.importAllData(payload);
+    assertEqual(result.sessionsImported, 2);   // only the two real objects
+    assertEqual(stored.length, 2);
+  });
+
+  it('a session that throws mid-import does not abort the rest — no half-wiped history (H1)', async () => {
+    let stored = [];
+    let cleared = false;
+    window.History = {
+      getSessions: async () => stored.slice(),
+      addSession: async (s) => {
+        if (s && s.id === 'boom') throw new Error('simulated IDB write failure');
+        stored.push(s);
+      },
+      clearAll: async () => { cleared = true; stored = []; },
+    };
+    const payload = JSON.stringify({
+      version: 1,
+      sessions: [
+        { id: 'a', type: 'flow', duration: 1 },
+        { id: 'boom', type: 'flow', duration: 1 },  // throws inside addSession
+        { id: 'b', type: 'pomodoro', duration: 1 },
+      ],
+      settings: {},
+    });
+    // Must NOT throw — the per-element try/catch keeps the loop alive.
+    const result = await Export.importAllData(payload);
+    assertEqual(cleared, true);
+    assertEqual(result.sessionsImported, 2);   // a + b survived; boom skipped
+    assertEqual(stored.length, 2);
+  });
+
+  it('validates element shape before clearAll (a wholly-garbage sessions array still clears + imports 0)', async () => {
+    let stored = [{ id: 'pre-existing' }];
+    let cleared = false;
+    window.History = {
+      getSessions: async () => stored.slice(),
+      addSession: async (s) => { stored.push(s); },
+      clearAll: async () => { cleared = true; stored = []; },
+    };
+    const payload = JSON.stringify({
+      version: 1,
+      sessions: ['x', null, 7, ['y']],   // nothing valid
+      settings: {},
+    });
+    const result = await Export.importAllData(payload);
+    assertEqual(cleared, true);
+    assertEqual(result.sessionsImported, 0);
+    assertEqual(stored.length, 0);
+  });
+});
+
 describe('Export — per-record meds sweep (post-F18)', () => {
   // The migrated meds store is per-record `meds/{id}` keys (NOT the legacy
   // single `wellness_meds` blob, which meds.js deletes on migration). These
