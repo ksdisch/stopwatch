@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v127-audit-quick-wins';
+const CACHE_NAME = 'stopwatch-v128-sync-local-writeback';
 const ASSETS = [
   './',
   './index.html',

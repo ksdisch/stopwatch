@@ -835,3 +835,115 @@ describe('SyncMergeMeds — D-1 reconcile retrofit (E-1c TODO #4 Pick A)', () =>
     assert(result.collapsed >= 1, 'collapsed counter incremented');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H4 — cloud→local writeback for meds. The merge reconciles each doseLog onto
+// a throwaway getState() SNAPSHOT, so before this fix the reconciled cross-
+// device doses reached the cloud but never the LIVE med (onMergeComplete
+// recomputed lastTakenAt from the stale live log). These tests use a REAL
+// MedsManager.add()ed med (so MedsManager.get(medId) resolves the live record)
+// and assert the merged doseLog lands on the live med + is persisted to disk.
+// Timestamps are spaced > RECONCILE_WINDOW_MS apart so F1 doesn't collapse the
+// pair, and the cloud dose is recent so F16 doesn't clamp it.
+// ────────────────────────────────────────────────────────────────────────
+describe('SyncMergeMeds — H4 cloud→local doseLog writeback (live med)', () => {
+
+  function _clearMedsLocalStorage() {
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('meds/') === 0) stale.push(k);
+    }
+    stale.forEach(k => localStorage.removeItem(k));
+  }
+
+  it('applies the reconciled cross-device dose to the LIVE med + persists it', async () => {
+    const saved = _e1c_savedEnv();
+    // Use the real MedsManager (no medsAll override) so get(medId) resolves.
+    delete window.SyncState;           // ungated: add()/direct writes proceed
+    MedsManager.clear();
+    _clearMedsLocalStorage();
+    try {
+      const now = Date.now();
+      const localTime = now - 2 * 3600000; // 2h ago, SAME device (F16 exempt)
+      const cloudTime = now - 60000;       // 60s ago, cross-device (within F16 window)
+
+      const med = MedsManager.add({ name: 'Vyvanse', dose: '60 mg', frequency: 'once-daily' });
+      med.logDose(localTime);
+      const medId = med.getId();
+
+      // Cloud record: same med id, doseLog carries ONLY the cross-device dose.
+      const cloudRec = Object.assign({}, med.getState(), {
+        doseLog: [_e1c_doseEntry('phone-2', cloudTime)],
+      });
+      _e1c_install({
+        cloudDocs: [_e1c_makeCloudDoc(cloudRec)],
+        localDeviceId: med.getDeviceId(),
+      });
+
+      // Precondition: live med has only the local dose.
+      assertEqual(MedsManager.get(medId).getDoseLog().length, 1,
+        'precondition — live med has only the local dose');
+
+      const result = await SyncMergeMeds.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+
+      // The reconciled doseLog (local ∪ cloud) is now on the LIVE med.
+      const log = MedsManager.get(medId).getDoseLog();
+      assertEqual(log.length, 2, 'live med now carries local + cloud-origin dose (H4)');
+      assert(log.some(e => e.deviceId === 'phone-2' && e.takenAt === cloudTime),
+        'cloud-origin dose applied to the LIVE med');
+      assert(log.some(e => e.takenAt === localTime),
+        'local dose preserved');
+      assertEqual(MedsManager.get(medId).getLastTakenAt(), cloudTime,
+        'lastTakenAt re-derived from the merged tail (the newer cross-device dose)');
+
+      // ...and persisted to the per-record meds/{id} key (direct write, gate-bypassing).
+      const onDisk = JSON.parse(localStorage.getItem('meds/' + medId));
+      assert(onDisk && Array.isArray(onDisk.doseLog), 'meds/{id} persisted');
+      assertEqual(onDisk.doseLog.length, 2, 'merged doseLog persisted to disk');
+    } finally {
+      MedsManager.clear();
+      _clearMedsLocalStorage();
+      _e1c_restore(saved);
+    }
+  });
+
+  it('leaves a future-schema live med untouched (no doseLog clobber)', async () => {
+    const saved = _e1c_savedEnv();
+    delete window.SyncState;
+    MedsManager.clear();
+    _clearMedsLocalStorage();
+    try {
+      const now = Date.now();
+      const med = MedsManager.add({ name: 'Strattera', frequency: 'as-needed' });
+      med.logDose(now - 2 * 3600000);
+      const medId = med.getId();
+      // Force the live med into future-schema state via loadState.
+      const future = Object.assign({}, med.getState(), { schemaVersion: 999 });
+      med.loadState(future);
+      assertEqual(med.isFromFutureSchema(), true, 'precondition — live med is future-schema');
+      const beforeLen = med.getDoseLog().length;
+
+      const cloudRec = Object.assign({}, med.getState(), {
+        schemaVersion: 1,
+        doseLog: [_e1c_doseEntry('phone-2', now - 60000)],
+      });
+      _e1c_install({
+        cloudDocs: [_e1c_makeCloudDoc(cloudRec)],
+        localDeviceId: med.getDeviceId(),
+      });
+
+      await SyncMergeMeds.merge(null);
+
+      // applyMergedDoseLog must skip future-schema meds — doseLog unchanged.
+      assertEqual(MedsManager.get(medId).getDoseLog().length, beforeLen,
+        'future-schema live med doseLog left untouched');
+    } finally {
+      MedsManager.clear();
+      _clearMedsLocalStorage();
+      _e1c_restore(saved);
+    }
+  });
+
+});

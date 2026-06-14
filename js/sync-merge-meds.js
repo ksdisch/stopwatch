@@ -390,6 +390,30 @@ const SyncMergeMeds = (() => {
       }
     }
 
+    // ── H4: apply the reconciled doseLogs to the LIVE local meds ──────
+    // The reconcile loop above reassigned each merged doseLog onto a throwaway
+    // getState() SNAPSHOT (mergedRecords), and the CAS loop converged the
+    // CLOUD — but the live MedsManager meds (and their meds/{id} localStorage
+    // records) never received the cross-device doses, so a dose logged on
+    // another device stayed invisible here until a re-hydrate. Apply each
+    // reconciled doseLog to the LIVE med + persist, strictly AFTER the CAS loop
+    // (so a CAS failure never leaves local ahead of cloud), via the privileged
+    // applyMergedDoseLog that bypasses the F13 gate. Per-med try/catch; a
+    // failure is a warning, never a thrown merge. (Scope note: this applies the
+    // doseLog only — cross-device NEW meds + name/dose/frequency LWW still
+    // require a re-hydrate to surface locally; that's a separate follow-up to
+    // make the whole merged med record land locally.)
+    if (typeof MedsManager.applyMergedDoseLog === 'function') {
+      for (const med of mergedRecords) {
+        try {
+          MedsManager.applyMergedDoseLog(med.id, med.doseLog);
+        } catch (e) {
+          warnings.push('local doseLog apply failed for med ' + med.id + ': '
+                        + (e && e.message ? e.message : String(e)));
+        }
+      }
+    }
+
     // ── F15 emit (Pick A on TODO #3) ─────────────────────────────────
     // Per-med, per-cycle, threshold ≥2 NEW remote entries. Each
     // qualifying med fires its own `meds-arrival` event. B-4's toast
