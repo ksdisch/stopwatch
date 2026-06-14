@@ -271,6 +271,31 @@ const SyncEngine = (() => {
     SyncFlag.disable();
   }
 
+  // H3: user-initiated recovery from the 'error' gate — the "Retry" action on
+  // the sync-error toast. The gate deliberately does NOT auto-clear 'error'
+  // (so a sync failure stays visible rather than silently hidden); this is the
+  // explicit user gesture that clears it and re-attempts the sync flow. Clears
+  // the gate to 'ready', then re-runs the auto-hydrate path: it re-pulls cloud
+  // if the initial hydrate had failed (marker unset), or re-arms steady-state
+  // if already hydrated. If sync is still broken, the failure paths re-set
+  // 'error' and the toast re-fires. Best-effort + guarded — never throws into
+  // the toast's tap handler.
+  function retrySync() {
+    try {
+      if (typeof SyncState !== 'undefined' && typeof SyncState.set === 'function') {
+        SyncState.set('ready');
+      }
+    } catch (_) {}
+    let user = null;
+    try {
+      user = (typeof SyncAuth !== 'undefined' && typeof SyncAuth.getCurrentUser === 'function')
+        ? SyncAuth.getCurrentUser()
+        : null;
+    } catch (_) {}
+    try { _maybeAutoHydrate(user); } catch (_) {}
+    return { ok: true };
+  }
+
   function getState() {
     return {
       enabled: SyncFlag.isEnabled(),
@@ -2597,6 +2622,8 @@ const SyncEngine = (() => {
   return {
     init, enable, disable, getState, getSnapshot,
     on, off, emit,
+    // H3: user-initiated 'error'-gate recovery (the sync-error toast's Retry).
+    retrySync,
     // B-3: cloud upload + state helpers.
     pushSnapshot,
     getStageDHandoff,
