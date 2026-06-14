@@ -2235,3 +2235,36 @@ Correctness/reliability batch as one PR: **M4** (log-past-session equal start/en
 #150  fix(sync): apply remote arrivals to LOCAL storage for the 5 broken merges (H4)          [merged 80eadf0]
 #151  fix(sync): stop the 'error' write gate silently dropping local writes (H3)              [merged f478ae8]
 ```
+
+---
+
+## 2026-06-14 — Audit remediation batch 2: M4/M10/M11/M6/M1 — 5 correctness/reliability quick wins, one PR
+
+### What We Built
+
+Continued the 2026-06-13 audit burndown (`AUDIT-2026-06-13.md`). Landed five small, independent Medium findings in a single PR (`fix/audit-quick-wins-2`):
+
+- **M4 — log-past-session 24h ghost** (`js/history-ui.js`). The cross-midnight rollover (`if (endDate <= startDate) endDate.setDate(+1)`) *also* fired when start === end, silently writing an 86,400,000 ms session to IDB + sync (and making the later `durationMs <= 0` guard dead code). Now rejects identical start/end on the **raw** inputs *before* the rollover; the rollover guard tightened to `endDate < startDate`.
+
+- **M10 — cooking-timer id collision** (`js/cooking-ui.js`). `Date.now().toString(36)` collides on two adds in the same ms (handlers `.find` by id → control/delete the wrong timer). Appended `'-' + Math.random().toString(36).slice(2,6)`, matching the localTag pattern elsewhere.
+
+- **M11 — sw `notificationclick` gap** (`sw.js`). Background alarms fire `showNotification(..., {requireInteraction:true})` but there was no `notificationclick` listener — tapping was a no-op and left a sticky notification. Added a handler that closes the notification → `clients.matchAll` → focuses an existing window or `clients.openWindow('./')`.
+
+- **M6 — world-readable secrets** (`council/run-synthesis.sh`). The gitignored `.env.secrets` (holds `TEMPO_UID` + the SA-key path) was 0644. Added a preflight that refuses to source it unless perms are `600` (GNU/BSD `stat` fallback). Note: the `.env.secrets` file lives only on Kyle's host (not in the repo clone), so the `chmod 600` itself is a one-time host action — **Kyle: run `chmod 600 council/.env.secrets` on the council machine**; the committed preflight then keeps it honest.
+
+- **M1 — steady-state never torn down** (`js/sync-engine.js`). `stopSteadyState()` had zero production callers; `disable()` only flipped the flag and the auth-change handler just `return`ed on a null user, leaving the 5-min interval + 7 onSnapshot listeners armed until reload. Now `disable()` and the sign-out (`!user`) branch of `_maybeAutoHydrate` both call the (idempotent) `stopSteadyState()`. `_maybeAutoHydrate` exposed for test-only invocation.
+
+### Verification
+
+`npm test` (driven via the playwright MCP — the browser-binary download is blocked by this environment's network policy, so `npm test`'s own headless launch can't run here): **TEST RESULT: PASS (1097)**, including the two new `SyncEngine — teardown on sign-out / disable (M1)` cases. No flakes observed this run. All three pre-commit guards (sw-bump / asset-integrity / load-order) green; cache v129→v130. M4/M10/M11 are UI/SW seam (not engine-testable in the harness) — covered by reasoning + the M1 engine test.
+
+### Suggested Next Steps
+
+- **H2** (BFRB trend dedup) — must first analyze the legacy flow/pomodoro catch-write model; the audit's naive `(timestamp|source)` dedup regresses `tests/analytics.test.js`'s hourly test (same-ms same-source catches are legitimately distinct).
+- Root-cause the rhythm `activeNow`/`upcoming` clock-flake (likely a real clock-bucketing bug, not just headless jitter).
+
+### PRs
+
+```
+fix/audit-quick-wins-2 — fix(audit): correctness/reliability quick wins batch 2 (M4/M10/M11/M6/M1)
+```

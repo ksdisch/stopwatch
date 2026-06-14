@@ -490,7 +490,17 @@ function initLogPastPanel() {
 
     const startDate = new Date(`${dateStr}T${startTime}`);
     const endDate = new Date(`${dateStr}T${endTime}`);
-    if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
+    // M4: reject identical start/end BEFORE the cross-midnight rollover.
+    // The rollover below is meant for sessions that ran past midnight (end
+    // time earlier than start time). When start === end, rolling the end
+    // forward a day would silently record a 24-hour session, and the
+    // `durationMs <= 0` guard further down would become dead code (the
+    // rollover already forced end > start). Catch it on the raw inputs first.
+    if (endDate.getTime() === startDate.getTime()) {
+      alert('End time must be after start time.');
+      return;
+    }
+    if (endDate < startDate) endDate.setDate(endDate.getDate() + 1);
     const durationMs = endDate.getTime() - startDate.getTime();
 
     if (durationMs <= 0) {

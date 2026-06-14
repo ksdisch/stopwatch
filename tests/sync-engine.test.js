@@ -1252,6 +1252,58 @@ describe('SyncEngine.stopSteadyState (E-1b)', () => {
   });
 });
 
+// M1 — steady-state must be torn down on sign-out (auth-change → null user)
+// and on disable(). Pre-fix, disable() only flipped the flag and the
+// auth-change handler just returned on a null user, leaving the interval +
+// listeners armed until reload.
+describe('SyncEngine — teardown on sign-out / disable (M1)', () => {
+  it('disable() clears the steady-state interval (calls clearInterval)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.removeItem('tempo_sync_steady_interval_ms');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      const spyClearInterval = _e1b_makeClearIntervalSpy();
+      window.setInterval = spyInterval;
+      window.clearInterval = spyClearInterval;
+
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1, 'timer armed on start');
+
+      SyncEngine.disable();
+      assertEqual(spyClearInterval.calls.length >= 1, true,
+        'disable() tears down the steady-state interval (M1)');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+      // disable() flipped the sync flag off via SyncFlag.disable(); the
+      // restore above re-applies the saved tempo_sync_enabled value.
+    }
+  });
+
+  it('auth-change to a null user (sign-out) tears down steady-state (M1)', () => {
+    const saved = _e1b_saveSteadyEnv();
+    try {
+      localStorage.removeItem('tempo_sync_steady_interval_ms');
+      const spyInterval = _e1b_makeSetIntervalSpy();
+      const spyClearInterval = _e1b_makeClearIntervalSpy();
+      window.setInterval = spyInterval;
+      window.clearInterval = spyClearInterval;
+
+      SyncEngine.startSteadyState();
+      assertEqual(spyInterval.calls.length, 1, 'timer armed on start');
+
+      // _maybeAutoHydrate is the auth-change handler wired in init(); the
+      // null-user branch is the sign-out path. Driving it directly (the
+      // engine doesn't expose a synthetic auth event) exercises the same
+      // code the SyncAuth.onAuthChange callback runs.
+      SyncEngine._maybeAutoHydrate(null);
+      assertEqual(spyClearInterval.calls.length >= 1, true,
+        'sign-out (null user) tears down the steady-state interval (M1)');
+    } finally {
+      _e1b_restoreSteadyEnv(saved);
+    }
+  });
+});
+
 describe('SyncEngine — visibilitychange + Platform.network pause/resume (E-1b)', () => {
   it('visibilitychange handler pauses and resumes the timer', () => {
     const saved = _e1b_saveSteadyEnv();
