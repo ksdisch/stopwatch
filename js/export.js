@@ -248,10 +248,25 @@ const Export = (() => {
     let sessionsImported = 0;
     let settingsRestored = 0;
     if (Array.isArray(data.sessions)) {
+      // H1/M8: import is the one place untrusted JSON (a hand-edited or
+      // foreign backup) becomes persisted state. Validate element shape
+      // BEFORE the destructive clearAll(), and import each session under its
+      // own try/catch so a single malformed element — or a transient IDB
+      // error — can't abort the loop and leave history wiped + half-restored.
+      // addSession still normalizes each record (legacy-id rewrite, schema
+      // stamp, field defaults); History._reconcileWriteRaw can't replace this
+      // loop because it writes verbatim and would reject pre-F2 numeric ids.
+      const validSessions = data.sessions.filter(
+        s => s && typeof s === 'object' && !Array.isArray(s)
+      );
       await History.clearAll();
-      for (const s of data.sessions) {
-        await History.addSession(s);
-        sessionsImported++;
+      for (const s of validSessions) {
+        try {
+          await History.addSession(s);
+          sessionsImported++;
+        } catch (e) {
+          try { console.warn('[import] skipped malformed session', e); } catch (_) {}
+        }
       }
     }
     if (data.settings && typeof data.settings === 'object') {

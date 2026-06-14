@@ -1,10 +1,20 @@
 function escapeHtml(str) {
-  const el = document.createElement('span');
-  // null-safe: undefined/null → '' (not the literal "undefined"/"null"). This
-  // matches the behavior the wellness UIs had open-coded before they were
-  // de-duped to this shared helper (Batch E reuse sweep).
-  el.textContent = String(str ?? '');
-  return el.innerHTML;
+  // Escape the five HTML-significant characters. The previous element/innerHTML
+  // serializer only escaped & < > (text-node context) and left " and ' raw —
+  // safe inside element text, but an injection vector wherever the result is
+  // interpolated into a QUOTED HTML attribute (the dominant pattern across this
+  // codebase: aria-label/title/data-*/value=). Escaping quotes too closes that
+  // whole attribute-context class (audit M7) and is byte-identical in text
+  // context once the browser re-parses the entities. null-safe: undefined/null
+  // → '' (not the literal "undefined"/"null"), matching the prior behavior the
+  // wellness UIs relied on (Batch E reuse sweep). Order matters: & first so the
+  // ampersands introduced by the later entities aren't double-escaped.
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // True when the event target is a text-entry surface — a real <input>,
