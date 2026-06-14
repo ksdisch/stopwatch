@@ -354,15 +354,21 @@ const RecoveryUI = (() => {
     return `
       <ul class="recovery-trend-list">
         ${last7.map(d => {
+          // audit M7: rest_log is a synced store, so sleep.hours / sleep.quality
+          // can arrive from another (possibly poisoned) device. They're numeric
+          // fields — coerce to Number so a hostile string can neither inject into
+          // this innerHTML nor render garbage. NaN/absent → 0 hr / no quality.
+          const hours = Number(d.sleep && d.sleep.hours) || 0;
+          const quality = Number(d.sleep && d.sleep.quality);
           const sleep = d.sleep
-            ? `${d.sleep.hours} hr${d.sleep.quality ? ` · ${d.sleep.quality}/5` : ''}`
+            ? `${hours} hr${quality ? ` · ${quality}/5` : ''}`
             : '—';
           const naps = d.napCount > 0
             ? ` · ${d.napCount} nap${d.napCount > 1 ? 's' : ''}`
             : '';
           return `
             <li class="recovery-trend-row">
-              <span class="recovery-trend-label">${d.label}</span>
+              <span class="recovery-trend-label">${escapeHtml(d.label)}</span>
               <span class="recovery-trend-value">${sleep}${naps}</span>
             </li>
           `;

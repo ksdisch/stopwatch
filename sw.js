@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v126-chickens-pillar';
+const CACHE_NAME = 'stopwatch-v127-audit-quick-wins';
 const ASSETS = [
   './',
   './index.html',
