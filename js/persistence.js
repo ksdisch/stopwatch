@@ -27,12 +27,36 @@ const SyncState = (() => {
 
   function set(state) {
     if (!VALID.includes(state)) return false;
-    try { localStorage.setItem(STORAGE_KEY, state); return true; }
+    const prev = get();
+    try { localStorage.setItem(STORAGE_KEY, state); }
     catch (e) { return false; }
+    // H3: announce the transition INTO 'error' so the UI can surface a
+    // recovery affordance (the sync-error toast → "Retry"). Best-effort and
+    // typeof-guarded: SyncState stays a pure local-metadata module with no
+    // hard SyncEngine dependency, and the emit is fire-and-forget (a missing
+    // or throwing event bus never blocks the gate write). Fires only on the
+    // ready/hydrating→error EDGE — not on error→error re-sets — so the user
+    // sees one toast per failure, not one per failed record.
+    if (state === 'error' && prev !== 'error'
+        && typeof SyncEngine !== 'undefined' && SyncEngine
+        && typeof SyncEngine.emit === 'function') {
+      try { SyncEngine.emit('sync-error', {}); } catch (_) {}
+    }
+    return true;
   }
 
   function canWrite() {
-    return get() === 'ready';
+    // H3: block local writes ONLY during the transient 'hydrating' window
+    // (initial upload / cross-device pull-down), where a concurrent write
+    // could race the merge that's about to overwrite local with the merged
+    // set. 'error' must NOT block — it's a STUCK state with no active merge,
+    // so blocking there silently dropped every dose / BFRB catch / mood /
+    // session / distraction / preset write until the user happened to
+    // reconcile (audit H3 — the medication-log-loss worst case). Now 'error'
+    // writes proceed locally (saved immediately, synced on the next merge
+    // cycle or the user's "Retry") while the sync-error toast surfaces the
+    // stuck state. Fail-open (get() → 'ready' on garbage) is preserved.
+    return get() !== 'hydrating';
   }
 
   // B-3: convenience for UI button-disabled + uploader re-entry guard.

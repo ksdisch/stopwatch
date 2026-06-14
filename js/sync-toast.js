@@ -263,6 +263,25 @@ const Toast = (() => {
       });
     } catch (_) {}
 
+    // H3: sync-error recovery toast. The write gate enters 'error' on a
+    // hydrate / upload / reconcile failure and deliberately stays there (it
+    // doesn't auto-clear, so the failure isn't hidden). Local writes still
+    // SUCCEED in 'error' (only 'hydrating' blocks), so the user's data is safe
+    // — this toast just surfaces the stuck sync + offers a one-tap retry
+    // (SyncEngine.retrySync re-attempts the flow). No dedup needed:
+    // SyncState.set emits 'sync-error' only on the ready/hydrating→error edge.
+    try {
+      SyncEngine.on('sync-error', () => {
+        try {
+          action(
+            'Sync paused — your changes are saved on this device.',
+            'Retry',
+            () => { try { SyncEngine.retrySync(); } catch (_) {} }
+          );
+        } catch (_) {}
+      });
+    } catch (_) {}
+
     // TODO (B-4 freebie — deferred per implementer scope decision):
     // wire `Toast.medsArrival(medId, count)` here to consume the
     // `meds-arrival` event emitted by `js/sync-merge-meds.js:10`. The

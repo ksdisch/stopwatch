@@ -300,3 +300,63 @@ describe('Toast.action', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H3 — sync-error recovery toast. The write gate enters 'error' on a sync
+// failure (and deliberately doesn't auto-clear). SyncState.set emits
+// 'sync-error' on that transition; sync-toast paints a tappable "Retry" toast
+// whose tap runs SyncEngine.retrySync (clears the gate → re-attempts sync).
+// This exercises the FULL chain with the REAL retrySync (window.SyncState is
+// stubbed only so the gate write is observable).
+// ────────────────────────────────────────────────────────────────────────
+describe('Toast — sync-error recovery (H3)', () => {
+
+  it('SyncEngine.emit("sync-error") paints a Retry toast whose tap clears the gate to ready', () => {
+    const realState = window.SyncState;
+    const sets = [];
+    window.SyncState = {
+      get: () => 'error',
+      set: (s) => { sets.push(s); return true; },
+      canWrite: () => false,
+      isHydrating: () => false,
+    };
+    try {
+      _toast_purge();
+      SyncEngine.emit('sync-error', {});
+      const el = _toast_getEl();
+      assert(el, 'sync-error toast painted via the registered listener');
+      assert(el.textContent.indexOf('Sync paused') !== -1, 'recovery message surfaced');
+      const btn = el.querySelector('.sync-toast-action-btn');
+      assert(btn, 'Retry button present (tappable toast)');
+      assertEqual(btn.textContent, 'Retry', 'button label is Retry');
+
+      // Tap → the REAL SyncEngine.retrySync runs → clears the gate to 'ready'.
+      btn.click();
+      assert(sets.indexOf('ready') !== -1,
+        'tapping Retry clears the error gate to ready (real retrySync path)');
+    } finally {
+      window.SyncState = realState;
+      _toast_purge();
+    }
+  });
+
+  it('a throwing retrySync never strands the tap handler', () => {
+    const realState = window.SyncState;
+    const realRetry = SyncEngine.retrySync;
+    window.SyncState = { get: () => 'error', set: () => true, canWrite: () => false, isHydrating: () => false };
+    SyncEngine.retrySync = () => { throw new Error('boom'); };
+    try {
+      _toast_purge();
+      SyncEngine.emit('sync-error', {});
+      const btn = _toast_getEl().querySelector('.sync-toast-action-btn');
+      let threw = false;
+      try { btn.click(); } catch (_) { threw = true; }
+      assertEqual(threw, false, 'click swallows a throwing retrySync');
+    } finally {
+      SyncEngine.retrySync = realRetry;
+      window.SyncState = realState;
+      _toast_purge();
+    }
+  });
+
+});
