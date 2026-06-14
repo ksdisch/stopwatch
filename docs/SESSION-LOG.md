@@ -2268,3 +2268,61 @@ Continued the 2026-06-13 audit burndown (`AUDIT-2026-06-13.md`). Landed five sma
 ```
 fix/audit-quick-wins-2 — fix(audit): correctness/reliability quick wins batch 2 (M4/M10/M11/M6/M1)
 ```
+
+---
+
+## 2026-06-14 — Audit remediation: H2 (BFRB trend dedup) + a dark test file unmasked
+
+### What We Built
+
+Took the next item in the `AUDIT-2026-06-13.md` burndown — **H2**, the `getBFRBTrend`
+double-count. The handoff warned that the audit's naive `(timestamp|source)` dedup "regresses
+the hourly test." Tracing *why* turned up the real story:
+
+- **H2 root cause** (`js/analytics.js`). Every completed flow/pomodoro catch lives in **both**
+  sources `getBFRBTrend` merges: `BfrbEvents` (the long-lived consolidated stream, never
+  cleared at session-end) **and** the saved history record's `bfrbs[]` (copied out of
+  `BfrbEvents` at session-save time via `getFlowSessionBFRBs`). With no cross-source dedup
+  each catch was counted twice — inflating `total` / `ratePerHour` / `bySource` / the hourly
+  histogram the whole BFRB behavior loop trusts. Reproduced in a real browser: 2 physical flow
+  catches → `total: 4`. **Fix:** dedup by `(timestamp, source)` via a local `_addStamp`
+  helper, mirroring the F3 migration's own `(deviceId, takenAt)` idempotency dedup. Lossless —
+  pre-F3 history catches (absent from `BfrbEvents`, since the legacy session keys were cleared
+  at session-end before F3 ran) and idle/global catches (absent from `session.bfrbs`) keep
+  unique signatures and are still counted once.
+
+- **`tests/analytics.test.js` had been silently dark since #102** (the real reason the
+  handoff's premise didn't hold). It and `tests/sync-stamps.test.js` both declared a global
+  `const _realHistory`; loaded as plain scripts, the second-loaded file threw `Identifier
+  '_realHistory' has already been declared` and **none of its 65 `it()`s registered** — masked
+  by the `PASS(n)` count, since a parse error just drops the whole file. Renamed analytics'
+  binding to `_realHistoryAnalytics` to re-enable it.
+
+- **The "hourly test" was itself stale.** Re-enabling the file unmasked exactly one failure:
+  its fixture used literal duplicate timestamps to mean "7 catches," but the migration
+  correctly dedups same-`(deviceId, takenAt)` entries → 4. Rewrote the fixture to use distinct
+  days per hour, preserving its `total: 7` / hourly-bucketing intent without relying on
+  dedup'd duplicates. Added 2 new H2 regression guards (catch-in-both → counts once; pre-F3
+  history-only catch → still counted).
+
+### Verification
+
+Engine suite driven via a headless Chromium binary found at `/opt/pw-browsers/` (the playwright
+MCP's `chrome` channel + the `npm test` download are both blocked by this environment's network
+policy; drove `playwright-core` directly against that binary instead): **PASS(1097) →
+PASS(1164)** — 65 re-enabled analytics tests (incl. the corrected hourly test) + 2 new H2
+regression tests, zero failures. All three pre-commit guards green; cache v130→v131. CI on
+PR #154: all 6 jobs green.
+
+### Suggested Next Steps
+
+- Root-cause the rhythm `activeNow`/`upcoming` clock-flake (handoff flags it as likely a real
+  clock-bucketing bug; did not surface in this run's headless suite).
+- Continue the `AUDIT-2026-06-13.md` burndown (remaining Medium/Low findings; M13 still
+  deferred per the `window.SyncState`-stub shadowing note).
+
+### PRs
+
+```
+#154  fix(analytics): dedup getBFRBTrend across BfrbEvents + session.bfrbs (H2)  [draft, CI green]
+```
