@@ -68,7 +68,10 @@ function saveCookingTimers() {
 
 function addCookingTimer() {
   if (cookingTimers.length >= 8) return;
-  const id = Date.now().toString(36);
+  // M10: append a short random suffix so two adds in the same millisecond
+  // don't collide (handlers resolve via `.find(c => c.id === id)` — a dup id
+  // controls/deletes the wrong timer). Matches the localTag pattern elsewhere.
+  const id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
   const idx = cookingTimers.length;
   const timer = createTimer('cook-' + id);
   const name = COOKING_SUGGESTIONS[idx % COOKING_SUGGESTIONS.length];

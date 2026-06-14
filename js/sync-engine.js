@@ -207,7 +207,13 @@ const SyncEngine = (() => {
   // must NOT auto-arm steady-state (Risk #6).
   function _maybeAutoHydrate(user) {
     try {
-      if (!user) return;                                                  // signed out — nothing to do
+      if (!user) {
+        // M1: on sign-out, tear down steady-state — otherwise the 5-min
+        // interval keeps firing (early-returning on the null user) and the 7
+        // onSnapshot listeners stay armed until reload. Idempotent + guarded.
+        try { stopSteadyState(); } catch (_) {}
+        return;
+      }
       if (typeof SyncFlag === 'undefined' || !SyncFlag.isEnabled()) return;
       if (isAllHydrated()) {
         // Already hydrated from a prior session. The cold-boot probe in
@@ -267,7 +273,12 @@ const SyncEngine = (() => {
   }
 
   function disable() {
-    // B-2 will also tear down any active listeners from here.
+    // M1: tear down the steady-state interval + the 7 onSnapshot listeners +
+    // the visibilitychange/network handlers before flipping the flag off.
+    // Without this, disabling sync leaves the 5-min merge interval firing and
+    // all listeners registered until the next page reload. stopSteadyState()
+    // is idempotent, so calling it when nothing is armed is safe.
+    try { stopSteadyState(); } catch (_) {}
     SyncFlag.disable();
   }
 
@@ -2643,6 +2654,9 @@ const SyncEngine = (() => {
     startSteadyState,
     stopSteadyState,
     _runMergeCycle,
+    // M1: auth-change handler (sign-out tears down steady-state in the
+    // null-user branch); exposed for test-only direct invocation.
+    _maybeAutoHydrate,
     // E-3: per-store dispatch seam + listener registry helpers
     // (exposed for test-only direct invocation; production wiring lives
     // inside startSteadyState/stopSteadyState's listener arming and

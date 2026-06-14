@@ -40,6 +40,19 @@ export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/
 # SLACK_WEBHOOK_URL, optionally TWILIO_*). File is gitignored — see
 # council/.env.secrets.example for the format.
 if [[ -f "${REPO}/council/.env.secrets" ]]; then
+  # M6: the secrets file holds TEMPO_UID + the SA-key path (and is designed to
+  # also hold a Slack webhook / Twilio token). Refuse to source it unless it is
+  # locked to owner-only (0600) — a world-readable secrets file on a
+  # multi-account machine leaks the Firebase uid + credential path. (chmod 600
+  # the file once on the host; this preflight keeps it that way.) `stat` differs
+  # between GNU (Linux, -c %a) and BSD (macOS, -f %A) — try both.
+  SECRETS_PERMS="$(stat -c '%a' "${REPO}/council/.env.secrets" 2>/dev/null \
+               || stat -f '%A' "${REPO}/council/.env.secrets" 2>/dev/null \
+               || echo '')"
+  if [[ "${SECRETS_PERMS}" != "600" ]]; then
+    echo "COUNCIL FAILED: council/.env.secrets has perms ${SECRETS_PERMS:-<unknown>}, expected 600 — run: chmod 600 council/.env.secrets" >&2
+    exit 1
+  fi
   # shellcheck disable=SC1091
   source "${REPO}/council/.env.secrets"
 fi

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v129-error-gate-defer';
+const CACHE_NAME = 'stopwatch-v130-quick-wins-2';
 const ASSETS = [
   './',
   './index.html',
@@ -213,4 +213,19 @@ self.addEventListener('message', (event) => {
       pendingNotifications.delete(data.id);
     }
   }
+});
+
+// M11: handle taps on background notifications. Without this, the
+// `requireInteraction: true` alarms above are a no-op when tapped and leave a
+// sticky notification on screen. Close the notification, then focus an existing
+// Tempo window if one is open, otherwise open a fresh one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of allClients) {
+      if ('focus' in client) return client.focus();
+    }
+    if (clients.openWindow) return clients.openWindow('./');
+  })());
 });
