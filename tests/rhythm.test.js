@@ -253,9 +253,14 @@ describe('Rhythm.getDayTimeline — sorting + mixing', () => {
 });
 
 describe('Rhythm.getCurrentDayStatus', () => {
+  // These cases pass an explicit, constructed `now` so the whole computation
+  // anchors to that timestamp (getDayTimeline(new Date(now)) clips to now's
+  // local day) — never to the wall clock. Building fixtures off Date.now()
+  // used to flake within ~30 min of local midnight, where the relative
+  // offsets crossed the day boundary and got clipped out of the timeline.
   it('reports activeNow when a session straddles "now"', async () => {
     rhClearStores();
-    const now = Date.now();
+    const now = atDate(new Date(), 12); // noon today → offsets stay same-day
     // A flow session started 30 min ago, runs 90 min total. Still active.
     rhSetSessions([
       { type: 'flow', date: new Date(now - 30 * 60 * 1000).toISOString(), duration: 90 * 60 * 1000 },
@@ -267,7 +272,7 @@ describe('Rhythm.getCurrentDayStatus', () => {
 
   it('reports upcoming as the next entry after now', async () => {
     rhClearStores();
-    const now = Date.now();
+    const now = atDate(new Date(), 12); // noon today → +1h stays same-day
     // Session 1h in the future
     rhSetSessions([
       { type: 'pomodoro', date: new Date(now + 60 * 60 * 1000).toISOString(), duration: 25 * 60 * 1000 },
@@ -276,6 +281,29 @@ describe('Rhythm.getCurrentDayStatus', () => {
     assertEqual(status.activeNow, null);
     assert(status.upcoming !== null, 'expected upcoming entry');
     assertEqual(status.upcoming.type, 'session-start');
+  });
+
+  it('detects a session active across local midnight (start clipped to yesterday)', async () => {
+    rhClearStores();
+    // now = 00:15 local; a 90-min flow block began at 23:45 yesterday and ends
+    // at 01:15 today. getDayTimeline(today) holds only the session-END (the
+    // start was clipped to yesterday's window), so the detection must
+    // reconstruct activeNow from the end entry rather than miss it.
+    const now = atDate(new Date(), 0, 15);
+    const startedAt = now - 30 * 60 * 1000; // 23:45 yesterday
+    rhSetSessions([
+      { type: 'flow', date: new Date(startedAt).toISOString(), duration: 90 * 60 * 1000 },
+    ]);
+    // Precondition: only the in-window end survives.
+    const timeline = await Rhythm.getDayTimeline(new Date(now));
+    assertEqual(timeline.length, 1);
+    assertEqual(timeline[0].type, 'session-end');
+    const status = await Rhythm.getCurrentDayStatus(now);
+    assert(status.activeNow !== null, 'expected the cross-midnight session to read as active');
+    assertEqual(status.activeNow.module, 'flow');
+    assertEqual(status.activeNow.endsAt, startedAt + 90 * 60 * 1000);
+    // Banner must read like a same-day active session, not "... ended".
+    assertEqual(status.activeNow.summary, 'Flow block started (1h 30m)');
   });
 
   it('returns null activeNow + upcoming on an empty day', async () => {
