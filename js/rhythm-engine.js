@@ -236,6 +236,25 @@ const Rhythm = (() => {
     return all;
   }
 
+  // Reconstruct a session-start-style summary from a session-end entry.
+  // Used only when a session is active across local midnight: getDayTimeline
+  // clips the start to yesterday's window, so the in-window end entry is all
+  // we have. Mirrors the "started" summaries built by getSessionEntries /
+  // getNapEntries so the cross-midnight banner reads identically to a
+  // same-day active session ("Flow block started (1h 30m)").
+  function activeSummaryFromEnd(e) {
+    const durStr = formatDurationShort((e.metadata && e.metadata.durationMs) || 0);
+    let name;
+    if (e.module === 'nap') {
+      name = 'Nap';
+    } else {
+      const label = labelForSessionType((e.metadata && e.metadata.sessionType) || e.module);
+      const programName = e.metadata && e.metadata.programName;
+      name = programName ? `${label} · ${programName}` : label;
+    }
+    return durStr ? `${name} started (${durStr})` : `${name} started`;
+  }
+
   // Two call shapes:
   //   getCurrentDayStatus()                  — fetch + analyze today
   //   getCurrentDayStatus(now, timeline)     — analyze a precomputed
@@ -255,11 +274,26 @@ const Rhythm = (() => {
         const key = `${e.module}|${e.metadata.durationMs || 0}|${e.time}`;
         startsByKey.set(key, e);
       } else if (e.type === 'session-end') {
-        const startedAt = e.time - (e.metadata.durationMs || 0);
-        const key = `${e.module}|${e.metadata.durationMs || 0}|${startedAt}`;
-        const start = startsByKey.get(key);
-        if (start && start.time <= now && e.time > now) {
-          activeNow = { ...start, endsAt: e.time };
+        const dur = e.metadata.durationMs || 0;
+        const startedAt = e.time - dur;
+        // Active iff it began at/before now and ends after now. The matching
+        // session-start can be missing from this day's timeline when the
+        // session began before local midnight (its start was clipped to
+        // yesterday's window) — so synthesize activeNow from the end entry in
+        // that case instead of silently missing the active session.
+        if (startedAt <= now && e.time > now) {
+          const start = startsByKey.get(`${e.module}|${dur}|${startedAt}`);
+          activeNow = start
+            ? { ...start, endsAt: e.time }
+            : {
+                time: startedAt,
+                type: 'session-start',
+                module: e.module,
+                pillar: e.pillar,
+                summary: activeSummaryFromEnd(e),
+                metadata: e.metadata,
+                endsAt: e.time,
+              };
         }
       }
       if (!upcoming && e.time > now) upcoming = e;
