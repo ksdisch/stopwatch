@@ -2196,3 +2196,42 @@ feat(lifeos): Phase 3 — mood_events 7th store + capture, Chickens hub, stress 
 docs(lifeos): Phase 3 — 7-store registry language + session log
 (branch feat/lifeos-phase-3-chickens — push + PR-open this session; merge to main + one-time council run remain gated)
 ```
+
+---
+
+## 2026-06-14 — Audit remediation batch 1: M7/H1 (XSS + import) · H4 (cloud→local sync) · H3 (error-gate data loss) — 3 PRs merged
+
+### What We Built
+
+Began acting on the 2026-06-13 principal-engineer deep audit (`AUDIT-2026-06-13.md`, 68 findings). Landed **4 of the Top-5 "fixes I'd make today"** across three merged PRs:
+
+- **PR #149 — M7 + H1/M8.** `escapeHtml` (`js/dom-utils.js`) now escapes `"`/`'` (not just `& < >`), closing the six attribute-context XSS sites at once — incl. the two non-self-inflicted vectors (Todoist text + sync-reachable `rest_log`/tags); `recovery-ui` renderTrend coerces the synced `sleep.hours`/`quality` to numbers. `importAllData` (`js/export.js`) validates session element shape **before** the destructive `History.clearAll()` + per-element `try/catch`, so a malformed backup element can no longer wipe-then-half-restore history. New `tests/dom-utils.test.js` + import-robustness tests. cache v126→v127.
+
+- **PR #150 — H4 (the headline).** The flagship "live" sync converged the cloud but, for 5 of 7 stores, never wrote remote arrivals back to **local** — so cross-device sync silently didn't work for meds/history/BFRB/mood/distractions after first hydrate (a reload didn't fix it: `hydrateFromCloud` short-circuits on the persisted marker). Wired the cloud→local apply into all 5 merges, mirroring the proven `rest_log`/`presets` `_reconcileWriteRaw` pattern: bfrb/mood/history/distractions reuse their existing-but-unwired `_reconcileWriteRaw`; **meds** got a new `MedsManager.applyMergedDoseLog` applying the reconciled doseLog to the **live** med (fixing the snapshot-copy trap — the merge had been mutating a throwaway `getState()` copy). +~20 tests. cache v127→v128. **Audit correction:** its claim that the merge tests "assert the broken no-writeback behavior" didn't hold — a full re-read found them silent on local state, so tests were ADDED, not rewritten. Also fixed a latent order-dependency in sync-listeners test #20 (it relied on a med leaking into the real `MedsManager` singleton).
+
+- **PR #151 — H3 (the most dangerous correctness bug).** After a failed hydrate/upload the F13 write gate sticks at `'error'` and every gated writer did a bare `if (!canWrite()) return;` — a **silent drop** of every subsequent dose/catch/mood/session/distraction/preset write (worst case: lost medication logs). The audit's literal fix (route to `SyncBuffer.enqueue`) is unworkable — it's a dirty-pointer buffer with no payload. Real fix: `canWrite()` now blocks **only** the transient `'hydrating'` merge-race window; `'error'` allows local writes (saved immediately, synced on the next cycle/Retry). `SyncState.set` emits `'sync-error'` on the transition → a tappable "Sync paused — your changes are saved on this device. [Retry]" toast (`Toast.action`, tap → new `SyncEngine.retrySync()`). cache v128→v129.
+
+### Verification
+
+Each PR 6/6 CI green. H3's `canWrite()` change is **smoke-verified on fresh code** (served `:8770`, `?nosw=1`, sync enabled): a gated `BfrbEvents.log` write delta is ready=1, **hydrating=0** (merge-race guard intact), **error=1** (the fix — was 0/dropped); `'sync-error'` emits once on the transition; the styled Retry toast renders (`position: fixed`, tappable). The first smoke run (sync *disabled*) returned a misleading delta and led to discovering the gate is `SyncFlag.isEnabled()`-conditional — a path the unit suite can't see (`persistence.js` isn't loaded; its `const SyncState` would shadow the `window.SyncState` stubs).
+
+### Discovered (not in the audit)
+
+A pre-existing **rhythm-engine clock-flake**: 2 timeline tests (`activeNow`/`upcoming`) fail headless on a clock boundary — verified identical on clean `main` via a `git stash` controlled comparison (failure count jitters 1↔2, like the documented sync-engine flake). Likely a real clock-bucketing bug — candidate follow-up.
+
+### Deferred (with rationale)
+
+- **H2** (BFRB trend dedup) — de-scoped from the quick-wins batch: the audit's one-line `(timestamp|source)` dedup regresses the existing hourly test (same-ms same-source catches are legitimately distinct). Needs the legacy flow/pomodoro catch-write model analyzed; its own PR.
+- **M13** (load `persistence.js` in the harness + a `SyncState` suite) — the `const SyncState` shadows the `window.SyncState` stubs ~10 gating tests install; needs the stub pattern migrated first.
+
+### Suggested Next Steps
+
+Correctness/reliability batch as one PR: **M4** (log-past-session equal start/end → silent 24h session), **M10** (cooking-timer `Date.now()` id collision on rapid add), **M11** (sw `notificationclick` handler — bg-notification tap is a no-op), **M6** (`chmod 600 council/.env.secrets` + run-synthesis preflight), **M1** (`stopSteadyState()` teardown on sign-out / flag-disable). Then H2, then the rhythm clock-flake.
+
+### PRs
+
+```
+#149  fix(audit): close attribute-XSS class + make backup import non-destructive (M7/H1/M8)  [merged 7e774b9]
+#150  fix(sync): apply remote arrivals to LOCAL storage for the 5 broken merges (H4)          [merged 80eadf0]
+#151  fix(sync): stop the 'error' write gate silently dropping local writes (H3)              [merged f478ae8]
+```
