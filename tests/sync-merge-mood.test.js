@@ -427,3 +427,76 @@ describe('SyncMergeMood — merge — happy path + dedup + F19a + CAS', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H4 — cloud→local writeback (mirrors sync-merge-bfrb). Before this fix the
+// merge converged the CLOUD but never applied cloud-origin mood arrivals back
+// to the local mood_events array. Mood is append-only/immutable (ADR-0008), so
+// the merged set is a lossless superset of prior local state.
+// ────────────────────────────────────────────────────────────────────────
+describe('SyncMergeMood — H4 cloud→local writeback', () => {
+
+  it('applies a cloud-origin mood to LOCAL storage so getAll() returns it after merge()', async () => {
+    const saved = _mm_savedEnv();
+    try {
+      _mm_clearStore();
+      _mm_seedLocal([_mm_makeEntry('local-dev', 1000, 'global', { valence: 4 })]);
+      const cloudC = _mm_makeEntry('phone-2', 3000, 'flow', { valence: 2, note: 'rough day' });
+      _mm_install({ cloudDocs: [_mm_makeCloudDoc(cloudC)] });
+
+      assertEqual(Mood.getAll().some(e => e.at === 3000), false,
+        'precondition — cloud-origin mood not yet local');
+
+      const result = await SyncMergeMood.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+
+      const all = Mood.getAll();
+      const arrived = all.find(e => e.at === 3000 && e.deviceId === 'phone-2');
+      assert(arrived, 'cloud-origin mood must be locally queryable after merge (H4)');
+      assertEqual(arrived.context, 'flow', 'cloud mood payload preserved locally');
+      assertEqual(arrived.note, 'rough day', 'cloud mood note preserved locally');
+      assert(all.some(e => e.at === 1000 && e.deviceId === 'local-dev'),
+        'pre-existing local mood preserved (lossless union)');
+      assertEqual(all.length, 2, 'union of cloud + local — no duplication');
+    } finally {
+      _mm_restore(saved);
+    }
+  });
+
+  it('cloud wins on (deviceId, at) collision in the LOCAL store too', async () => {
+    const saved = _mm_savedEnv();
+    try {
+      _mm_clearStore();
+      _mm_seedLocal([_mm_makeEntry('shared-dev', 5000, 'global', { note: 'local-state' })]);
+      const cloud = _mm_makeEntry('shared-dev', 5000, 'global', { note: 'cloud-state' });
+      _mm_install({ cloudDocs: [_mm_makeCloudDoc(cloud)] });
+
+      await SyncMergeMood.merge(null);
+
+      const all = Mood.getAll();
+      assertEqual(all.length, 1, 'collision deduped in the local store');
+      assertEqual(all[0].note, 'cloud-state',
+        'cloud value wins locally — matches the CAS writeback winner');
+    } finally {
+      _mm_restore(saved);
+    }
+  });
+
+  it('a local-only mood is not lost when the cloud is empty', async () => {
+    const saved = _mm_savedEnv();
+    try {
+      _mm_clearStore();
+      _mm_seedLocal([_mm_makeEntry('local-dev', 9000, 'global')]);
+      _mm_install({ cloudDocs: [] });
+
+      await SyncMergeMood.merge(null);
+
+      const all = Mood.getAll();
+      assertEqual(all.length, 1, 'local-only mood survives the local writeback');
+      assertEqual(all[0].at, 9000, 'the local mood is intact');
+    } finally {
+      _mm_restore(saved);
+    }
+  });
+
+});

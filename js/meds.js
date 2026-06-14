@@ -263,6 +263,32 @@ function createMed(id) {
       : null;
   }
 
+  // H4: privileged apply of a reconciled (cross-device-merged) doseLog to this
+  // LIVE med. The steady-state meds merge reconciles the doseLog on a throwaway
+  // getState() SNAPSHOT (MedsManager.all().map(m => m.getState())), so without
+  // this the live med never receives cloud-origin doses — a dose logged on
+  // another device stays invisible here until a re-hydrate. Sanitizes to the
+  // SAME shape loadState enforces (drop entries with no numeric takenAt, stamp
+  // a missing deviceId, sort ascending, F14-cap at 1000), then re-derives
+  // lastTakenAt (F4). Does NOT touch()/bump updatedAt — the metadata-LWW winner
+  // already set it; this is a sync-path apply, not a user action (same contract
+  // as recomputeLastTakenAt). doseLog is closure-private with only a copy-
+  // returning getter, so this privileged setter is the only way to apply it.
+  function applyMergedDoseLog(entries) {
+    const localDevice = _medsGetDeviceId();
+    doseLog = Array.isArray(entries)
+      ? entries
+          .filter(e => e && typeof e.takenAt === 'number')
+          .map(e => ({
+            takenAt: e.takenAt,
+            deviceId: typeof e.deviceId === 'string' ? e.deviceId : localDevice,
+          }))
+          .sort((a, b) => a.takenAt - b.takenAt)
+      : [];
+    if (doseLog.length > 1000) doseLog.splice(0, doseLog.length - 1000);
+    recomputeLastTakenAt();
+  }
+
   // ── Derived queries ─────────────────────────────────────────────────
 
   function getTimeSinceLastDoseMs() {
@@ -467,7 +493,7 @@ function createMed(id) {
     getSupplyStartCount, getSupplyResetAt, getSupplyAdjustment,
     getSupplyRemaining, setSupply, clearSupply, adjustSupply,
     logDose, undoLastDose,
-    recomputeLastTakenAt,
+    recomputeLastTakenAt, applyMergedDoseLog,
     getTimeSinceLastDoseMs,
     getDosesToday, getExpectedDosesToday, getStatusToday,
     getState, loadState,
@@ -628,6 +654,27 @@ const MedsManager = (() => {
       try { SyncEngine.emit('onMergeComplete', { medId: medId }); }
       catch (e) { /* listener errors must not break the merge cycle */ }
     }
+  }
+
+  // H4: apply a reconciled (cross-device-merged) doseLog to the LIVE med and
+  // persist it. The steady-state meds merge reconciles each med's doseLog onto
+  // a throwaway getState() SNAPSHOT, so without this the live med — and disk —
+  // never receive cloud-origin doses (onMergeComplete recomputes lastTakenAt
+  // from the STALE live log, and its saveAll is a gated no-op mid-cycle).
+  // Mirrors the cloud→local apply rest_log/presets do, scoped to doseLog (the
+  // only field the steady-state meds merge mutates). Future-schema meds are
+  // skipped (reconcileDoseLog already refuses them; their on-disk bytes stay
+  // clean). Persists with a DIRECT per-record localStorage write that BYPASSES
+  // the F13 canWrite() gate — the dispatcher holds SyncState='hydrating' across
+  // the cycle, so saveAll() would no-op. No-op if the med isn't loaded.
+  function applyMergedDoseLog(medId, entries) {
+    const m = get(medId);
+    if (!m) return;
+    if (m.isFromFutureSchema()) return;
+    m.applyMergedDoseLog(entries);
+    try {
+      localStorage.setItem(STORAGE_PREFIX + m.getId(), JSON.stringify(m.getState()));
+    } catch (e) { /* quota or unavailable — in-memory state stays authoritative */ }
   }
 
   // D-2: per-med doseLog reconcile + cross-device clock-skew clamp.
@@ -1011,6 +1058,7 @@ const MedsManager = (() => {
   return {
     all, get, count, canAdd, clear, add, remove, saveAll, loadAll,
     onMergeComplete,
+    applyMergedDoseLog,
     reconcileDoseLog,
     snapshotForSync,
     hydrateFromCloud,

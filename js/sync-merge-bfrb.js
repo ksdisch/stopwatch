@@ -255,6 +255,30 @@ const SyncMergeBfrb = (() => {
       }
     }
 
+    // ── H4: apply the merged set to LOCAL storage ────────────────────
+    // The CAS loop above converges the CLOUD; this step converges LOCAL.
+    // Without it the steady-state merge never writes cloud-origin arrivals
+    // back into the local bfrb_events array — a catch logged on another
+    // device would stay invisible on this device forever (a reload won't
+    // fix it: hydrateFromCloud short-circuits on the persisted
+    // tempo_sync_hydrated_all marker). Mirrors the two correct stores
+    // (rest_log / presets): apply the SAME merged set the CAS loop just
+    // wrote, strictly AFTER it (so a CAS failure never leaves local ahead
+    // of cloud), via the privileged _reconcileWriteRaw that bypasses the
+    // F13 canWrite() gate — the dispatcher holds SyncState='hydrating' for
+    // the whole cycle, so the normal gated writers would silently no-op.
+    // mergedRecords is the full cloud ∪ local union (cloud wins on sig
+    // collision; local-only carry-through entries preserved), so the
+    // full-array overwrite is lossless. Non-fatal: a failure is a warning,
+    // not a thrown merge.
+    if (typeof BfrbEvents._reconcileWriteRaw === 'function') {
+      try {
+        BfrbEvents._reconcileWriteRaw(mergedRecords);
+      } catch (e) {
+        warnings.push('local reconcile writeback failed: ' + (e && e.message ? e.message : String(e)));
+      }
+    }
+
     // ── No F15 emit ──────────────────────────────────────────────────
     // Matches Pick B precedent from E-1d sessions: high-frequency events
     // would produce toast noise. The only F15 surface remains

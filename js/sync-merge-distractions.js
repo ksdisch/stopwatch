@@ -268,6 +268,55 @@ const SyncMergeDistractions = (() => {
       }
     }
 
+    // ── H4: apply the merged set to LOCAL storage ────────────────────
+    // The CAS loop converges the CLOUD; this converges LOCAL. distractions
+    // persist as TWO sessionId-keyed maps (flow_distractions /
+    // pomodoro_distractions), but the merge works in a flat
+    // { context, sessionId, data } list — so reproject mergedRecords back into
+    // the { flow: {[sid]:[...]}, pomodoro: {[sid]:[...]} } shape before handing
+    // it to the privileged _reconcileWriteRaw (verbatim _writeMap, no F13 gate
+    // — the dispatcher holds 'hydrating' for the cycle). mergedRecords is the
+    // FULL cloud ∪ local union (every local session was ingested via
+    // _ingestLocal, including local-only carry-through entries that can't CAS-
+    // write), so overwriting each WHOLE context map is lossless. CRITICAL: the
+    // payload must carry every local session or _reconcileWriteRaw's whole-map
+    // overwrite would erase the unmentioned ones — mergedRecords guarantees
+    // that. Per-session entries are timestamp-sorted to stay byte-stable
+    // against a subsequent snapshotForSync read. Non-fatal on failure.
+    if (typeof Distractions._reconcileWriteRaw === 'function') {
+      try {
+        const mergedPayload = { flow: {}, pomodoro: {} };
+        for (const { context, sessionId, data } of mergedRecords) {
+          if (context !== 'flow' && context !== 'pomodoro') continue;
+          if (!data || typeof data !== 'object') continue;
+          const sid = String(sessionId);
+          const bucket = mergedPayload[context];
+          if (!bucket[sid]) bucket[sid] = [];
+          // Strip the transport-only context/sessionId that the CAS writeback
+          // stamps onto cloud docs — native local entries (from log()) don't
+          // carry them (they're implied by the map key), so drop them on a
+          // copy to keep the local store byte-uniform with native logging and
+          // avoid mutating the cloud-bound record.
+          const entry = Object.assign({}, data);
+          delete entry.context;
+          delete entry.sessionId;
+          bucket[sid].push(entry);
+        }
+        for (const ctx of ['flow', 'pomodoro']) {
+          for (const sid of Object.keys(mergedPayload[ctx])) {
+            mergedPayload[ctx][sid].sort((a, b) => {
+              const aT = (a && typeof a.timestamp === 'number') ? a.timestamp : -Infinity;
+              const bT = (b && typeof b.timestamp === 'number') ? b.timestamp : -Infinity;
+              return aT - bT;
+            });
+          }
+        }
+        Distractions._reconcileWriteRaw({ payload: mergedPayload });
+      } catch (e) {
+        warnings.push('local reconcile writeback failed: ' + (e && e.message ? e.message : String(e)));
+      }
+    }
+
     // ── No F15 emit ──────────────────────────────────────────────────
     // Matches Pick B precedent from E-1d sessions / E-1d-f3 BFRB events.
 

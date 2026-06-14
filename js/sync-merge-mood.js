@@ -255,6 +255,25 @@ const SyncMergeMood = (() => {
       }
     }
 
+    // ── H4: apply the merged set to LOCAL storage ────────────────────
+    // (Identical contract to sync-merge-bfrb.js — see there for the full
+    // rationale.) The CAS loop above converges the CLOUD; this converges
+    // LOCAL. Without it, a mood logged on another device never lands in the
+    // local mood_events array (a reload won't fix it — hydrate short-circuits
+    // on the persisted marker). Apply the SAME merged set the CAS loop wrote,
+    // strictly AFTER it, via the privileged _reconcileWriteRaw that bypasses
+    // the F13 canWrite() gate (the dispatcher holds SyncState='hydrating' for
+    // the whole cycle). mergedRecords is the full cloud ∪ local union; mood is
+    // append-only/immutable (ADR-0008), so the full-array overwrite is a
+    // lossless superset. Non-fatal: failure is a warning, not a thrown merge.
+    if (typeof Mood._reconcileWriteRaw === 'function') {
+      try {
+        Mood._reconcileWriteRaw(mergedRecords);
+      } catch (e) {
+        warnings.push('local reconcile writeback failed: ' + (e && e.message ? e.message : String(e)));
+      }
+    }
+
     // ── No F15 emit ──────────────────────────────────────────────────
     // High-frequency precedent (bfrb_events / sessions): mood logs would
     // produce toast noise. The only F15 surface remains `meds-arrival`.

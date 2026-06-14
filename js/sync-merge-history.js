@@ -372,6 +372,29 @@ const SyncMergeHistory = (() => {
       }
     }
 
+    // ── H4: apply the merged set to LOCAL history (IndexedDB) ────────
+    // The CAS loop above converges the CLOUD; this converges LOCAL. Without
+    // it the steady-state merge never writes cloud-origin sessions into local
+    // IDB — a session created on another device stays invisible here forever
+    // (a reload won't fix it: hydrateFromCloud short-circuits on the persisted
+    // tempo_sync_hydrated_all marker). Mirrors rest_log / presets: apply the
+    // SAME merged set, strictly AFTER the CAS loop, via History's privileged
+    // _reconcileWriteRaw — an atomic clear+bulk-put (one IDB transaction) that
+    // bypasses the F13 canWrite() gate (the dispatcher holds 'hydrating' for
+    // the whole cycle). mergedRecords is the full cloud ∪ local superset
+    // (record-level LWW winners + phaseLog union already applied), so the
+    // clear+replace is lossless — local cannot lose a session it had and gains
+    // every cloud-origin one. Feature-detected (the merge-test harness stubs
+    // History with only getSessions/getDeviceId) + awaited (IDB is async); a
+    // failure degrades to a warning, never a thrown merge.
+    if (typeof History._reconcileWriteRaw === 'function') {
+      try {
+        await History._reconcileWriteRaw(mergedRecords);
+      } catch (e) {
+        warnings.push('local reconcile writeback failed: ' + (e && e.message ? e.message : String(e)));
+      }
+    }
+
     // ── No F15 emit (Pick B on TODO #4) ──────────────────────────────
     // Sessions-arrival is intentionally SILENT. The only F15 surface
     // remains `meds-arrival` from E-1c. Rationale: session creation is

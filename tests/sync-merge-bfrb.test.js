@@ -430,3 +430,79 @@ describe('SyncMergeBfrb — merge — happy path + dedup + F19a + CAS', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H4 — cloud→local writeback. Before this fix the merge converged the CLOUD
+// (CAS writeback) but never applied cloud-origin arrivals back to the local
+// bfrb_events array, so a catch logged on another device was invisible here
+// forever. These lock in that the merged set is now queryable LOCALLY via the
+// normal BfrbEvents.getAll() consumer path after merge().
+// ────────────────────────────────────────────────────────────────────────
+describe('SyncMergeBfrb — H4 cloud→local writeback', () => {
+
+  it('applies a cloud-origin event to LOCAL storage so getAll() returns it after merge()', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      _bm_seedLocal([_bm_makeEntry('local-dev', 1000, 'global')]);
+      // A record that exists ONLY in the cloud (logged on another device).
+      const cloudC = _bm_makeEntry('phone-2', 3000, 'flow', { sessionId: 7 });
+      _bm_install({ cloudDocs: [_bm_makeCloudDoc(cloudC)] });
+
+      // Precondition: the cloud-origin event is NOT yet in the local store.
+      assertEqual(BfrbEvents.getAll().some(e => e.takenAt === 3000), false,
+        'precondition — cloud-origin event not yet local');
+
+      const result = await SyncMergeBfrb.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+
+      const all = BfrbEvents.getAll();
+      const arrived = all.find(e => e.takenAt === 3000 && e.deviceId === 'phone-2');
+      assert(arrived, 'cloud-origin event must be locally queryable after merge (H4)');
+      assertEqual(arrived.context, 'flow', 'cloud event payload preserved locally');
+      assertEqual(arrived.sessionId, 7, 'cloud event sessionId preserved locally');
+      assert(all.some(e => e.takenAt === 1000 && e.deviceId === 'local-dev'),
+        'pre-existing local event preserved (lossless union)');
+      assertEqual(all.length, 2, 'union of cloud + local — no duplication');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+  it('cloud wins on (deviceId, takenAt) collision in the LOCAL store too', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      _bm_seedLocal([_bm_makeEntry('shared-dev', 5000, 'flow', { phase: 'local-state' })]);
+      const cloud = _bm_makeEntry('shared-dev', 5000, 'flow', { phase: 'cloud-state' });
+      _bm_install({ cloudDocs: [_bm_makeCloudDoc(cloud)] });
+
+      await SyncMergeBfrb.merge(null);
+
+      const all = BfrbEvents.getAll();
+      assertEqual(all.length, 1, 'collision deduped in the local store');
+      assertEqual(all[0].phase, 'cloud-state',
+        'cloud value wins locally — matches the CAS writeback winner');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+  it('a local-only event is not lost when the cloud is empty', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      _bm_seedLocal([_bm_makeEntry('local-dev', 9000, 'global')]);
+      _bm_install({ cloudDocs: [] }); // empty cloud
+
+      await SyncMergeBfrb.merge(null);
+
+      const all = BfrbEvents.getAll();
+      assertEqual(all.length, 1, 'local-only event survives the local writeback');
+      assertEqual(all[0].takenAt, 9000, 'the local event is intact');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+});

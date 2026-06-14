@@ -429,3 +429,72 @@ describe('SyncMergeDistractions — merge — happy path + dedup + F19a + CAS', 
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H4 — cloud→local writeback. Before this fix the merge converged the CLOUD
+// but never reprojected the merged set back into the local sessionId-keyed
+// maps, so a distraction logged on another device was invisible here. The
+// reprojection strips the transport-only context/sessionId stamped on cloud
+// docs so local entries match native log() shape.
+// ────────────────────────────────────────────────────────────────────────
+describe('SyncMergeDistractions — H4 cloud→local writeback', () => {
+
+  it('applies cloud-origin distractions into the LOCAL session maps after merge()', async () => {
+    const saved = _e1d_f8_md_savedEnv();
+    try {
+      _e1d_f8_md_clearStore();
+      // Local: one flow distraction in session 100.
+      _e1d_f8_md_seedLocal('flow', 100, [_e1d_f8_md_makeEntry('local-dev', 1000, { category: 'noise' })]);
+      // Cloud: another flow distraction in the SAME session (different device),
+      // plus a brand-new pomodoro session that exists only in the cloud.
+      const cloudFlow = _e1d_f8_md_makeEntry('phone-2', 2000, { category: 'phone' });
+      const cloudPomo = _e1d_f8_md_makeEntry('phone-2', 3000, { category: 'slack' });
+      _e1d_f8_md_install({
+        cloudDocs: [
+          _e1d_f8_md_makeCloudDoc('flow', 100, cloudFlow),
+          _e1d_f8_md_makeCloudDoc('pomodoro', 200, cloudPomo),
+        ],
+      });
+
+      const result = await SyncMergeDistractions.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+
+      const payload = Distractions.snapshotForSync().payload;
+      // Flow session 100 now holds BOTH the local + cloud entry, time-sorted.
+      const flow100 = payload.flow['100'] || [];
+      assertEqual(flow100.length, 2, 'local + cloud-origin entries merged into the flow session');
+      assertEqual(flow100[0].timestamp, 1000, 'local entry first (timestamp-sorted)');
+      assertEqual(flow100[1].timestamp, 2000, 'cloud-origin entry now locally present');
+      assertEqual(flow100[1].deviceId, 'phone-2', 'cloud-origin attribution preserved');
+      assertEqual(flow100[1].category, 'phone', 'cloud-origin payload preserved');
+      // The transport-only fields are stripped (native log() shape).
+      assertEqual('context' in flow100[1], false, 'context stripped from local entry');
+      assertEqual('sessionId' in flow100[1], false, 'sessionId stripped from local entry');
+      // The new cloud-origin pomodoro session landed locally too.
+      const pomo200 = payload.pomodoro['200'] || [];
+      assertEqual(pomo200.length, 1, 'cloud-origin pomodoro session created locally');
+      assertEqual(pomo200[0].timestamp, 3000, 'cloud-origin pomodoro entry present');
+    } finally {
+      _e1d_f8_md_restore(saved);
+    }
+  });
+
+  it('does not lose a local-only session when the cloud is empty', async () => {
+    const saved = _e1d_f8_md_savedEnv();
+    try {
+      _e1d_f8_md_clearStore();
+      _e1d_f8_md_seedLocal('flow', 100, [_e1d_f8_md_makeEntry('local-dev', 1000)]);
+      _e1d_f8_md_seedLocal('pomodoro', 200, [_e1d_f8_md_makeEntry('local-dev', 1500)]);
+      _e1d_f8_md_install({ cloudDocs: [] });
+
+      await SyncMergeDistractions.merge(null);
+
+      const payload = Distractions.snapshotForSync().payload;
+      assertEqual((payload.flow['100'] || []).length, 1, 'local flow session preserved');
+      assertEqual((payload.pomodoro['200'] || []).length, 1, 'local pomodoro session preserved');
+    } finally {
+      _e1d_f8_md_restore(saved);
+    }
+  });
+
+});

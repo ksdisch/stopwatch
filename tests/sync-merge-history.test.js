@@ -771,3 +771,68 @@ describe('SyncMergeHistory — F13 dispatcher-wide write gate', () => {
     }
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// H4 — cloud→local writeback. Before this fix the merge converged the CLOUD
+// (CAS writeback) but never applied the merged session set back to local IDB,
+// so a session created on another device was invisible here until a re-hydrate.
+// The harness stubs window.History (getSessions/getDeviceId only); these tests
+// add a _reconcileWriteRaw spy to assert the merged set is handed to the
+// privileged local-apply, and that an absent local-apply is feature-detected
+// (merge still succeeds, never throws).
+// ────────────────────────────────────────────────────────────────────────
+describe('SyncMergeHistory — H4 cloud→local writeback', () => {
+
+  it('hands the merged cloud ∪ local session set to History._reconcileWriteRaw after merge()', async () => {
+    const saved = _e1d_savedEnv();
+    try {
+      const localA = _e1d_makeSession({ id: 'dev-A-1', note: 'A1', updatedAt: 100 });
+      const cloudC = _e1d_makeSession({ id: 'dev-B-1', deviceId: 'phone-2',
+                                        note: 'B1', updatedAt: 200 });
+      _e1d_install({
+        cloudDocs: [_e1d_makeCloudDoc(cloudC)],
+        localSessions: [localA],
+      });
+      // The real local-apply is IndexedDB; the harness stubs History, so spy
+      // on the privileged write to assert what the merge applies locally.
+      let appliedWith = null;
+      window.History._reconcileWriteRaw = async (records) => {
+        appliedWith = records;
+        return { written: records.length, skipped: 0 };
+      };
+
+      const result = await SyncMergeHistory.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+
+      assert(appliedWith !== null,
+        'History._reconcileWriteRaw must be called with the merged set (H4)');
+      const ids = appliedWith.map(s => s.id).sort();
+      assertEqual(ids.join(','), 'dev-A-1,dev-B-1',
+        'local-apply set is the full cloud ∪ local union');
+      const cloudSession = appliedWith.find(s => s.id === 'dev-B-1');
+      assert(cloudSession, 'cloud-origin session present in the local-apply set');
+      assertEqual(cloudSession.note, 'B1', 'cloud session payload preserved');
+    } finally {
+      _e1d_restore(saved);
+    }
+  });
+
+  it('merge still succeeds when History exposes no _reconcileWriteRaw (feature-detected, no throw)', async () => {
+    const saved = _e1d_savedEnv();
+    try {
+      const cloudC = _e1d_makeSession({ id: 'dev-B-1', deviceId: 'phone-2',
+                                        note: 'B1', updatedAt: 200 });
+      // _e1d_install builds window.History WITHOUT _reconcileWriteRaw.
+      _e1d_install({ cloudDocs: [_e1d_makeCloudDoc(cloudC)], localSessions: [] });
+      assertEqual(typeof window.History._reconcileWriteRaw, 'undefined',
+        'precondition — stub has no local-apply');
+
+      const result = await SyncMergeHistory.merge(null);
+      assertEqual(result.ok, true,
+        'the typeof-function guard short-circuits — merge does not throw');
+    } finally {
+      _e1d_restore(saved);
+    }
+  });
+
+});

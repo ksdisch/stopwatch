@@ -790,6 +790,18 @@ describe('F19a refuse-writeback emit (per-record CAS path)', () => {
           ],
         },
       });
+      // The merge reads local meds via MedsManager.all() — snapshotForSync only
+      // supplies the deviceId — so seed all() too (every other meds test does).
+      // This test previously relied on a med leaking into the real singleton
+      // from an earlier test, making it order-dependent; the H4 meds-merge
+      // tests now clear the singleton in cleanup, which exposed that coupling.
+      const realMedsAll = MedsManager.all;
+      MedsManager.all = () => [{
+        getState: () => ({ id: 'm1', name: 'A', dose: '60mg', frequency: 'once-daily',
+                           schemaVersion: 1, deviceId: 'dev-test', updatedAt: 1000, doseLog: [] }),
+        getId: () => 'm1',
+        getDoseLog: () => [],
+      }];
       // Cloud: empty (no cloud-side filter fires).
       SyncFirestore.getCollection = async () => ({ docs: [], count: 0 });
 
@@ -835,6 +847,7 @@ describe('F19a refuse-writeback emit (per-record CAS path)', () => {
       } finally {
         SyncEngine.off('refuse-writeback', cb);
         MedsManager.snapshotForSync = realMedsSnap;
+        MedsManager.all = realMedsAll;
       }
     } finally {
       _e3_restore(saved);

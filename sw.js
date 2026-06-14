@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v126-chickens-pillar';
+const CACHE_NAME = 'stopwatch-v128-sync-local-writeback';
 const ASSETS = [
   './',
   './index.html',
