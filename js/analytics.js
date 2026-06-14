@@ -309,19 +309,18 @@ const Analytics = (() => {
   //   - session history `bfrbs[]` on flow and pomodoro sessions (completed catches)
   //   - BfrbEvents.getAll() (live consolidated stream, all contexts)
   //
-  // Safety: completed-session catches are migrated to the history record on
-  // session end AND the legacy session-scoped store is cleared. BfrbEvents
-  // is not cleared on session end (it's the long-lived analytics source —
-  // matches the legacy bfrbs_global lifecycle), so we still avoid double-
-  // counting only because completed-session catches that ALSO live in
-  // BfrbEvents are filtered out by the session-history loop's source check
-  // (it only counts sessions with type='flow'/'pomodoro'). Actually this is
-  // a real risk and would have existed in the legacy code too — the audit
-  // explicitly cleared `flow_bfrbs` / `pomodoro_bfrbs` on session end, but
-  // BfrbEvents now retains them. The dedup is left as documented: in
-  // practice the session-history record IS the source of truth for the
-  // completed session, but a downstream PR could add an audit-time filter
-  // here if double-counting surfaces.
+  // H2 dedup: a completed flow/pomodoro catch lives in BOTH sources —
+  // BfrbEvents is the long-lived stream (never cleared at session-end), and
+  // the SAME catches are also copied into the history record's `bfrbs[]` when
+  // the session is saved (getFlowSessionBFRBs / pomodoro equivalent read them
+  // back out of BfrbEvents at save time). Without a cross-source dedup every
+  // such catch is counted twice — inflating total / ratePerHour / bySource /
+  // the hourly histogram, which the whole BFRB behavior loop trusts. We dedup
+  // by (timestamp, source) via _addStamp below, mirroring the migration's own
+  // (deviceId, takenAt) idempotency dedup. The dedup is lossless: pre-F3
+  // history catches (absent from BfrbEvents — the legacy session keys were
+  // cleared at session-end before F3 ever ran) and idle/global catches
+  // (absent from session.bfrbs) carry unique signatures and are still counted.
   //
   // Returns:
   //   days: the requested window
@@ -336,12 +335,23 @@ const Analytics = (() => {
     // flow / pomodoro / idle — the latter is the 'global' context, written
     // only when no focus session is running.
     const stamps = []; // { timestamp, source }
+    const _seenStamps = new Set();
+    // H2: dedup across the two sources by (timestamp, source) — first-wins.
+    // session.bfrbs and BfrbEvents hold the same physical catch with an
+    // identical timestamp + source, so collapsing them counts it once.
+    function _addStamp(timestamp, source) {
+      if (typeof timestamp !== 'number') return;
+      const k = timestamp + '|' + source;
+      if (_seenStamps.has(k)) return;
+      _seenStamps.add(k);
+      stamps.push({ timestamp, source });
+    }
     sessions.forEach(s => {
       if (!Array.isArray(s.bfrbs)) return;
       const src = s.type === 'flow' ? 'flow' : s.type === 'pomodoro' ? 'pomodoro' : null;
       if (!src) return;
       s.bfrbs.forEach(b => {
-        if (typeof b.timestamp === 'number') stamps.push({ timestamp: b.timestamp, source: src });
+        _addStamp(b.timestamp, src);
       });
     });
 
@@ -359,7 +369,7 @@ const Analytics = (() => {
             const src = e.context === 'flow' ? 'flow'
                       : e.context === 'pomodoro' ? 'pomodoro'
                       : 'idle';
-            stamps.push({ timestamp: e.takenAt, source: src });
+            _addStamp(e.takenAt, src);
           });
         }
       } catch (e) { /* malformed store — skip */ }

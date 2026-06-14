@@ -15,7 +15,7 @@
 // Stash the real History binding so we can restore it after the suite in
 // case anything else in the page needs it. In practice analytics tests
 // run last in the index.html, but being polite is cheap.
-const _realHistory = window.History;
+const _realHistoryAnalytics = window.History;
 
 // Build a Date at local midnight for `daysAgo` days in the past, optionally
 // at a specific hour. Using local time (not UTC) matches how Analytics
@@ -438,11 +438,16 @@ describe('Analytics.getBFRBTrend — hourly (§ B) + bySource (§ C)', () => {
   it('hourly histogram buckets by local getHours()', async () => {
     clearBFRBStores();
     setSessions([]);
+    // Distinct DAYS for repeated hours: the migration dedups by
+    // (deviceId, takenAt), so two catches with the identical ms collapse to
+    // one. Varying the day keeps the timestamps distinct (7 real catches)
+    // while still bucketing into the same hour-of-day. (Earlier this fixture
+    // used literal duplicate timestamps and silently lost 3 to dedup.)
     localStorage.setItem('bfrbs_global', JSON.stringify([
-      { timestamp: atHoursAgo(1, 9) }, { timestamp: atHoursAgo(1, 9) },
-      { timestamp: atHoursAgo(2, 14) }, { timestamp: atHoursAgo(3, 14) },
-      { timestamp: atHoursAgo(3, 14) }, { timestamp: atHoursAgo(3, 14) },
-      { timestamp: atHoursAgo(4, 22) },
+      { timestamp: atHoursAgo(1, 9) }, { timestamp: atHoursAgo(2, 9) },
+      { timestamp: atHoursAgo(3, 14) }, { timestamp: atHoursAgo(4, 14) },
+      { timestamp: atHoursAgo(5, 14) }, { timestamp: atHoursAgo(6, 14) },
+      { timestamp: atHoursAgo(7, 22) },
     ]));
     migrateBFRBStores();
     const r = await Analytics.getBFRBTrend(30);
@@ -474,6 +479,47 @@ describe('Analytics.getBFRBTrend — hourly (§ B) + bySource (§ C)', () => {
     assertEqual(r.bySource.flow, 4);     // 3 history + 1 flow_bfrbs
     assertEqual(r.bySource.pomodoro, 3); // 2 history + 1 pomodoro_bfrbs
     assertEqual(r.bySource.idle, 4);     // 4 bfrbs_global
+  });
+});
+
+// ── H2 — cross-source double-count guard (audit AUDIT-2026-06-13) ───────
+//
+// The flagship regression the audit flagged: a completed flow/pomodoro catch
+// lives in BOTH the live BfrbEvents stream (never cleared at session-end) AND
+// the saved history record's bfrbs[] (copied from BfrbEvents at save time).
+// getBFRBTrend must count each physical catch once, not twice.
+describe('Analytics.getBFRBTrend — H2 cross-source dedup', () => {
+  it('a flow catch in BOTH BfrbEvents and session.bfrbs is counted once', async () => {
+    clearBFRBStores();
+    const t1 = atHoursAgo(2, 14), t2 = atHoursAgo(2, 15);
+    // Live consolidated stream still holds the session's two catches…
+    localStorage.setItem('bfrb_events', JSON.stringify([
+      { takenAt: t1, context: 'flow', sessionId: 1, deviceId: 'devA', updatedAt: t1, schemaVersion: 1 },
+      { takenAt: t2, context: 'flow', sessionId: 1, deviceId: 'devA', updatedAt: t2, schemaVersion: 1 },
+    ]));
+    // …and the marker is set so the auto/helper migration is a no-op (we are
+    // seeding bfrb_events directly, not via the legacy keys).
+    localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
+    // The SAME two physical catches were also persisted onto the saved
+    // flow history record at session-end.
+    setSessions([
+      { type: 'flow', date: dateStr(2), duration: 5400000, bfrbs: [
+        { timestamp: t1 }, { timestamp: t2 },
+      ]},
+    ]);
+    const r = await Analytics.getBFRBTrend(30);
+    assertEqual(r.total, 2);          // not 4 (the pre-fix double-count)
+    assertEqual(r.bySource.flow, 2);  // not 4
+  });
+
+  it('pre-F3 history catches (absent from BfrbEvents) are still counted', async () => {
+    clearBFRBStores(); // bfrb_events empty — these catches survive only on the record
+    setSessions([
+      { type: 'flow', date: dateStr(3), duration: 5400000, bfrbs: [{ timestamp: atHoursAgo(3, 10) }] },
+    ]);
+    const r = await Analytics.getBFRBTrend(30);
+    assertEqual(r.total, 1);
+    assertEqual(r.bySource.flow, 1);
   });
 });
 
@@ -908,7 +954,7 @@ describe('Analytics.getTrends', () => {
 
 describe('Analytics tests — cleanup', () => {
   it('restores real History + clears test fixtures', () => {
-    window.History = _realHistory;
+    window.History = _realHistoryAnalytics;
     clearBFRBStores();
     clearMedsStore();
   });
