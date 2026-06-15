@@ -334,12 +334,22 @@ const SyncFirestore = (() => {
       // been verified — until it is, native iOS clients can't use the
       // CAS wrapper. Downstream merge code should defensive-skip on
       // `isNative === true`.
-      throw _wrap(
+      //
+      // M9 (AUDIT-2026-06-13): tag the throw with `nativeUnsupported` so the
+      // per-store merge catch blocks can tell this documented gap apart from a
+      // generic transient 'unknown' and surface it ONCE per store (instead of
+      // silently swallowing 100% of native writebacks into a skipped counter
+      // the UI never reads). Keep kind:'unknown' for back-compat — nothing
+      // downstream branches on this path's kind, and adding a side-channel
+      // field is zero-risk vs. changing the kind.
+      const _nativeErr = _wrap(
         'unknown',
         'runTransaction native parity pending — web-only in E-1b; see follow-up issue',
         false,
         null
       );
+      if (_nativeErr && typeof _nativeErr === 'object') _nativeErr.nativeUnsupported = true;
+      throw _nativeErr;
     }
 
     try {
@@ -455,6 +465,16 @@ const SyncFirestore = (() => {
           ref,
           function _onNext(snapshot) {
             try {
+              // M2 (AUDIT-2026-06-13): drop snapshots caused solely by THIS
+              // device's own un-acked writes. `hasPendingWrites` is true on
+              // the local-echo snapshot fired immediately after our own
+              // tx.set; forwarding it would re-trigger a merge that re-writes
+              // the same record — a self-perpetuating loop. The server-ack
+              // snapshot for the same write arrives later with
+              // hasPendingWrites=false, and the deep-equal writeback guard in
+              // the per-store merge modules stops THAT from re-writing. Both
+              // halves are required together.
+              if (snapshot && snapshot.metadata && snapshot.metadata.hasPendingWrites) return;
               const docs = [];
               snapshot.forEach(d => docs.push({ id: d.id, data: d.data() }));
               callback({ docs, count: docs.length });

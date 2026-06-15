@@ -254,6 +254,20 @@ const SyncMergeRestLog = (() => {
           const toWrite = (typeof Schema.stamp === 'function')
             ? Schema.stamp(Object.assign({}, mergedDay))
             : Object.assign({}, mergedDay);
+          // M2/M5 (AUDIT-2026-06-13): skip the redundant cloud write when the
+          // stamped day already equals the cloud doc just read. A tx.set fires
+          // onSnapshot on every device → re-merge → re-write, so re-writing an
+          // unchanged day feeds the steady-state loop. recordsEqual strips only
+          // the OUTER envelope and deep-compares the nested sleep{} + naps[]
+          // (each inner entry's own deviceId/updatedAt stays in scope, so an
+          // appended/changed nap still writes). Drops ONLY the redundant cloud
+          // write; the local _reconcileWriteRaw apply below is unaffected.
+          if (remote && remote.data
+              && typeof SyncMergeEqual !== 'undefined'
+              && typeof SyncMergeEqual.recordsEqual === 'function'
+              && SyncMergeEqual.recordsEqual(toWrite, remote.data)) {
+            return;
+          }
           tx.set('users/' + uid + '/rest_log/' + dateKey, toWrite);
         });
         writtenCount++;
@@ -275,6 +289,20 @@ const SyncMergeRestLog = (() => {
               });
             } catch (_) { /* listener errors must not break the merge */ }
           }
+          continue;
+        }
+        // M9 (AUDIT-2026-06-13): the native (iOS) runTransaction parity gap
+        // (backlog #3) throws here for EVERY record. Surface it ONCE per store
+        // via the event bus instead of silently swallowing it, then fall
+        // through to the same skipped++ accounting as any other CAS error.
+        if (err && err.nativeUnsupported) {
+          if (typeof SyncEngine !== 'undefined'
+              && typeof SyncEngine.emitNativeWritebackUnsupportedOnce === 'function') {
+            try { SyncEngine.emitNativeWritebackUnsupportedOnce('rest_log'); } catch (_) {}
+          }
+          warnings.push('CAS native-unsupported for date ' + dateKey + ': '
+                        + (err && err.message ? err.message : String(err)));
+          skipped++;
           continue;
         }
         warnings.push('CAS write failed for date ' + dateKey + ': '

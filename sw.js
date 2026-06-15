@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v132-rhythm-active';
+const CACHE_NAME = 'stopwatch-v133-sync-reliability';
 const ASSETS = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const ASSETS = [
   './js/sync-engine.js',
   './js/sync-toast.js',
   './js/sync-manual-dedupe.js',
+  './js/sync-merge-equal.js',
   './js/sync-merge-meds.js',
   './js/sync-merge-history.js',
   './js/sync-merge-rest-log.js',

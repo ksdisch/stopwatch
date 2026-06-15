@@ -506,3 +506,119 @@ describe('SyncMergeBfrb — H4 cloud→local writeback', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// M2/M5 (AUDIT-2026-06-13) — change-detection skip via SyncMergeEqual.
+// Representative coverage for the shared deep-equal guard wired into all 7
+// merge modules. The pre-existing tests stay green because their default tx
+// shim returns null from tx.get (so the guard is never reached); these seed
+// txGetMap to actually exercise the skip.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('SyncMergeBfrb — M2/M5 redundant-write skip', () => {
+
+  it('skips the cloud write when the in-tx cloud doc already equals the merged record', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      const e = _bm_makeEntry('dev-A', 5000, 'global', { phase: 'caught' });
+      _bm_seedLocal([e]);
+      const path = 'users/u-bfrb-test/bfrb_events/dev-A-5000';
+      const opts = _bm_install({
+        cloudDocs: [_bm_makeCloudDoc(e)],   // cloud already has the identical record
+        txGetMap: { [path]: e },            // the in-transaction read returns it
+      });
+
+      const result = await SyncMergeBfrb.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+      assertEqual(opts.txSets.length, 0, 'NO redundant cloud write when merged === cloud doc');
+      assertEqual(result.count, 1, 'count still credits the record as converged (count stable)');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+  it('still writes when the in-tx cloud doc differs from the merged record', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      const local = _bm_makeEntry('dev-A', 6000, 'global', { phase: 'fresh' });
+      _bm_seedLocal([local]);
+      const path = 'users/u-bfrb-test/bfrb_events/dev-A-6000';
+      const staleCloud = _bm_makeEntry('dev-A', 6000, 'global', { phase: 'stale' });
+      const opts = _bm_install({
+        cloudDocs: [],                      // getCollection empty → merged = local 'fresh'
+        txGetMap: { [path]: staleCloud },   // but the in-tx read finds a stale doc
+      });
+
+      const result = await SyncMergeBfrb.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+      assertEqual(opts.txSets.length, 1, 'merged differs from cloud doc → writes');
+      assertEqual(opts.txSets[0].data.phase, 'fresh', 'the merged (fresh) record is written');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+  it('still writes when the cloud doc is absent (tx.get null) — guards on remote presence', async () => {
+    const saved = _bm_savedEnv();
+    try {
+      _bm_clearStore();
+      _bm_seedLocal([_bm_makeEntry('dev-A', 7000, 'global')]);
+      const opts = _bm_install({ cloudDocs: [] }); // no txGetMap → tx.get returns null
+
+      const result = await SyncMergeBfrb.merge(null);
+      assertEqual(result.ok, true, 'ok:true');
+      assertEqual(opts.txSets.length, 1, 'cloud absent → still writes (this is why pre-existing tests stay green)');
+    } finally {
+      _bm_restore(saved);
+    }
+  });
+
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// M9 (AUDIT-2026-06-13) — native (iOS) writeback gap surfaced via the event
+// bus instead of a silent skip. Verified on the bfrb module (the catch-branch
+// is identical across all 7 stores).
+// ────────────────────────────────────────────────────────────────────────
+
+describe('SyncMergeBfrb — M9 native-writeback-unsupported emit', () => {
+
+  it('emits ONCE per store + counts skipped when runTransaction throws the native marker', async () => {
+    const saved = _bm_savedEnv();
+    const events = [];
+    const onNative = (p) => events.push(p);
+    try {
+      _bm_clearStore();
+      SyncEngine._resetNativeWritebackWarned();
+      SyncEngine.on('native-writeback-unsupported', onNative);
+      _bm_seedLocal([
+        _bm_makeEntry('dev-A', 8000, 'global'),
+        _bm_makeEntry('dev-A', 8100, 'global'),
+      ]);
+      const opts = _bm_install({
+        cloudDocs: [],
+        // Simulate the native runTransaction parity gap for every record.
+        runTransaction: async () => {
+          const e = new Error('runTransaction native parity pending');
+          e.kind = 'unknown';
+          e.nativeUnsupported = true;
+          throw e;
+        },
+      });
+
+      const result = await SyncMergeBfrb.merge(null);
+      assertEqual(result.ok, true, 'merge still resolves ok (per-record tolerated)');
+      assertEqual(result.skipped, 2, 'both records counted as skipped');
+      assertEqual(opts.txSets.length, 0, 'no cloud writes land on native');
+      assertEqual(events.length, 1, 'native-writeback-unsupported emitted exactly ONCE despite 2 records (deduped)');
+      assertEqual(events[0].store, 'bfrb_events', 'payload carries the store key');
+    } finally {
+      SyncEngine.off('native-writeback-unsupported', onNative);
+      SyncEngine._resetNativeWritebackWarned();
+      _bm_restore(saved);
+    }
+  });
+
+});
