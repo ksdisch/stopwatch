@@ -466,10 +466,27 @@ const Analytics = (() => {
         byDay[key] = (byDay[key] || 0) + 1;
       });
 
+      // M14 (AUDIT-2026-06-13): clamp the window to the med's lifetime. Days
+      // before the med was created must NOT count as "missed" — that
+      // structurally understates a new med's adherence (the full-window
+      // denominator penalized it for days it didn't exist). createdAt is null
+      // for legacy meds (created pre-M14): fall back to the full window (prior
+      // behavior). Both the dots AND the denominator use the clamped span, so
+      // the percentage and the dot strip stay consistent.
+      const created = (typeof med.getCreatedAt === 'function') ? med.getCreatedAt() : null;
+      let createdDayMs = windowStartMs;
+      if (typeof created === 'number' && isFinite(created)) {
+        const cd = new Date(created); cd.setHours(0, 0, 0, 0);
+        createdDayMs = Math.max(windowStartMs, cd.getTime());
+      }
+
       const dots = [];
       let scoreSum = 0;
+      let effectiveDays = 0;
       for (let i = days - 1; i >= 0; i--) {
         const d = new Date(today); d.setDate(d.getDate() - i);
+        if (d.getTime() < createdDayMs) continue; // med didn't exist yet — not counted
+        effectiveDays++;
         const key = localDateKey(d);
         const taken = byDay[key] || 0;
         let status;
@@ -479,6 +496,7 @@ const Analytics = (() => {
         dots.push({ date: key, status, taken, expected });
         scoreSum += Math.min(1, taken / expected);
       }
+      const denom = Math.max(1, effectiveDays);
 
       out.push({
         id: (typeof med.getId === 'function' && med.getId()) || null,
@@ -486,7 +504,7 @@ const Analytics = (() => {
         dose: (typeof med.getDose === 'function' && med.getDose()) || '',
         frequency: freq,
         expectedPerDay: expected,
-        adherencePct: Math.round((scoreSum / days) * 100),
+        adherencePct: Math.round((scoreSum / denom) * 100),
         dots,
       });
     });

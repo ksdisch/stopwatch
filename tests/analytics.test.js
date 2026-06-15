@@ -79,6 +79,11 @@ function seedMeds(meds) {
   meds.forEach(m => {
     const med = MedsManager.add({ name: m.name, dose: m.dose, frequency: m.frequency });
     if (!med) return;
+    // M14: add() stamps createdAt=now, but these fixtures model meds that
+    // existed across the whole window. Honor an explicit fixture.createdAt
+    // (for the new mid-window clamp test); otherwise null (legacy) → full-
+    // window adherence, the pre-M14 behavior the existing assertions encode.
+    med.setCreatedAt(typeof m.createdAt === 'number' ? m.createdAt : null);
     (m.doseLog || []).forEach(d => med.logDose(d.takenAt));
   });
 }
@@ -608,6 +613,51 @@ describe('Analytics.getMedAdherence', () => {
     const r = await Analytics.getMedAdherence(30);
     // Only 1 in-window dose → 1/30 ≈ 3%
     assertEqual(r.meds[0].adherencePct, 3);
+  });
+
+  // ── M14 (AUDIT-2026-06-13): clamp the denominator to the med's lifetime ──
+
+  it('M14: a med created mid-window excludes pre-creation days (no false "missed")', async () => {
+    // Created 10 days ago, taken every day since → 100%, NOT dragged down by the
+    // 19 days before it existed. Pre-M14 this was ~11/30 = 37%.
+    const createdAt = atHoursAgo(10, 8);
+    const log = [];
+    for (let i = 0; i <= 10; i++) log.push({ takenAt: atHoursAgo(i, 9) });
+    seedMeds([
+      { id: 'new', name: 'Newbie', frequency: 'once-daily', doseLog: log, createdAt },
+    ]);
+    const r = await Analytics.getMedAdherence(30);
+    assertEqual(r.meds[0].adherencePct, 100, 'perfect since creation = 100%, not dragged by pre-creation days');
+    assertEqual(r.meds[0].dots.length, 11, 'dots span only the 11 days the med existed (today..10d ago)');
+    assertEqual(r.meds[0].dots.every(d => d.status === 'full'), true, 'no false "missed" dots before creation');
+  });
+
+  it('M14: denominator is the clamped lifespan, not the full window', async () => {
+    // Created 9 days ago (10-day lifespan incl. today), missed exactly 1 day.
+    const createdAt = atHoursAgo(9, 8);
+    const log = [];
+    for (let i = 0; i <= 9; i++) { if (i === 3) continue; log.push({ takenAt: atHoursAgo(i, 9) }); }
+    seedMeds([
+      { id: 'n2', name: 'Mid', frequency: 'once-daily', doseLog: log, createdAt },
+    ]);
+    const r = await Analytics.getMedAdherence(30);
+    // 9 taken / 10 lifespan days = 90%, NOT 9/30 = 30%.
+    assertEqual(r.meds[0].adherencePct, 90, 'denominator = 10 lifespan days, not 30');
+    assertEqual(r.meds[0].dots.length, 10, '10 dots (the lifespan)');
+    assertEqual(r.meds[0].dots.filter(d => d.status === 'missed').length, 1, 'exactly one real missed day');
+  });
+
+  it('M14: a legacy med (createdAt null) still uses the full window (back-compat)', async () => {
+    // seedMeds defaults createdAt to null when the fixture omits it; the
+    // denominator must then be the full 30-day window (pre-M14 behavior).
+    const log = [];
+    for (let i = 0; i < 15; i++) log.push({ takenAt: atHoursAgo(i, 9) }); // 15 of 30 days
+    seedMeds([
+      { id: 'leg', name: 'Legacy', frequency: 'once-daily', doseLog: log },
+    ]);
+    const r = await Analytics.getMedAdherence(30);
+    assertEqual(r.meds[0].adherencePct, 50, '15/30 = 50% — full window, not clamped');
+    assertEqual(r.meds[0].dots.length, 30, 'full 30-day strip for a legacy med');
   });
 });
 
