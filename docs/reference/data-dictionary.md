@@ -212,6 +212,7 @@ Optional fields added without a `SCHEMA_VERSION` bump (absent ⇒ feature off / 
 | `todoistId` / `localTag` | Pomodoro saved tasks (`pomodoro_saved_tasks`) | **shipped** | `js/pomodoro-ui.js:635-639,654`; stripped from backups in `js/export.js:127-148` |
 | `todoistId` / `localTag` | Flow user tasks (`flow_user_tasks`) | **shipped** | `js/flow-ui.js:10,357,693`; same strip path |
 | `supplyStartCount` / `supplyResetAt` / `supplyAdjustment` | Medication records (`wellness_meds`) | **shipped** | declared `js/meds.js:47,96-102`; loaded null-safe `js/meds.js:449-456` |
+| `createdAt` | Medication records (`meds/{id}`) — immutable ms creation stamp | **shipped** (M14) | stamped once in `MedsManager.add()` (`js/meds.js`); `getState`/`loadState` roundtrip; null for legacy records ⇒ `getMedAdherence` clamps the denominator to the med's lifetime within the window (`js/analytics.js`), full window when null |
 | `deletedAt` | Quick preset records (`quick_presets`) | **shipped** | tombstone set `js/presets.js:86`; filtered on read `js/presets.js:13`; propagated cross-device `js/sync-merge-presets.js:15-21` |
 | `bedtime` / `wakeTime` | Sleep entry in `wellness_rest_log` | **planned** (backlog #12 / row 11) — **not in code** (no `bedtime`/`wakeTime` reference in `js/recovery-ui.js` as of 2026-05-30) | n/a — verify before relying on it |
 

@@ -256,6 +256,39 @@ describe('Meds — serialization', () => {
     assertEqual(b.getDoseLog().length, 1);
   });
 
+  it('M14: createdAt is null by default, settable, and round-trips through getState/loadState', () => {
+    const a = createMed('c1');
+    assertEqual(a.getCreatedAt(), null, 'createMed leaves createdAt null until stamped');
+    a.setCreatedAt(1700000200000);
+    assertEqual(a.getCreatedAt(), 1700000200000, 'setCreatedAt stamps the value');
+    const state = a.getState();
+    assertEqual(state.createdAt, 1700000200000, 'getState emits createdAt');
+
+    const b = createMed('c2');
+    b.loadState(state);
+    assertEqual(b.getCreatedAt(), 1700000200000, 'loadState restores createdAt verbatim');
+  });
+
+  it('M14: loadState defaults createdAt to null for legacy records (no createdAt key)', () => {
+    const m = createMed('c3');
+    m.loadState({ id: 'c3', name: 'Legacy', frequency: 'once-daily' });
+    assertEqual(m.getCreatedAt(), null, 'legacy med → createdAt null → full-window adherence');
+  });
+
+  it('M14: MedsManager.add() stamps createdAt at creation', () => {
+    MedsManager.clear();
+    try {
+      const before = Date.now();
+      const m = MedsManager.add({ name: 'Fresh', frequency: 'once-daily' });
+      const after = Date.now();
+      const created = m.getCreatedAt();
+      assert(typeof created === 'number', 'add() stamps a numeric createdAt');
+      assert(created >= before && created <= after, 'createdAt is the creation time');
+    } finally {
+      MedsManager.clear(); // consumers (analytics seedMeds, etc.) clear before use
+    }
+  });
+
   it('loadState tolerates partial/empty state (F20 absent path)', () => {
     const m = createMed('r4');
     m.loadState({});
@@ -747,6 +780,7 @@ describe('Meds — F19b __forward passthrough', () => {
       'schemaVersion', 'id', 'name', 'dose', 'frequency',
       'lastTakenAt', 'updatedAt', 'deviceId', 'originDeviceId', 'doseLog',
       'supplyStartCount', 'supplyResetAt', 'supplyAdjustment',
+      'createdAt', // M14: immutable creation timestamp (null for legacy meds)
     ]);
     for (const k of Object.keys(state)) {
       assert(expectedKeys.has(k), `Unexpected key "${k}" on fresh med state`);

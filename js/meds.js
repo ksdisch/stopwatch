@@ -45,6 +45,12 @@ const KNOWN_MED_KEYS = new Set([
   // user can nudge the count up/down without logging a dose or starting a
   // new prescription (e.g. a pharmacy miscount, a lost pill).
   'supplyStartCount', 'supplyResetAt', 'supplyAdjustment',
+  // M14 (AUDIT-2026-06-13): immutable creation timestamp (ms), stamped once at
+  // add() so adherence can exclude days before the med existed. Additive +
+  // nullable (legacy records have none → null → full-window adherence, the
+  // pre-M14 behavior). No SCHEMA_VERSION bump — same precedent as the supply
+  // fields above + the deletedAt tombstone.
+  'createdAt',
   // F17 (D-1): immutable provenance marker set once at reconcile time.
   // Distinct from `deviceId` (F10) which updates on every write — this is
   // the device that authored the record pre-sync. Distinguishes "this
@@ -100,6 +106,11 @@ function createMed(id) {
   // miscount or a lost/extra pill without logging a phantom dose. Reset to 0
   // by setSupply (a fresh bottle starts exactly full) and clearSupply.
   let supplyAdjustment = 0;
+  // M14: immutable creation timestamp (ms). Stamped once by MedsManager.add()
+  // for genuinely-new meds; read back verbatim by loadState. null for legacy
+  // records (pre-M14) — adherence then falls back to the full window (the
+  // prior behavior), since we can't know when those meds were created.
+  let createdAt = null;
   // F10: record-level LWW stamps. `touch()` bumps both on any mutation so
   // sync's per-field LWW for name/dose/frequency has a stable comparator.
   let updatedAt = Date.now();
@@ -143,6 +154,14 @@ function createMed(id) {
   function getLastTakenAt() { return lastTakenAt; }
   function getDoseLog() { return doseLog.slice(); }
   function getUpdatedAt() { return updatedAt; }
+  function getCreatedAt() { return createdAt; }
+  // M14: stamp the creation timestamp. Called once by MedsManager.add() for a
+  // genuinely-new med (production never re-calls it; loadState owns the restore
+  // path). A non-finite value clears to null (= legacy / unknown → full-window
+  // adherence), which the test harness uses to model pre-M14 meds.
+  function setCreatedAt(ts) {
+    createdAt = (typeof ts === 'number' && isFinite(ts)) ? ts : null;
+  }
   function getDeviceId() { return deviceId; }
   function isFromFutureSchema() { return _fromFutureSchema; }
   function getSupplyStartCount() { return supplyStartCount; }
@@ -367,6 +386,7 @@ function createMed(id) {
       updatedAt, deviceId,
       originDeviceId,
       supplyStartCount, supplyResetAt, supplyAdjustment,
+      createdAt,
       doseLog: doseLog.slice(),
     };
     // F19b: merge __forward back into the wire format. The loader's
@@ -482,12 +502,18 @@ function createMed(id) {
     supplyAdjustment = (typeof state.supplyAdjustment === 'number' && isFinite(state.supplyAdjustment))
       ? Math.trunc(state.supplyAdjustment)
       : 0;
+    // M14: immutable creation timestamp. Absent (legacy / pre-M14) → null →
+    // adherence uses the full window (prior behavior). Never bumped after load.
+    createdAt = (typeof state.createdAt === 'number' && isFinite(state.createdAt))
+      ? state.createdAt
+      : null;
   }
 
   return {
     getId, getName, getDose, getFrequency,
     setName, setDose, setFrequency,
     getLastTakenAt, getDoseLog,
+    getCreatedAt, setCreatedAt,
     getUpdatedAt, getDeviceId,
     isFromFutureSchema,
     getSupplyStartCount, getSupplyResetAt, getSupplyAdjustment,
@@ -525,6 +551,7 @@ const MedsManager = (() => {
     if (!canAdd()) return null;
     const id = 'med-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 5);
     const m = createMed(id);
+    m.setCreatedAt(Date.now()); // M14: stamp the immutable creation time once.
     if (config) {
       if (config.name) m.setName(config.name);
       if (config.dose !== undefined) m.setDose(config.dose);
