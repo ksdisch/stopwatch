@@ -336,6 +336,21 @@ const SyncMergeHistory = (() => {
           const toWrite = (typeof Schema !== 'undefined' && typeof Schema.stamp === 'function')
             ? Schema.stamp(Object.assign({}, session))
             : Object.assign({}, session);
+          // M5/M2 (AUDIT-2026-06-13): the headline write-amplification fix —
+          // skip the redundant cloud write when the stamped session already
+          // equals the cloud doc just read. A tx.set fires onSnapshot on every
+          // device → re-merge → re-write, so re-writing unchanged sessions
+          // (cloud-origin records, cloud-wins-LWW with no phaseLog growth) is
+          // pure amplification. recordsEqual deep-compares the phaseLog array,
+          // so a grown phaseLog or a local-wins body still writes. This drops
+          // ONLY the redundant cloud write; the H4 _reconcileWriteRaw apply
+          // below still receives the full merged superset.
+          if (remote && remote.data
+              && typeof SyncMergeEqual !== 'undefined'
+              && typeof SyncMergeEqual.recordsEqual === 'function'
+              && SyncMergeEqual.recordsEqual(toWrite, remote.data)) {
+            return;
+          }
           tx.set('users/' + uid + '/history/' + session.id, toWrite);
         });
         writtenCount++;
@@ -366,6 +381,20 @@ const SyncMergeHistory = (() => {
         // continue. Convergence retries next cycle. We follow the E-1c
         // recipe: increment `skipped` on ANY CAS error so observers see
         // a uniform "didn't land" counter.
+        // M9 (AUDIT-2026-06-13): the native (iOS) runTransaction parity gap
+        // (backlog #3) throws here for EVERY record. Surface it ONCE per store
+        // via the event bus instead of silently swallowing it, then fall
+        // through to the same skipped++ accounting as any other CAS error.
+        if (err && err.nativeUnsupported) {
+          if (typeof SyncEngine !== 'undefined'
+              && typeof SyncEngine.emitNativeWritebackUnsupportedOnce === 'function') {
+            try { SyncEngine.emitNativeWritebackUnsupportedOnce('history'); } catch (_) {}
+          }
+          warnings.push('CAS native-unsupported for session ' + session.id + ': '
+                        + (err && err.message ? err.message : String(err)));
+          skipped++;
+          continue;
+        }
         warnings.push('CAS write failed for session ' + session.id + ': '
                       + (err && err.message ? err.message : String(err)));
         skipped++;

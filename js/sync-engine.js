@@ -24,6 +24,11 @@
 const SyncEngine = (() => {
   let _initialized = false;
   const _listeners = new Map();  // event name → Set<callback>
+  // M9 (AUDIT-2026-06-13): stores already warned about the native (iOS)
+  // runTransaction gap this session — dedups 'native-writeback-unsupported'
+  // so the 300s poll doesn't re-emit it every cycle. Reset via
+  // _resetNativeWritebackWarned() in tests.
+  const _nativeWritebackWarned = new Set();
 
   // B-3: re-entry guard for pushSnapshot. Concurrent click on the
   // "Push to cloud" button must not start two upload races (per audit
@@ -483,6 +488,10 @@ const SyncEngine = (() => {
   //   - 'refuse-writeback'        (E-3)  payload: { store, remoteSchemaVersion, localSchemaVersion, remoteDeviceId? }
   //   - 'listener-connected'      (E-3)  payload: { store }
   //   - 'listener-disconnected'   (E-3)  payload: { store, reason? }
+  //   - 'native-writeback-unsupported' (M9) payload: { store } — emitted once
+  //         per store per session when a native (iOS) steady-state writeback
+  //         hits the runTransaction parity gap; lets the UI warn that cloud
+  //         push is disabled on this device (backlog #3).
   // B-1 shipped the API surface; downstream PRs (B-3 / C-1 / D-1 /
   // E-1c→f8 / E-1e / E-2 / E-3) wire emits at the relevant call sites.
 
@@ -504,6 +513,24 @@ const SyncEngine = (() => {
       try { cb(payload); }
       catch (e) { /* listener errors must not break the emit chain */ }
     }
+  }
+
+  // M9 (AUDIT-2026-06-13): surface the native (iOS) runTransaction gap exactly
+  // ONCE per store per session. The 7 per-store merge catch blocks call this
+  // when they catch the `nativeUnsupported` throw, instead of silently
+  // swallowing it into a skipped counter. Centralizing the dedup state here
+  // (rather than 7 module-level Sets) keeps "once per store" coordinated.
+  function emitNativeWritebackUnsupportedOnce(store) {
+    if (typeof store !== 'string' || !store) return;
+    if (_nativeWritebackWarned.has(store)) return;
+    _nativeWritebackWarned.add(store);
+    emit('native-writeback-unsupported', { store: store });
+  }
+
+  // Test-only: clear the per-store dedup set so an earlier test's emit doesn't
+  // suppress a later one (mirrors the underscore-prefixed test seams below).
+  function _resetNativeWritebackWarned() {
+    _nativeWritebackWarned.clear();
   }
 
   // ── B-3: Cloud upload (pushSnapshot) ─────────────────────────────────
@@ -2435,6 +2462,23 @@ const SyncEngine = (() => {
             // The error branch carries `{ ok: false, error }`; treat as
             // a disconnect signal so observers can update the UI status.
             if (snap && snap.ok === false) {
+              // M3 (AUDIT-2026-06-13): tear the dead listener DOWN so the next
+              // subscribe pass (visibility/network resume) can re-arm it.
+              // Without this the entry lingers in _listenerUnsubs and
+              // _subscribeAllStores' `has(key) → continue` skip leaves the
+              // store permanently without a real-time listener for the rest of
+              // the session after a single transient error (cross-device
+              // propagation silently degrades to the 5-min poll). DELETE the
+              // registry entry BEFORE emit so a synchronous observer that calls
+              // _subscribeAllStores in response sees the key absent and re-arms.
+              const deadUnsub = _listenerUnsubs.get(captureKey);
+              _listenerUnsubs.delete(captureKey);
+              if (typeof deadUnsub === 'function') {
+                try { deadUnsub(); } catch (_) {}
+              }
+              const pending = _storeDebouncers.get(captureKey);
+              if (pending != null) { try { clearTimeout(pending); } catch (_) {} }
+              _storeDebouncers.delete(captureKey);
               try {
                 emit('listener-disconnected', { store: captureKey, reason: 'error' });
               } catch (_) {}
@@ -2633,6 +2677,10 @@ const SyncEngine = (() => {
   return {
     init, enable, disable, getState, getSnapshot,
     on, off, emit,
+    // M9: native-writeback gap surfacing (deduped per store per session) +
+    // its test-only reset hook.
+    emitNativeWritebackUnsupportedOnce,
+    _resetNativeWritebackWarned,
     // H3: user-initiated 'error'-gate recovery (the sync-error toast's Retry).
     retrySync,
     // B-3: cloud upload + state helpers.

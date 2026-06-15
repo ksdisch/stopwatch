@@ -347,6 +347,20 @@ const SyncMergeMeds = (() => {
           const toWrite = (typeof Schema !== 'undefined' && typeof Schema.stamp === 'function')
             ? Schema.stamp(Object.assign({}, med))
             : Object.assign({}, med);
+          // M2/M5 (AUDIT-2026-06-13): skip the redundant cloud write when the
+          // stamped record already equals the cloud doc just read. A tx.set
+          // fires onSnapshot on every device → re-merge → re-write, so
+          // re-writing an unchanged record is what feeds the steady-state
+          // loop. recordsEqual excludes the stamp envelope fields and compares
+          // the doseLog array element-wise (an appended dose differs → writes).
+          // This drops ONLY the redundant cloud write; the H4 local apply still
+          // receives the full merged set.
+          if (remote && remote.data
+              && typeof SyncMergeEqual !== 'undefined'
+              && typeof SyncMergeEqual.recordsEqual === 'function'
+              && SyncMergeEqual.recordsEqual(toWrite, remote.data)) {
+            return;
+          }
           tx.set('users/' + uid + '/meds/' + med.id, toWrite);
         });
         writtenCount++;
@@ -378,6 +392,20 @@ const SyncMergeMeds = (() => {
         }
         // Other errors (network, permission-denied, etc.) — record and
         // continue. Convergence retries next cycle.
+        // M9 (AUDIT-2026-06-13): the native (iOS) runTransaction parity gap
+        // (backlog #3) throws here for EVERY record. Surface it ONCE per store
+        // via the event bus instead of silently swallowing it, then fall
+        // through to the same skipped++ accounting as any other CAS error.
+        if (err && err.nativeUnsupported) {
+          if (typeof SyncEngine !== 'undefined'
+              && typeof SyncEngine.emitNativeWritebackUnsupportedOnce === 'function') {
+            try { SyncEngine.emitNativeWritebackUnsupportedOnce('meds'); } catch (_) {}
+          }
+          warnings.push('CAS native-unsupported for med ' + med.id + ': '
+                        + (err && err.message ? err.message : String(err)));
+          skipped++;
+          continue;
+        }
         warnings.push('CAS write failed for med ' + med.id + ': '
                       + (err && err.message ? err.message : String(err)));
         // Don't count as skipped — these are transient failures that

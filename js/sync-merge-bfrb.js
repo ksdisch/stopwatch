@@ -219,6 +219,19 @@ const SyncMergeBfrb = (() => {
           const toWrite = (typeof Schema !== 'undefined' && typeof Schema.stamp === 'function')
             ? Schema.stamp(Object.assign({}, entry))
             : Object.assign({}, entry);
+          // M2/M5 (AUDIT-2026-06-13): skip the redundant cloud write when the
+          // stamped record already equals the cloud doc just read. A tx.set
+          // fires onSnapshot on every device → re-merge → re-write, so
+          // re-writing an unchanged record is what feeds the steady-state
+          // loop. recordsEqual excludes the stamp envelope fields. This drops
+          // ONLY the redundant cloud write; the local apply still receives the
+          // full merged set, so cross-device convergence is unaffected.
+          if (remote && remote.data
+              && typeof SyncMergeEqual !== 'undefined'
+              && typeof SyncMergeEqual.recordsEqual === 'function'
+              && SyncMergeEqual.recordsEqual(toWrite, remote.data)) {
+            return;
+          }
           tx.set('users/' + uid + '/bfrb_events/' + entryId, toWrite);
         });
         writtenCount++;
@@ -249,6 +262,20 @@ const SyncMergeBfrb = (() => {
         // continue. Convergence retries next cycle. Matches the E-1c
         // recipe: increment `skipped` on ANY CAS error so observers see
         // a uniform "didn't land" counter.
+        // M9 (AUDIT-2026-06-13): the native (iOS) runTransaction parity gap
+        // (backlog #3) throws here for EVERY record. Surface it ONCE per store
+        // via the event bus instead of silently swallowing it, then fall
+        // through to the same skipped++ accounting as any other CAS error.
+        if (err && err.nativeUnsupported) {
+          if (typeof SyncEngine !== 'undefined'
+              && typeof SyncEngine.emitNativeWritebackUnsupportedOnce === 'function') {
+            try { SyncEngine.emitNativeWritebackUnsupportedOnce('bfrb_events'); } catch (_) {}
+          }
+          warnings.push('CAS native-unsupported for entry ' + entryId + ': '
+                        + (err && err.message ? err.message : String(err)));
+          skipped++;
+          continue;
+        }
         warnings.push('CAS write failed for entry ' + entryId + ': '
                       + (err && err.message ? err.message : String(err)));
         skipped++;

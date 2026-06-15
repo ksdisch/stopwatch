@@ -591,6 +591,16 @@ describe('Per-store dispatch + debounce', () => {
         const medsErrEvents = disconnectedEvents.filter(e => e && e.store === 'meds' && e.reason === 'error');
         assertEqual(medsErrEvents.length, 1,
           'one "error" disconnect emitted for meds');
+
+        // M3 (AUDIT-2026-06-13): the errored listener must be TORN DOWN — its
+        // stored unsub called and its registry entry deleted — so the next
+        // subscribe pass re-arms it. Before the fix the dead entry lingered and
+        // _subscribeAllStores' has(key)→continue skip left meds permanently
+        // without a real-time listener for the session.
+        assertEqual(medsSub.unsubCalls, 1, 'M3: errored listener unsub called once');
+        SyncEngine._subscribeAllStores();
+        assertEqual(spy.byStore('meds').length, 2, 'M3: meds re-armed on the next subscribe pass');
+        assertEqual(spy.byStore('history').length, 1, 'healthy stores are NOT re-subscribed');
       } finally {
         SyncEngine.off('listener-disconnected', cb);
       }
