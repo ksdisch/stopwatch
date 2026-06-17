@@ -58,6 +58,21 @@ test('rejects 6 signals (max is 5)', () => {
   assert.ok(errors.some((e) => e.includes('signals')));
 });
 
+test('rejects a non-string signal item (D6)', () => {
+  const { valid, errors } = validateSynthesisRecord(
+    validRecord({ signals: ['sleep on track', 42] }),
+  );
+  assert.equal(valid, false);
+  assert.ok(errors.some((e) => e.includes('signals[1]')));
+});
+
+test('accepts the max of 5 string signals', () => {
+  const { valid } = validateSynthesisRecord(
+    validRecord({ signals: ['a', 'b', 'c', 'd', 'e'] }),
+  );
+  assert.equal(valid, true);
+});
+
 test('rejects a score of 101 (out of 0..100)', () => {
   const { valid, errors } = validateSynthesisRecord(
     validRecord({ state: { band: 'thriving', score: 101 } }),
@@ -79,6 +94,24 @@ test('rejects a bad confidence enum', () => {
   );
   assert.equal(valid, false);
   assert.ok(errors.some((e) => e.includes('confidence')));
+});
+
+test('rejects an empty node string (D5 — node is the Firestore doc id)', () => {
+  const { valid, errors } = validateSynthesisRecord(validRecord({ node: '' }));
+  assert.equal(valid, false);
+  assert.ok(errors.some((e) => e.includes('node') && e.includes('non-empty')));
+});
+
+test('rejects a whitespace-only window string (D5)', () => {
+  const { valid, errors } = validateSynthesisRecord(validRecord({ window: '   ' }));
+  assert.equal(valid, false);
+  assert.ok(errors.some((e) => e.includes('window') && e.includes('non-empty')));
+});
+
+test('rejects a non-string producer (D5)', () => {
+  const { valid, errors } = validateSynthesisRecord(validRecord({ producer: 42 }));
+  assert.equal(valid, false);
+  assert.ok(errors.some((e) => e.includes('producer')));
 });
 
 test('rejects a nudge with priority < 1', () => {
