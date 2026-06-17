@@ -51,9 +51,14 @@ function createStopwatch(id) {
   function deleteLap(index) {
     if (index < 0 || index >= laps.length) return;
     laps.splice(index, 1);
-    // Recalculate lapStartMs from remaining laps
+    // Recalculate lapStartMs from remaining laps. With no laps left we must
+    // restore the SAME baseline as reset()/fresh-start (lapStartMs = 0), not
+    // offsetMs: laps measure from 0 (lap() uses getElapsedMs(), which already
+    // includes offsetMs), so the very first lap after a fresh start counts the
+    // offset in. Rebaselining to offsetMs here made the post-delete in-progress
+    // lap exclude the offset — inconsistent by exactly offsetMs.
     if (laps.length === 0) {
-      lapStartMs = offsetMs;
+      lapStartMs = 0;
     } else {
       lapStartMs = laps[laps.length - 1].totalMs;
     }

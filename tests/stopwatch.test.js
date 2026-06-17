@@ -258,3 +258,63 @@ describe('Stopwatch — state serialization', () => {
     assertEqual(sw.getStatus(), 'idle');
   });
 });
+
+describe('Stopwatch — deleteLap rebaseline (C3 — AUDIT-2026-06-13)', () => {
+  it('deleting the last lap restores the fresh-start baseline (lapStartMs = 0), keeping the offset in', () => {
+    // A paused stopwatch started 30s "ago" (offset), run for another 60s → 90s
+    // elapsed, with one lap spanning the whole 90s (totalMs = 90s, the same as
+    // a first lap taken from a fresh start where lapStartMs began at 0).
+    const sw = createStopwatch('c3-1');
+    sw.loadState({
+      status: 'paused',
+      offsetMs: 30000,
+      accumulatedMs: 60000,
+      startedAt: null,
+      laps: [{ lapMs: 90000, totalMs: 90000 }],
+      lapStartMs: 90000,
+    });
+    assertEqual(sw.getElapsedMs(), 90000, 'deterministic elapsed for a paused state');
+
+    sw.deleteLap(0); // empties the lap list
+    assertEqual(sw.getLaps().length, 0, 'lap removed');
+    // The in-progress lap must measure from 0 (like the first lap from a fresh
+    // start, which includes the offset) — NOT from offsetMs. Pre-fix this was
+    // 90000 - 30000 = 60000, silently dropping the offset.
+    assertEqual(sw.getCurrentLapMs(), 90000, 'baseline reset to 0, offset retained');
+  });
+
+  it('deleting the last lap with no offset is unchanged (regression guard)', () => {
+    const sw = createStopwatch('c3-2');
+    sw.loadState({
+      status: 'paused',
+      offsetMs: 0,
+      accumulatedMs: 50000,
+      startedAt: null,
+      laps: [{ lapMs: 50000, totalMs: 50000 }],
+      lapStartMs: 50000,
+    });
+    sw.deleteLap(0);
+    assertEqual(sw.getLaps().length, 0);
+    // offsetMs was 0, so the fix (→0) matches the old behavior (→offsetMs=0).
+    assertEqual(sw.getCurrentLapMs(), 50000, 'no-offset baseline still 0');
+  });
+
+  it('deleting a non-last lap still rebaselines to the remaining tail lap', () => {
+    const sw = createStopwatch('c3-3');
+    sw.loadState({
+      status: 'paused',
+      offsetMs: 0,
+      accumulatedMs: 30000,
+      startedAt: null,
+      laps: [
+        { lapMs: 10000, totalMs: 10000 },
+        { lapMs: 10000, totalMs: 20000 },
+      ],
+      lapStartMs: 20000,
+    });
+    sw.deleteLap(0); // remove the first lap; one remains (totalMs 20000)
+    assertEqual(sw.getLaps().length, 1, 'one lap remains');
+    // Non-empty branch is unchanged: lapStartMs = last remaining lap's totalMs.
+    assertEqual(sw.getCurrentLapMs(), 10000, 'rebaselined to the surviving tail lap');
+  });
+});
