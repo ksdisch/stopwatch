@@ -554,10 +554,12 @@ const Todoist = (() => {
           }
         } catch (_) {}
       } else {
-        // 'leave' — transient (5xx) or network error. Stop draining
-        // here to preserve FIFO order; the remaining ops stay in
-        // queue for the next drain.
-        failed = queue.length;
+        // 'leave' — transient (5xx) or network error. Stop draining here to
+        // preserve FIFO order; the remaining ops stay in queue for the next
+        // drain. Only THIS op failed — the not-yet-attempted ops are deferred,
+        // not failed, so count 1 (was `queue.length`, which overstated every
+        // unattempted op as a failure).
+        failed = 1;
         break;
       }
     }

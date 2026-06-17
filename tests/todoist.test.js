@@ -884,3 +884,54 @@ describe('Todoist — settings persistence', () => {
     } finally { _teardown(); }
   });
 });
+
+// ── drainQueue failed-count (R7 — AUDIT-2026-06-13) ──────────────────────
+//
+// A transient ('leave') failure stops the drain to preserve FIFO order, but
+// the not-yet-attempted ops are DEFERRED, not failed. Pre-fix the 'leave'
+// branch set `failed = queue.length`, reporting every remaining op as a
+// failure (e.g. 3 queued, op #1 stalls → failed:3 instead of 1).
+
+describe('Todoist — drainQueue failed-count (R7)', () => {
+  it('a transient stop on the first op counts failed:1, not the whole queue', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _setOffline(true);
+      await Todoist.closeTask('A');
+      await Todoist.closeTask('B');
+      await Todoist.closeTask('C');
+      _setOffline(false);
+
+      _queueResponse(503, ''); // A fails transiently; B and C never attempted
+      const r = await Todoist.drainQueue();
+      assertEqual(r.ok, true);
+      assertEqual(r.drained, 0, 'nothing drained — stopped at the first op');
+      assertEqual(r.failed, 1, 'only the one transient op counts as failed (was queue.length=3)');
+      assertEqual(_fetchCalls.length, 1, 'drain stopped after the first failure');
+      const persisted = JSON.parse(localStorage.getItem('todoist_pending_ops'));
+      assertEqual(persisted.length, 3, 'all three ops remain queued for retry');
+    } finally { _teardown(); }
+  });
+
+  it('counts only the transient op even after earlier ops drained', async () => {
+    _setup();
+    try {
+      Todoist.setToken('tkn');
+      _setOffline(true);
+      await Todoist.closeTask('A');
+      await Todoist.closeTask('B');
+      await Todoist.closeTask('C');
+      _setOffline(false);
+
+      _queueResponse(204, ''); // A succeeds
+      _queueResponse(503, ''); // B stalls transiently; C never attempted
+      const r = await Todoist.drainQueue();
+      assertEqual(r.drained, 1, 'A drained');
+      assertEqual(r.failed, 1, 'only B counted as failed — C was never attempted (pre-fix this was 2)');
+      assertEqual(_fetchCalls.length, 2, 'stopped after B');
+      const persisted = JSON.parse(localStorage.getItem('todoist_pending_ops'));
+      assertEqual(persisted.length, 2, 'B and C remain queued');
+    } finally { _teardown(); }
+  });
+});

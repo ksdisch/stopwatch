@@ -12,13 +12,26 @@ const InstanceManager = (() => {
   // saveAll() and every find-by-id lookup. Shared across stopwatch + timer.
   let _idSeq = 0;
 
+  // Default instance names must stay unique even after a middle instance is
+  // removed: `list.length + 1` alone can reproduce an existing number (with
+  // 3 stopwatches, remove the 2nd → next add is also length+1 = 3, colliding
+  // with "Stopwatch 3"). Scan upward from length+1 to the first unused name so
+  // the common case keeps its familiar numbering and only diverges to dodge a
+  // real collision.
+  function _defaultName(base, list) {
+    const taken = new Set(list.map(i => i.getName()));
+    let n = list.length + 1;
+    while (taken.has(base + ' ' + n)) n++;
+    return base + ' ' + n;
+  }
+
   // ── Stopwatch Management ──
 
   function addStopwatch(name) {
     if (stopwatches.length >= MAX_INSTANCES) return null;
     const id = 'sw-' + Date.now().toString(36) + '-' + (_idSeq++).toString(36);
     const instance = createStopwatch(id);
-    instance.setName(name || 'Stopwatch ' + (stopwatches.length + 1));
+    instance.setName(name || _defaultName('Stopwatch', stopwatches));
     stopwatches.push(instance);
     return instance;
   }
@@ -51,7 +64,7 @@ const InstanceManager = (() => {
     if (timers.length >= MAX_INSTANCES) return null;
     const id = 'tm-' + Date.now().toString(36) + '-' + (_idSeq++).toString(36);
     const instance = createTimer(id, { allowOvershoot: true });
-    instance.setName(name || 'Timer ' + (timers.length + 1));
+    instance.setName(name || _defaultName('Timer', timers));
     timers.push(instance);
     return instance;
   }
@@ -112,26 +125,34 @@ const InstanceManager = (() => {
   function loadFromState(state) {
     if (!state) return;
 
-    // Restore stopwatches
+    // Restore stopwatches. Clamp to MAX_INSTANCES: the add-path caps at 5, but
+    // a tampered/oversized persisted multi_state would otherwise restore >5,
+    // bypassing the cap every add enforces.
     if (Array.isArray(state.stopwatches) && state.stopwatches.length > 0) {
-      stopwatches = state.stopwatches.map(s => {
+      stopwatches = state.stopwatches.slice(0, MAX_INSTANCES).map(s => {
         const instance = createStopwatch(s.id || 'sw-default');
         instance.loadState(s);
         return instance;
       });
       primaryStopwatchId = state.primaryStopwatchId || stopwatches[0].getId();
       Stopwatch = getPrimaryStopwatch();
+      // Reconcile the id to the resolved primary: the cap clamp above can slice
+      // off the persisted primary, leaving primaryStopwatchId dangling while the
+      // proxy falls back to stopwatches[0]. Realign so removeStopwatch's primary
+      // guard and saveAll persist the instance actually in use.
+      primaryStopwatchId = Stopwatch.getId();
     }
 
-    // Restore timers
+    // Restore timers (same cap clamp + primary reconcile as stopwatches).
     if (Array.isArray(state.timers) && state.timers.length > 0) {
-      timers = state.timers.map(s => {
+      timers = state.timers.slice(0, MAX_INSTANCES).map(s => {
         const instance = createTimer(s.id || 'tm-default', { allowOvershoot: true });
         instance.loadState(s);
         return instance;
       });
       primaryTimerId = state.primaryTimerId || timers[0].getId();
       Timer = getPrimaryTimer();
+      primaryTimerId = Timer.getId();
     }
   }
 

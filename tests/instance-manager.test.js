@@ -136,3 +136,84 @@ describe('InstanceManager — saveAll → loadAll round-trip', () => {
     assertEqual(threw, null, 'loadAll tolerates corrupt multi_state');
   });
 });
+
+describe('InstanceManager — unique default names (C4 — AUDIT-2026-06-13)', () => {
+  it('default stopwatch names stay unique after removing a middle instance', () => {
+    _im_reset(); // baseline: ['Stopwatch'] (sw-default)
+    const s2 = InstanceManager.addStopwatch(); // 'Stopwatch 2'
+    const s3 = InstanceManager.addStopwatch(); // 'Stopwatch 3'
+    assertEqual(s2.getName(), 'Stopwatch 2', 'second add numbered 2');
+    assertEqual(s3.getName(), 'Stopwatch 3', 'third add numbered 3');
+
+    assertEqual(InstanceManager.removeStopwatch(s2.getId()), true, 'removed the middle instance');
+    // Pre-fix: length is now 2 → next add was 'Stopwatch ' + (2+1) = 'Stopwatch 3',
+    // colliding with the surviving s3. Post-fix the scan skips the taken number.
+    const s4 = InstanceManager.addStopwatch();
+    assert(s4.getName() !== 'Stopwatch 3', 'new add avoids the surviving "Stopwatch 3"');
+    const names = InstanceManager.getStopwatches().map(s => s.getName());
+    assertEqual(new Set(names).size, names.length, 'all default names unique: ' + names.join(','));
+  });
+
+  it('default timer names also stay unique after a middle removal', () => {
+    _im_reset();
+    const t2 = InstanceManager.addTimer(); // 'Timer 2'
+    InstanceManager.addTimer();            // 'Timer 3'
+    assertEqual(InstanceManager.removeTimer(t2.getId()), true, 'removed the middle timer');
+    InstanceManager.addTimer();            // must not collide with 'Timer 3'
+    const names = InstanceManager.getTimers().map(t => t.getName());
+    assertEqual(new Set(names).size, names.length, 'unique timer names: ' + names.join(','));
+  });
+
+  it('an explicit name argument still wins over the default', () => {
+    _im_reset();
+    const s = InstanceManager.addStopwatch('My Focus');
+    assertEqual(s.getName(), 'My Focus', 'explicit name is not overridden by the default helper');
+  });
+});
+
+describe('InstanceManager — loadFromState cap clamp (R4 — AUDIT-2026-06-13)', () => {
+  it('clamps an oversized persisted multi_state to MAX_INSTANCES', () => {
+    const cap = InstanceManager.MAX_INSTANCES;
+    const big = { stopwatches: [], primaryStopwatchId: 'sw-0', timers: [], primaryTimerId: 'tm-0' };
+    for (let i = 0; i < cap + 2; i++) {
+      big.stopwatches.push({ id: 'sw-' + i });
+      big.timers.push({ id: 'tm-' + i });
+    }
+    localStorage.setItem('multi_state', JSON.stringify(big));
+    InstanceManager.loadAll();
+    // The add-path caps at MAX_INSTANCES; the load path must share that bound so
+    // a tampered/oversized state can't smuggle in a 6th+ instance.
+    assertEqual(InstanceManager.getStopwatches().length, cap, 'stopwatches clamped to the cap');
+    assertEqual(InstanceManager.getTimers().length, cap, 'timers clamped to the cap');
+    // The kept slice is the head, so the persisted primary (sw-0/tm-0) survives.
+    assertEqual(InstanceManager.getPrimaryStopwatch().getId(), 'sw-0', 'primary preserved within the kept slice');
+    assertEqual(InstanceManager.getPrimaryTimer().getId(), 'tm-0', 'primary timer preserved');
+  });
+
+  it('reconciles a primary id that the clamp sliced off (no dangling primary)', () => {
+    const cap = InstanceManager.MAX_INSTANCES;
+    // Persisted primary points BEYOND the cap, so the clamp slices it away.
+    const big = {
+      stopwatches: [], primaryStopwatchId: 'sw-' + (cap + 1),
+      timers: [], primaryTimerId: 'tm-' + (cap + 1),
+    };
+    for (let i = 0; i < cap + 2; i++) {
+      big.stopwatches.push({ id: 'sw-' + i });
+      big.timers.push({ id: 'tm-' + i });
+    }
+    localStorage.setItem('multi_state', JSON.stringify(big));
+    InstanceManager.loadAll();
+
+    const primaryId = InstanceManager.getPrimaryStopwatch().getId();
+    const keptIds = InstanceManager.getStopwatches().map(s => s.getId());
+    assert(keptIds.indexOf(primaryId) >= 0, 'primary resolves to a kept instance');
+    assertEqual(Stopwatch.getId(), primaryId, 'global proxy matches the resolved primary');
+    // The decisive check: primaryStopwatchId was reconciled to the resolved
+    // primary, so removeStopwatch's guard now protects it. Pre-reconcile the id
+    // still dangled at sw-{cap+1}, so this guard would NOT fire and the de-facto
+    // primary (stopwatches[0]) would be removable.
+    assertEqual(InstanceManager.removeStopwatch(primaryId), false, 'reconciled primary is guarded against removal');
+    const primaryTimerId = InstanceManager.getPrimaryTimer().getId();
+    assertEqual(InstanceManager.removeTimer(primaryTimerId), false, 'reconciled primary timer is guarded too');
+  });
+});
