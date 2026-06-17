@@ -174,3 +174,45 @@ test('a user cannot read another user\'s synthesis feed', async () => {
   const bob = clientFor('bob');
   await assertFails(getDoc(doc(bob, 'users/alice/synthesis/physicals__sleep')));
 });
+
+// ── Deep-path coverage: nested-subcollection writes (depth ≥ 2) ───────────────
+//
+// Every test above writes a DIRECT child of a store collection
+// (`users/{uid}/{store}/{id}` — 4 path segments). The rules' real reach is the
+// catch-all's recursive `{docId=**}` wildcard (firestore.rules:47), which binds
+// `{collection}` to the segment immediately after the uid and `{docId=**}` to
+// EVERYTHING after it. These cases exercise depth 2 (`.../{id}/{sub}/{x}`), which
+// matters for two reasons:
+//   1. A real synced doc may carry a subcollection; the owner must still own it.
+//   2. The dedicated recovery_state / synthesis blocks use a SINGLE-segment
+//      `{docId}` (firestore.rules:21,34), so they do NOT match at depth 2 — only
+//      the catch-all does. That makes the catch-all's `collection != <feed>`
+//      exclusion the SOLE lever denying a deep feed write, pinning exactly the
+//      cumulative-evaluation hazard the inline rules comment (firestore.rules:13-20)
+//      warns about. A naive recursive feed block with `if false` would NOT save us.
+
+test('owner CAN write a deeply-nested document under a non-feed collection', async () => {
+  // {collection}='meds', {docId=**}='m1/sub/x' → predicate all-true → allowed.
+  const alice = clientFor('alice');
+  await assertSucceeds(
+    setDoc(doc(alice, 'users/alice/meds/m1/sub/x'), { note: 'deep' })
+  );
+});
+
+test('owner CANNOT write a deeply-nested document under the synthesis feed', async () => {
+  // {collection}='synthesis' → catch-all write predicate is `... && false` → denied,
+  // at depth 2 where ONLY the catch-all matches.
+  const alice = clientFor('alice');
+  await assertFails(
+    setDoc(doc(alice, 'users/alice/synthesis/latest/sub/x'), { node: 'evil' })
+  );
+});
+
+test('owner CANNOT write a deeply-nested document under the recovery_state feed', async () => {
+  // Same lever as synthesis above, for the structurally-identical sibling feed:
+  // {collection}='recovery_state' → catch-all predicate is `false && ...` → denied.
+  const alice = clientFor('alice');
+  await assertFails(
+    setDoc(doc(alice, 'users/alice/recovery_state/latest/sub/x'), { day: 'evil' })
+  );
+});
