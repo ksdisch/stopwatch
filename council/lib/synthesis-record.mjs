@@ -91,10 +91,14 @@ export function validateSynthesisRecord(rec) {
     errors.push('contractVersion must be an integer');
   }
 
-  // node / producer / window — non-empty strings.
+  // node / producer / window — non-empty strings. `node` becomes the Firestore
+  // doc id (users/{uid}/synthesis/{nodeId}), so an empty/whitespace value is
+  // contract-invalid — reject it here rather than relying on downstream filters
+  // (home-synthesizer.mjs already drops blank-node children, which this gate
+  // now backstops at the contract boundary).
   for (const field of ['node', 'producer', 'window']) {
-    if (field in rec && typeof rec[field] !== 'string') {
-      errors.push(`${field} must be a string`);
+    if (field in rec && (typeof rec[field] !== 'string' || rec[field].trim() === '')) {
+      errors.push(`${field} must be a non-empty string`);
     }
   }
 
@@ -131,12 +135,21 @@ export function validateSynthesisRecord(rec) {
     }
   }
 
-  // signals — array, length <= 5.
+  // signals — array of strings, length <= 5. The per-item string check mirrors
+  // the nudges validation below; the frozen contract types signals as string[]
+  // (docs/contracts/synthesis-record.schema.json).
   if ('signals' in rec) {
     if (!Array.isArray(rec.signals)) {
       errors.push('signals must be an array');
-    } else if (rec.signals.length > MAX_SIGNALS) {
-      errors.push(`signals must have at most ${MAX_SIGNALS} items`);
+    } else {
+      if (rec.signals.length > MAX_SIGNALS) {
+        errors.push(`signals must have at most ${MAX_SIGNALS} items`);
+      }
+      rec.signals.forEach((sig, i) => {
+        if (typeof sig !== 'string') {
+          errors.push(`signals[${i}] must be a string`);
+        }
+      });
     }
   }
 
