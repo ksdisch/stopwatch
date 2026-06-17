@@ -2266,7 +2266,7 @@ Continued the 2026-06-13 audit burndown (`AUDIT-2026-06-13.md`). Landed five sma
 ### PRs
 
 ```
-fix/audit-quick-wins-2 — fix(audit): correctness/reliability quick wins batch 2 (M4/M10/M11/M6/M1)
+#153  fix(audit): correctness/reliability quick wins batch 2 (M4/M10/M11/M6/M1)  [merged 9fc1fa3]
 ```
 
 ---
@@ -2324,5 +2324,145 @@ PR #154: all 6 jobs green.
 ### PRs
 
 ```
-#154  fix(analytics): dedup getBFRBTrend across BfrbEvents + session.bfrbs (H2)  [draft, CI green]
+#154  fix(analytics): dedup getBFRBTrend across BfrbEvents + session.bfrbs (H2)  [merged 56ce857]
+```
+
+---
+
+## 2026-06-14 — Audit burndown: rhythm cross-midnight active-session detection + `getCurrentDayStatus` de-flake (#155)
+
+### What We Built
+
+Chased the rhythm `activeNow`/`upcoming` "clock-flake" the prior two handoffs kept flagging. It
+was **two distinct issues wearing one symptom** (`js/rhythm-engine.js`):
+
+- **Real engine bug — cross-midnight active sessions were invisible.** `getCurrentDayStatus`
+  only set `activeNow` when a session-*end* could be matched back to its session-*start* via
+  `startsByKey`. But `getDayTimeline` clips a session that *began before local midnight* to
+  yesterday's `[startMs, endMs)` window — so today's timeline holds only the session-**END**,
+  with no start to match. A 90-min Flow block started at 23:45 and viewed at 00:15 therefore
+  read **"Next: Flow block ended at 1:15 AM"** instead of **"Active."** Fix: detect active iff
+  `startedAt` (= `end.time − durationMs`) `<= now < end.time`, and when the matching start is
+  absent, synthesize `activeNow` from the end entry via a new `activeSummaryFromEnd()`,
+  reconstructing a "started"-style summary. Same-day behavior is byte-identical (`start.time ===
+  startedAt`, so the lookup still resolves the same start; only the previously-broken
+  cross-midnight branch changes).
+
+- **Test fragility — the cause of the "flake."** The `getCurrentDayStatus` cases built fixtures
+  off the **live wall clock**, so they flaked within ~30 min of local midnight (the `activeNow`
+  case 00:00–00:30; the `upcoming` case 23:00–24:00) where the relative offsets crossed the day
+  boundary and got clipped. Pass an explicit constructed `now` (noon today) so the analyzed path
+  is fully clock-independent, and add a cross-midnight regression test that locks the engine fix
+  (red pre-fix, green post-fix).
+
+### Verification
+
+Full suite **PASS (1165)** (was 1164) in a fresh-port browser. Before/after confirmed at the
+banner level (`"Active: Flow block started (1h 30m) — 1h 0m left"`; `programName` variant
+`"Pomodoro · Deep Work started (50m)"`). No persisted shape change (`activeNow` is derived).
+`sw.js` CACHE_NAME v131 → v132 (cached `js/` asset changed). Reviewed by a 3-lens adversarial
+panel (engine correctness / test determinism / conventions): all pass.
+
+### PRs
+
+```
+#155  fix(rhythm): detect sessions active across local midnight + de-flake getCurrentDayStatus tests  [merged 9153cea]
+```
+
+---
+
+## 2026-06-15 — Audit burndown: sync-reliability cluster — self-triggering merge loop + listener/native hardening (M2/M3/M5/M9) (#156)
+
+### What We Built
+
+The `AUDIT-2026-06-13.md` sync-reliability cluster — four findings, all in the *orchestration*
+seam the audit called out as the one area carrying real risk.
+
+- **M2/M5 — the self-perpetuating ~1 Hz merge loop.** The per-store CAS writeback re-wrote
+  **every** merged record every cycle with no change detection. Because a `tx.set` fires
+  `onSnapshot` on every device, that re-write re-triggered a merge → another re-write: a
+  self-perpetuating loop (≥2 devices online) burning Firestore writes + bandwidth + battery on
+  **zero** data change. Fix: new shared **`js/sync-merge-equal.js`** — `recordsEqual()`
+  deep-equals two records minus the `{updatedAt, deviceId, schemaVersion}` envelope,
+  strict/**fail-closed** (incl. non-plain objects like Date/Map). All 7 merge modules now skip
+  the `tx.set` when the stamped record already equals the **in-transaction** cloud doc
+  (read-consistent, not a stale snapshot). Also drop self-originated snapshots
+  (`metadata.hasPendingWrites`) in `_onNext`. The local `_reconcileWriteRaw` apply is untouched —
+  it still receives the full merged superset, so **H4 (#150) holds**.
+
+- **M3 — dead listener after a transient error.** The `onSnapshot` error branch emitted
+  `listener-disconnected` but never tore the failed listener down, so its `_listenerUnsubs` entry
+  lingered and `_subscribeAllStores`' `has(key) → continue` skip left that store **permanently
+  without a real-time listener** for the rest of the session. Fix: unsub + delete the registry
+  entry + clear the debouncer **before** the emit, so the next subscribe pass re-arms it.
+
+- **M9 — silent native CAS-parity failures.** Native (iOS) `runTransaction` throws (the
+  CAS-parity gap, backlog #3) were swallowed into a `skipped` counter the UI never reads. Fix:
+  tag the throw `nativeUnsupported`; each merge catch emits a deduped per-store
+  `'native-writeback-unsupported'` event so the UI *can* warn (signal only — toast consumer
+  deferred).
+
+### Verification
+
+**+19 tests** — `recordsEqual` unit suite (incl. the fail-closed Date guard), M2/M5 skip
+integration on bfrb, M9 emit-dedup, M3 re-arm assertions on sync-listeners #16. Suite
+**PASS (1184)**. New module wired at all 4 points + CACHE_NAME → v133. Audit + a 6-lens
+adversarial verification pass came back clean.
+
+### PRs
+
+```
+#156  fix(sync): break self-triggering merge loop + harden listener/native paths (M2/M3/M5/M9)  [merged 2d66560]
+```
+
+---
+
+## 2026-06-15 — Audit burndown: med adherence clamped to lifetime (M14) + InstanceManager test coverage (M12) (#157)
+
+### What We Built
+
+A correctness fix plus the app's biggest test-coverage gap, from `AUDIT-2026-06-13.md`.
+
+- **M14 — adherence understated for meds added mid-window** (`js/analytics.js`, `js/meds.js`).
+  `getMedAdherence` used the **full window** as the denominator even for a med added partway
+  through it, structurally **understating** a new med's adherence (a med created 10 days into a
+  30-day window, taken every day since, scored ~37% instead of 100% — penalized for the 19 days
+  it didn't exist). The audit's "clamp to days-since-creation" needed a creation timestamp that
+  didn't exist, so this adds an immutable **`createdAt`** (ms) to the med record: stamped once in
+  `MedsManager.add()`; `getState`/`loadState` round-trip it; **additive + nullable, NO
+  `SCHEMA_VERSION` bump** (same precedent as the supply fields + the presets `deletedAt`
+  tombstone). Legacy (pre-M14) records have no `createdAt` → `null` → full-window adherence —
+  exactly the prior behavior (we can't know their creation date; **not** back-filled).
+  `getMedAdherence` now clamps **both** the denominator **and** the dots loop to
+  `max(windowStart, createdAt-day)`, so the % and the dot strip stay consistent.
+
+- **M12 — InstanceManager had zero tests** (`tests/instance-manager.js`). `multi_state` — the
+  multi-instance stopwatch/timer persistence + primary tracking + tab-close survival — was the
+  highest criticality-vs-coverage gap in the app. Added the file to the harness + a suite
+  covering the `MAX_INSTANCES` cap, unique-id minting, primary-swap (incl. the global-proxy
+  reassignment + unknown-id no-op), remove guards (refuse primary / refuse last), and the
+  `saveAll → loadAll` round-trip (incl. discarding unsaved mutations + corrupt-state tolerance).
+
+### Verification
+
+**+16 tests** (3 adherence-clamp, 3 `createdAt` plumbing, 10 InstanceManager); the fresh-med
+`getState` key-set test gains `'createdAt'` (now a known field). Existing adherence assertions
+unchanged — `seedMeds` defaults `createdAt = null` (full window). Suite **PASS (1200)**.
+`docs/reference/data-dictionary.md` updated; CACHE_NAME → v134 (`meds.js` + `analytics.js` are
+cached).
+
+### Suggested Next Steps
+
+- All Highs (H1–H4) + all Mediums are now shipped **except M13** (deferred — loading
+  `persistence.js` in the test harness collides on its top-level `const SyncState`, shadowing the
+  `window.SyncState` stubs; needs the stub pattern migrated first).
+- **Triage the 43 Lows** in `AUDIT-2026-06-13.md` (`## LOW`, line 161+) into themed, PR-sized
+  batches by blast radius, and bring a ranked plan before touching code. Candidate not in the
+  audit (surfaced during #156): LWW data-module write sites (`js/history.js`, `js/mood.js`) bump
+  `updatedAt` on no-op local re-saves — fold into the Lows triage.
+
+### PRs
+
+```
+#157  fix(meds): clamp adherence to med lifetime (M14) + InstanceManager test coverage (M12)  [merged 22f0644]
 ```
