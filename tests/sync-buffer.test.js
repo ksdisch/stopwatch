@@ -464,6 +464,66 @@ describe('SyncBuffer — drain', () => {
     }
   });
 
+  it('T4. drain — entry with no matching merge fn is counted failed + left in queue', async () => {
+    // A buffer entry whose store has no merge fn (`_mergeFnFor` → null,
+    // e.g. a stale key left by an older release) must NOT be silently
+    // dropped: drain counts it as failed and leaves the pointer in the
+    // queue for a future drain (sync-buffer.js _mergeFnFor → null path).
+    const saved = _sb_savedEnv();
+    try {
+      await _sb_resetDb();
+      _sb_install({});
+
+      await SyncBuffer.enqueue({ store: 'bogus', recordId: 'x1', originalWallClock: 1000 });
+      assertEqual(await SyncBuffer.count(), 1, 'one bogus-store entry enqueued');
+
+      const result = await SyncBuffer.drain();
+      assertEqual(result.ok, true, 'drain returns ok:true');
+      assertEqual(result.drained, 0, 'nothing drained — no merge fn for bogus store');
+      assertEqual(result.failed, 1, 'the bogus entry is counted failed');
+
+      const remaining = await SyncBuffer.count();
+      assertEqual(remaining, 1, 'bogus entry stays in queue for the next drain');
+    } finally {
+      _sb_restore(saved);
+      await _sb_resetDb();
+    }
+  });
+
+  it('T5. drain — merge ok:true with skipped>0 still deletes pointers (current contract)', async () => {
+    // Contract (T5 decision): when a store's merge fn returns ok:true but
+    // reports skipped>0 (a record guarded by e.g. F19a refuse-writeback),
+    // drain still treats the pass as successful and deletes ALL of that
+    // store's pointers. The skipped record is NOT lost — the 300s steady-
+    // state poll re-merges from full local state every cycle while sync is
+    // live. This characterization test pins that behavior so a future
+    // refactor can't silently flip it.
+    const saved = _sb_savedEnv();
+    const realMedsMerge = SyncMergeMeds.merge;
+    try {
+      await _sb_resetDb();
+      _sb_install({});
+
+      await SyncBuffer.enqueue({ store: 'meds', recordId: 'm1', originalWallClock: 1000 });
+      assertEqual(await SyncBuffer.count(), 1, 'one meds entry enqueued');
+
+      // Merge reports a skipped record but a successful pass overall.
+      SyncMergeMeds.merge = () => ({ ok: true, count: 0, skipped: 1 });
+
+      const result = await SyncBuffer.drain();
+      assertEqual(result.ok, true, 'drain ok');
+      assertEqual(result.drained, 1, 'pointer counted drained despite skipped>0');
+      assertEqual(result.failed, 0, 'nothing counted failed');
+
+      const remaining = await SyncBuffer.count();
+      assertEqual(remaining, 0, 'skipped pointer is DELETED — steady-state re-syncs the record');
+    } finally {
+      SyncMergeMeds.merge = realMedsMerge;
+      _sb_restore(saved);
+      await _sb_resetDb();
+    }
+  });
+
 });
 
 // ────────────────────────────────────────────────────────────────────────

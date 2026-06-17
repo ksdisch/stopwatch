@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v135-audit-low-engine-quickwins';
+const CACHE_NAME = 'stopwatch-v136-syncbuffer-single-txn';
 const ASSETS = [
   './',
   './index.html',
