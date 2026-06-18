@@ -374,3 +374,7 @@ server; won't work in a cloud/web session).
 **MCP servers** (`.mcp.json`, committed — project-scoped so cloud/web sessions + collaborators inherit them; Claude Code prompts to approve project MCP servers on first use):
 - `playwright` (`npx @playwright/mcp@latest`) — deterministic browser for any session: run the engine suite, drive/screenshot the app, sidestep the stale-SW trap. Makes the 💻 commands work in cloud/web too.
 - `firebase` (`npx firebase-tools@latest experimental:mcp --only firestore,auth`) — in-session Firestore/Auth queries (sync debugging per `docs/playbooks/sync-divergence.md`); reuses the firebase-tools wired for `npm run test:rules`.
+
+## Operating Constraints
+
+@.claude/operating-constraints.md
