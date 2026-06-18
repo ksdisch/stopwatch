@@ -2466,3 +2466,66 @@ cached).
 ```
 #157  fix(meds): clamp adherence to med lifetime (M14) + InstanceManager test coverage (M12)  [merged 22f0644]
 ```
+
+---
+
+## 2026-06-17 — Audit LOW burndown: batches B1–B6 (#159–#165)
+
+### What We Built
+
+Opened the **43-Low** tail of `AUDIT-2026-06-13.md` (all Highs + all Mediums already shipped, M13 excepted). Ranked the Lows into a 10-batch plan (B1–B10) and shipped the first six in one `/autonomous-milestone` session — **one PR per batch**, each adversarially verified against HEAD *first* (the triage agent over-claims; four "findings" were dropped as false positives rather than "fixed").
+
+- **B1 (#159) — engine-layer correctness quick-wins.** C3 stopwatch `deleteLap` rebaseline; C4 InstanceManager unique default names; R4 `loadFromState` MAX clamp + primary reconcile; R7 Todoist `drainQueue` failed-count. **C6 dropped** (heatmap "DST drift" was a false positive — `getActivityHeatmap` keys via UTC `toISOString()`, so the "fix" would have *regressed* it). CACHE_NAME → v135.
+- **B2 (#160) — Firestore-rules deep-path coverage (T7/T8).** Added deny-tests for recursive `{docId=**}` writes under the read-only feeds + non-feed stores (+T8b `recovery_state`). **Security result: no deep-path hole** — owner deep-feed writes deny at `firestore.rules:49`. 11→14 rules tests; ran the emulator locally for ground truth. No cache bump.
+- **B3 (#161) — council validator hardening (D5/D6).** `synthesis-record.mjs` now rejects empty/whitespace `node`/`producer`/`window` (node is the Firestore doc id) and string-checks each `signals[]` item. **R2 + D2 dropped as false positives** (the home-rollup guard already exists; rules write-shape validation would break additive-schema sync). Pure-lib, +5 `node --test` (council 89→94). Note: CI has no council job — verified locally. No cache bump.
+- **B4 (#162) — SyncBuffer single-txn cap-eviction (R1) + T4/T5.** Rewrote `SyncBuffer.enqueue()` into one readwrite IDB transaction (compaction + add + count + evict chained via request callbacks), closing the concurrent count→evict race. T4 (unknown-store entry → `failed` + retained on drain) + T5 (characterization: drain deletes a store's pointers on merge `ok:true` even with `skipped>0`; the skipped record re-syncs via the 300s steady-state poll — **Kyle picked KEEP CURRENT**). CACHE_NAME → v136.
+- **B5 (#163) — UI-seam fixes (R5/R6/M4).** R5 `history-ui.js` tag/note-edit double-commit + Escape-fails-to-cancel (the `innerHTML` rebuild detaches the focused input → blur re-commits; added a synchronous `committed` flag). R6 `app.js` `switchAppMode` same-mode double-switch race (synchronous `pendingAppMode` guard). M4 restored `app_mode` now validated against the known mode set (garbage → stopwatch fallback). Verified live with instrumented counters. CACHE_NAME → v137.
+- **B6 (#165) — dead-code maintenance (M2/M3).** Removed an unused `localDeviceId` block in `sync-merge-history.js` + an unused `isMap` var in `distractions.js` (migration paths intact). **M1 dropped as a false positive** — `sync-firestore.js`'s `kind:'unknown'` is the module's documented fallback, not a mislabel. CACHE_NAME → v138.
+- **#164 — tooling sync** (not a burndown batch): synced the vendored `/handoff` command with the run-config recommendation.
+
+### Verification
+
+Each batch shipped green via PR (CI gate). The engine suite reached **PASS (1212)** by B4 and held there through B6. Four audit "findings" were verified as **false positives** and dropped rather than "fixed" (C6, R2, D2, M1) — the triage over-claims, so every item was checked against HEAD before any edit.
+
+### Suggested Next Steps
+
+- Continue the burndown: B7 (seam regression-guards T1/T2/T3), B8 (meds F15 collapse C1/T6 — a fix-or-accept decision), B9 (D4 meds-import future-record guard), B10 (native C2/R3). Defer the spikes D1/D3/R9/M5/R10.
+
+### PRs
+
+```
+#159  fix(audit): engine-layer correctness quick-wins (C3/C4/R4/R7)                                   [merged 8d4d032]
+#160  test(rules): cover deep-path writes under feeds + non-feed stores (B2/T7/T8)                    [merged a027a08]
+#161  fix(council): harden synthesis-record validator -- empty strings + non-string signals (B3/D5/D6) [merged e4b74a6]
+#162  fix(sync): single-txn cap-eviction in SyncBuffer (B4/R1) + T4/T5                                 [merged 690cd73]
+#163  fix(ui): seam fixes — history double-commit + mode-switch race + app_mode validation (B5/R5/R6/M4) [merged 5bc1648]
+#164  chore(commands): sync vendored /handoff with run-config recommendation                          [merged 8644c99]
+#165  refactor(maint): remove dead localDeviceId + isMap vars (B6/M2/M3)                               [merged a6938bd]
+```
+
+---
+
+## 2026-06-18 — Audit LOW burndown: B7 (verified empty) + B8 meds F15 collapse (#166)
+
+### What We Built
+
+Two more burndown batches. The session's lesson — **verify each finding against HEAD before assuming work exists** — cut both ways: it *subtracted* a batch (B7) and *confirmed* one (B8).
+
+- **B7 — seam regression-guards T1/T2/T3: VERIFIED EMPTY, no PR.** All three test gaps the audit listed (`:222` analytics H2 double-count, `:223` export H1 partial-failure-after-`clearAll`, `:224` `escapeHtml` quote-escaping) **already had non-vacuous guards on HEAD** — each shipped *inside the PR that fixed its underlying bug* (#154 for H2; #149 for H1 + M7). The audit's "Tests" table had double-listed regression gaps that this repo's DoD guarantees ship with their fixes, so they were closed before the burndown began. Writing them would have been padding → proved coverage (read the three test files + `git log --diff-filter=A`), recorded it, shipped nothing. (Three more triage over-claims — a structural kind, distinct from the invented-bug ones.)
+- **B8 (#166) — meds F15 cross-device-collapse undercount (C1/T6): real, accepted as by-design.** The F15 `meds-arrival` counter (`sync-merge-meds.js:291-300`) reads the **post**-F1-collapse doseLog, so two genuinely-distinct cross-device doses inside F1's ±15-min window (`meds.js:885-915`, earliest survives) collapse to one and can be undercounted below the ≥2 toast threshold. **Verified real on HEAD** (unlike B7), but notification-only, no data loss, narrow trigger. **Decision (Kyle): ACCEPT as working-as-designed** — the count means "distinct doses *merged*", and a pre-collapse "fix" would over-report the common one-dose-double-logged case (trade a rare under-report for a common over-report). Shipped one **non-vacuous characterization test** pinning the behavior (it fails if the counter goes pre-collapse *or* if F1 stops collapsing cross-device dupes). **Test-only → deliberately no cache bump** (`tests/*.test.js` isn't a cached SW asset; touching `js/` just for a comment would force a zero-behavior re-download).
+
+### Verification
+
+B7: coverage confirmed by reading the three test files + `git log --diff-filter=A` (each guard's first commit = its fix PR); no suite run (nothing added). B8: engine suite **PASS (1212) → PASS (1213)**, new test green, no flakes; all 6 CI jobs green (incl. `sw-cache-bump`, confirming the no-bump call).
+
+### Suggested Next Steps
+
+- **B9** — D4 meds-import future-record guard (the `js/export.js` import path).
+- **B10** — native C2/R3. Defer the spikes D1/D3/R9/M5/R10.
+- Open product questions to resolve at their batch: bfrb-risk window 13-vs-14 days (`js/bfrb-risk.js:31`); PWA `start_url` Home-vs-Timers (`manifest.json:7`).
+
+### PRs
+
+```
+#166  test(sync): characterization guard for F15 cross-device-collapse arrival undercount (B8/C1/T6)  [merged 4fd3817]
+```
