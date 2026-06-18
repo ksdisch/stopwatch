@@ -28,9 +28,11 @@ what the fresh session cannot derive from `git status`, `git log`,
 ## Output format
 
 Print the handoff as a single fenced code block so I can copy it verbatim.
-Do not narrate before or after the block. After printing, **STOP** — do not
-continue the current work and do not ask "what's next." I'll start a fresh
-session.
+Do not narrate before the block. The ONLY thing allowed after the block is the
+short run-config recommendation described in "Run-config recommendation" below
+(2–4 lines, OUTSIDE the block — it's a note to me, not part of the paste-able
+prompt). After that, **STOP** — do not continue the current work and do not ask
+"what's next." I'll start a fresh session.
 
 Match my CLAUDE.md preferences: structured, concise but thorough, no filler,
 name tradeoffs, quote exact paths/branches/PRs/commands rather than
@@ -83,3 +85,33 @@ If something is half-done or wrong, say so. If a decision was made under
 uncertainty, flag the assumption so the fresh session can revisit. Don't
 paper over gaps to make the handoff look tidy — gaps are exactly what the
 fresh session needs to know about.
+
+## Run-config recommendation (the one thing printed after the code block)
+
+After the fenced block, print a 2–4 line note — OUTSIDE the block, addressed to
+me — telling me how to RUN the fresh session. It is never part of the
+paste-able prompt (the fresh session can't set its own model/effort). Base the
+pick on the *nature of the next concrete action* from "Where the plan stands,"
+not on this session's work. Use this shape:
+
+- **Model:** default **Opus 4.8 (1M context)**. Keep "(1M context)" whenever the
+  fresh session must read a lot of source / long docs / a big plan to orient;
+  drop to plain Opus 4.8 only for a small, self-contained next task.
+- **Effort:** pick exactly ONE and name it —
+  - **ultracode** (multi-agent fan-out + adversarial verify; highest token cost):
+    the next task is broad, parallelizable, or wants exhaustive coverage with
+    independent verification — a multi-file audit/migration, a "find every X"
+    sweep, a batch where each item is verified against HEAD, a comprehensive
+    review. Pick when completeness across many surfaces beats speed.
+  - **max effort** (deep single-agent reasoning, no fan-out): the next task is
+    ONE hard problem — subtle root-cause debugging, tricky merge/algorithm
+    logic, untangling a confusing module, a design call with real tradeoffs.
+  - **standard**: mechanical or checklist-scoped work — a known small edit, a
+    doc update, wiring a module per a fixed checklist, a straightforward test
+    add. Don't pay for reasoning the task doesn't need.
+- **Why (one clause):** tie the pick to the specific next action you named, so I
+  can sanity-check it — e.g. "max effort: 3 findings in 2 files, each just needs
+  verify-against-HEAD + a minimal fix; too narrow to want fan-out."
+
+Keep it terse, like the rest of the handoff. If the next action is genuinely
+ambiguous between two modes, name both and say what tips it.
