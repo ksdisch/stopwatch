@@ -200,62 +200,87 @@ const SyncBuffer = (() => {
         : now,
       enqueuedAt: now,
     };
+    const compactable = COMPACTABLE_STORES.indexOf(entry.store) !== -1;
 
+    // Compaction + add + count + cap-eviction all run inside ONE
+    // readwrite transaction (R1). The prior implementation spanned three
+    // transactions with `await` boundaries between them, which let
+    // (a) concurrent enqueues race the count→evict step and over/under-
+    // evict, and (b) the compaction `await` risk the add-transaction
+    // auto-committing before `store.add`. Every step here is chained
+    // through request callbacks so the transaction is never idle between
+    // operations — it stays continuously active and the whole sequence
+    // is atomic. The count sees the txn's own uncommitted add (read-your-
+    // writes), matching the old "fresh count after commit" result.
     try {
-      const store = _writeTxn(db);
+      const { newId, droppedCount } = await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const idx = store.index(INDEX_ENQUEUED_AT);
 
-      // Compaction (for COMPACTABLE_STORES only): delete any prior
-      // entry with the same `(store, recordId)` before inserting the
-      // new pointer. We scan via the FIFO index so the cursor walk is
-      // cheap when the queue is small.
-      if (COMPACTABLE_STORES.indexOf(entry.store) !== -1) {
-        await new Promise((resolve, reject) => {
-          const idx = store.index(INDEX_ENQUEUED_AT);
+        let newId = null;
+        let droppedCount = 0;
+
+        // Step 3 — cap enforcement. Count within the txn, then if over
+        // cap evict the OLDEST entries by the enqueuedAt (FIFO) index.
+        function countAndEvict() {
+          const countReq = store.count();
+          countReq.onsuccess = function () {
+            const toDrop = countReq.result - PENDING_OP_CAP;
+            if (toDrop <= 0) return; // under cap — let the txn commit
+            const evictReq = idx.openCursor();
+            evictReq.onsuccess = function (event) {
+              const cur = event.target.result;
+              if (!cur || droppedCount >= toDrop) return;
+              cur.delete();
+              droppedCount++;
+              cur.continue();
+            };
+            evictReq.onerror = () => reject(evictReq.error || new Error('eviction cursor failed'));
+          };
+          countReq.onerror = () => reject(countReq.error || new Error('count failed'));
+        }
+
+        // Step 2 — insert the new pointer, then enforce the cap.
+        function add() {
+          const addReq = store.add(entry);
+          addReq.onsuccess = function () {
+            newId = addReq.result;
+            countAndEvict();
+          };
+          addReq.onerror = () => reject(addReq.error || new Error('add failed'));
+        }
+
+        // Step 1 (COMPACTABLE_STORES only) — delete any prior entry with
+        // the same `(store, recordId)` via the FIFO index cursor, then add.
+        if (compactable) {
           const cursorReq = idx.openCursor();
           cursorReq.onsuccess = function (event) {
             const cur = event.target.result;
-            if (!cur) { resolve(); return; }
+            if (!cur) { add(); return; }
             const val = cur.value;
             if (val && val.store === entry.store && val.recordId === entry.recordId) {
-              try { cur.delete(); } catch (_) {}
+              cur.delete();
             }
             cur.continue();
           };
           cursorReq.onerror = () => reject(cursorReq.error || new Error('compaction cursor failed'));
-        });
-      }
-
-      const addReq = store.add(entry);
-      const newId = await _wrapReq(addReq);
-
-      // Cap enforcement: if post-insert count > PENDING_OP_CAP, drop
-      // the OLDEST entry by enqueuedAt index. Emit a buffer-overflow
-      // event so the toast surface (`js/sync-toast.js`) paints a
-      // visible warning. We use a fresh readwrite txn for the eviction
-      // — the previous txn auto-commits on cursor close.
-      const postCount = await _wrapReq(_readTxn(db).count());
-      if (postCount > PENDING_OP_CAP) {
-        let droppedCount = 0;
-        const toDrop = postCount - PENDING_OP_CAP;
-        await new Promise((resolve, reject) => {
-          const evictStore = _writeTxn(db);
-          const idx = evictStore.index(INDEX_ENQUEUED_AT);
-          const cursorReq = idx.openCursor();
-          cursorReq.onsuccess = function (event) {
-            const cur = event.target.result;
-            if (!cur || droppedCount >= toDrop) { resolve(); return; }
-            try { cur.delete(); droppedCount++; } catch (_) {}
-            cur.continue();
-          };
-          cursorReq.onerror = () => reject(cursorReq.error || new Error('eviction cursor failed'));
-        });
-        if (droppedCount > 0) {
-          try {
-            if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.emit === 'function') {
-              SyncEngine.emit('buffer-overflow', { droppedCount });
-            }
-          } catch (_) {}
+        } else {
+          add();
         }
+
+        tx.oncomplete = () => resolve({ newId, droppedCount });
+        tx.onerror = () => reject(tx.error || new Error('enqueue txn failed'));
+        tx.onabort = () => reject(tx.error || new Error('enqueue txn aborted'));
+      });
+
+      // Emit AFTER the txn commits so observers see a durable drop.
+      if (droppedCount > 0) {
+        try {
+          if (typeof SyncEngine !== 'undefined' && typeof SyncEngine.emit === 'function') {
+            SyncEngine.emit('buffer-overflow', { droppedCount });
+          }
+        } catch (_) {}
       }
 
       return { ok: true, id: newId };
