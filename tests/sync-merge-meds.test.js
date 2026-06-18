@@ -947,3 +947,72 @@ describe('SyncMergeMeds — H4 cloud→local doseLog writeback (live med)', () =
   });
 
 });
+
+// ── T6 / C1 (audit AUDIT-2026-06-13 :227 / :168) ──────────────────────────
+// The F15 arrival count is read from the POST-F1-collapse doseLog, NOT the
+// raw incoming entries. F1 (MedsManager.reconcileDoseLog) collapses
+// CROSS-device doses that fall within RECONCILE_WINDOW_MS (±15min) into one
+// physical dose — the designed-for case being a single real dose logged on
+// two devices before sync propagated. Because the counter
+// (sync-merge-meds.js:291-300) runs AFTER that collapse, two genuinely
+// distinct cross-device doses inside the window count as ONE arrival and can
+// drop below the ≥2 `meds-arrival` toast threshold (audit C1's "undercount").
+//
+// This is ACCEPTED as working-as-designed (the count means "distinct doses
+// MERGED", not "entries received"): counting raw arrivals would make the
+// toast announce "2 doses arrived" for the COMMON one-dose-double-logged
+// case — trading a rare under-report for a common over-report. This test pins
+// the behavior so a future change to the counting loop (or to F1) fails here.
+//
+// Contrast — test #2 above ("F15 fire") seeds two close timestamps from ONE
+// device → F1 preserves same-device re-doses (meds.js:900) → count 2 → toast
+// fires. The ONLY difference below is two distinct deviceIds, which is what
+// flips F1 from preserve to collapse.
+describe('SyncMergeMeds — F15 arrival count is post-F1-collapse (T6 / C1)', () => {
+
+  it('two cross-device doses within ±15min collapse to one → count 1 → no meds-arrival toast', async () => {
+    const saved = _e1c_savedEnv();
+    const events = [];
+    const onArrival = (p) => events.push(p);
+    SyncEngine.on('meds-arrival', onArrival);
+    try {
+      const now = Date.now();
+      // Local has no prior doses; cloud metadata wins LWW (updatedAt 200 > 100)
+      // and carries two doses from TWO DIFFERENT remote devices, 5 min apart
+      // (≤ 15min F1 window) and both recent (≤ 15min from now, so F16's
+      // clock-skew clamp keeps them rather than dropping them).
+      const localMed = { id: 'med-1', name: 'Vyvanse', frequency: 'once-daily',
+                         updatedAt: 100, deviceId: 'local-dev', schemaVersion: 1,
+                         doseLog: [] };
+      const cloudMed = Object.assign({}, localMed, {
+        updatedAt: 200,
+        doseLog: [
+          _e1c_doseEntry('phone-2', now - 600000),  // device A — 10 min ago (earliest → survives)
+          _e1c_doseEntry('phone-3', now - 300000),  // device B —  5 min ago (collapses into A)
+        ],
+      });
+      const opts = _e1c_install({
+        cloudDocs: [_e1c_makeCloudDoc(cloudMed)],
+        localDeviceId: 'local-dev',
+        medsAll: () => [_e1c_makeLocalMed(localMed)],
+      });
+
+      const result = await SyncMergeMeds.merge(null);
+
+      assertEqual(result.ok, true, 'ok:true');
+      // Two distinct remote doses arrived, but F1 collapsed device-B's into
+      // device-A's → only ONE survives → only ONE arrival is counted.
+      assertEqual(result.remoteArrivals['med-1'], 1,
+        'cross-device pair collapsed → undercounted to 1 (the intended merged-truth count)');
+      assertEqual(events.length, 0,
+        'count 1 < the ≥2 threshold → arrival toast intentionally suppressed');
+      // The merged record still writes back (one collapsed dose).
+      assertEqual(result.count, 1, 'one record written');
+      assertEqual(opts.txSets.length, 1, 'one CAS write');
+    } finally {
+      SyncEngine.off('meds-arrival', onArrival);
+      _e1c_restore(saved);
+    }
+  });
+
+});
