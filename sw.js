@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v136-syncbuffer-single-txn';
+const CACHE_NAME = 'stopwatch-v137-ui-seam';
 const ASSETS = [
   './',
   './index.html',
