@@ -347,7 +347,13 @@ async function renderHistory() {
       btn.replaceWith(input);
       input.focus();
 
+      // R5: renderHistory() rebuilds the list via innerHTML, detaching this
+      // still-focused input → fires a blur event → re-invokes commit. Guard so
+      // commit runs at most once; Escape sets it so blur can't commit a cancel.
+      let committed = false;
       async function commitTag() {
+        if (committed) return;
+        committed = true;
         const tag = input.value.trim().toLowerCase();
         if (tag) {
           await History.addTag(sessionId, tag);
@@ -356,7 +362,7 @@ async function renderHistory() {
       }
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); commitTag(); }
-        else if (e.key === 'Escape') { e.preventDefault(); renderHistory(); }
+        else if (e.key === 'Escape') { e.preventDefault(); committed = true; renderHistory(); }
       });
       input.addEventListener('blur', commitTag);
     });
@@ -377,14 +383,20 @@ async function renderHistory() {
       el.replaceWith(input);
       input.focus();
 
+      // R5: see commitTag — guard the blur-after-detach re-entry. updateNote has
+      // no no-op guard, so an unguarded second commit re-stamps updatedAt and
+      // re-puts; the guard also makes Escape a true cancel.
+      let committed = false;
       async function commitNote() {
+        if (committed) return;
+        committed = true;
         const note = input.value.trim();
         await History.updateNote(sessionId, note);
         renderHistory();
       }
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); commitNote(); }
-        else if (e.key === 'Escape') { e.preventDefault(); renderHistory(); }
+        else if (e.key === 'Escape') { e.preventDefault(); committed = true; renderHistory(); }
       });
       input.addEventListener('blur', commitNote);
     });

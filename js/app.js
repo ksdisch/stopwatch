@@ -1,5 +1,10 @@
 // ── State ──
-let appMode = localStorage.getItem('app_mode') || 'stopwatch';
+// M4: validate the restored mode against the known set — an unknown/corrupt
+// app_mode (legacy value, manual tampering) would otherwise pass through and
+// leave applyAppMode hiding every mode area (blank UI). Fall back to stopwatch.
+const APP_MODES = ['stopwatch', 'timer', 'pomodoro', 'flow', 'interval', 'cooking'];
+const _savedAppMode = localStorage.getItem('app_mode');
+let appMode = APP_MODES.includes(_savedAppMode) ? _savedAppMode : 'stopwatch';
 
 // ── Initialize IndexedDB for history (async, non-blocking) ──
 History.init().catch(e => console.error('History DB init failed:', e));
@@ -221,8 +226,17 @@ function initAppMode() {
   applyAppMode();
 }
 
+// R6: appMode is assigned inside the setTimeout below (deferred 100ms for the
+// fade), so a re-entrant call within that window would read a stale appMode,
+// pass the `mode === appMode` guard, and schedule a second switch. Track the
+// in-flight target synchronously and guard against it instead. Distinct rapid
+// switches (A→B→C) still each apply; only a repeat to the same target is dropped.
+let pendingAppMode = null;
+
 function switchAppMode(mode) {
-  if (mode === appMode) return;
+  const target = pendingAppMode !== null ? pendingAppMode : appMode;
+  if (mode === target) return;
+  pendingAppMode = mode;
   // Stop all render loops before switching
   UI.stopRenderLoop();
   stopTimerRenderLoop();
@@ -236,6 +250,7 @@ function switchAppMode(mode) {
   display.classList.add('mode-fade-out');
   setTimeout(() => {
     appMode = mode;
+    if (pendingAppMode === mode) pendingAppMode = null;
     localStorage.setItem('app_mode', mode);
     applyAppMode();
     // A10/A11: keep the URL hash + sub-nav in sync when the mode is switched
