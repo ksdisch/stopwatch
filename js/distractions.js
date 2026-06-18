@@ -207,7 +207,6 @@ const Distractions = (() => {
       // dedup step to run so any unstaged legacy array entries get
       // dedup-merged. But if there's no flat array left, we have nothing
       // to transform — fall through with empty transformed[].
-      const isMap = !Array.isArray(legacy) && typeof legacy === 'object';
       const isArray = Array.isArray(legacy);
 
       const transformed = [];

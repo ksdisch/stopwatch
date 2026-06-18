@@ -140,15 +140,6 @@ const SyncMergeHistory = (() => {
 
     const uid = user.uid;
 
-    // Resolve local deviceId via History.getDeviceId() — the canonical
-    // accessor for the shared `tempo_device_id` localStorage key.
-    let localDeviceId = null;
-    try {
-      if (typeof History.getDeviceId === 'function') {
-        localDeviceId = History.getDeviceId();
-      }
-    } catch (_) { /* defensive */ }
-
     // ── Fetch cloud history collection ───────────────────────────────
     let cloudResult;
     try {
