@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v137-ui-seam';
+const CACHE_NAME = 'stopwatch-v138-dead-vars';
 const ASSETS = [
   './',
   './index.html',
