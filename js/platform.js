@@ -603,6 +603,7 @@ const Platform = (() => {
 
   let _wakeDesired = false;
   let _wakeSentinel = null;        // web WakeLockSentinel
+  let _wakeAcquiring = false;      // in-flight latch: a request('screen') is pending (R3)
   let _wakeVisInstalled = false;
 
   function _wakeSupportedWeb() {
@@ -610,17 +611,27 @@ const Platform = (() => {
   }
 
   function _wakeAcquireWeb() {
-    if (!_wakeSupportedWeb() || _wakeSentinel) return;
+    // R3: `_wakeSentinel` is assigned asynchronously (inside the .then below),
+    // so a bare `_wakeSentinel` guard can't stop a second keepAwake(true) that
+    // fires before the first request resolves — both pass the guard, both call
+    // request('screen'), and the first sentinel is overwritten + orphaned
+    // (never released by _wakeReleaseWeb → the screen stays awake until the OS
+    // reclaims it). `_wakeAcquiring` is the synchronous in-flight latch that
+    // closes that window. Reset in every resolution path (success, desire
+    // cleared, async reject, sync throw) so it can never stick.
+    if (!_wakeSupportedWeb() || _wakeSentinel || _wakeAcquiring) return;
+    _wakeAcquiring = true;
     try {
       navigator.wakeLock.request('screen').then((sentinel) => {
+        _wakeAcquiring = false;
         // If desire was cleared while the request was in flight, drop it.
         if (!_wakeDesired) { sentinel.release().catch(() => {}); return; }
         _wakeSentinel = sentinel;
         sentinel.addEventListener('release', () => {
           if (_wakeSentinel === sentinel) _wakeSentinel = null;
         });
-      }).catch(() => {});
-    } catch (_e) {}
+      }).catch(() => { _wakeAcquiring = false; });
+    } catch (_e) { _wakeAcquiring = false; }
   }
 
   function _wakeReleaseWeb() {
