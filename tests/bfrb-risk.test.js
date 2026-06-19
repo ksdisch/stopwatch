@@ -98,6 +98,17 @@
       const r = assess(events);
       assertEqual(r.activeDays, 4); // the day-20 / day-30 catches are out of window
     });
+
+    it('the 14th prior day is in-window; the 15th is excluded (true 14-day baseline, not 13)', () => {
+      // C5 fix: windowStart = today−WINDOW_DAYS, so day−14 counts. The old
+      // today−(WINDOW_DAYS−1) math excluded day−14 → it would report 3, not 4.
+      const includesDay14 = onDays([1, 2, 3, 14], 1).concat([todayCatch(1)]);
+      assertEqual(assess(includesDay14).activeDays, 4); // day-14 INCLUDED
+
+      // A day-15 catch must NOT change the count — it falls outside the window.
+      const plusDay15 = onDays([1, 2, 3, 14, 15], 1).concat([todayCatch(1)]);
+      assertEqual(assess(plusDay15).activeDays, 4); // day-15 EXCLUDED
+    });
   });
 
   describe('BfrbRisk.assess — steady vs clustered', () => {

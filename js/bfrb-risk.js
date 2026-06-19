@@ -114,12 +114,13 @@ const BfrbRisk = (() => {
 
     const todayKey = _localDateKey(new Date(now));
 
-    // Window start = local midnight (WINDOW_DAYS-1) days before today, so the
-    // window is [windowStart, todayStart) for the baseline and today is separate.
+    // Window start = local midnight WINDOW_DAYS days before today, so the
+    // baseline window is [windowStart, todayStart) = WINDOW_DAYS prior days
+    // (today is excluded here and counted separately as todayCount).
     const base = new Date(now); base.setHours(0, 0, 0, 0);
     const todayStartMs = base.getTime();
     const winStartMs = new Date(base.getFullYear(), base.getMonth(),
-      base.getDate() - (WINDOW_DAYS - 1)).getTime();
+      base.getDate() - WINDOW_DAYS).getTime();
 
     let todayCount = 0;
     const baselineDayCounts = {}; // dayKey → count, baseline window only (excl. today)

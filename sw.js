@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v139-wake-lock-guard';
+const CACHE_NAME = 'stopwatch-v141-bfrb-window';
 const ASSETS = [
   './',
   './index.html',
