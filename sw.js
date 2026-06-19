@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v138-dead-vars';
+const CACHE_NAME = 'stopwatch-v139-wake-lock-guard';
 const ASSETS = [
   './',
   './index.html',
