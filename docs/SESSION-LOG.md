@@ -2529,3 +2529,29 @@ B7: coverage confirmed by reading the three test files + `git log --diff-filter=
 ```
 #166  test(sync): characterization guard for F15 cross-device-collapse arrival undercount (B8/C1/T6)  [merged 4fd3817]
 ```
+
+---
+
+## 2026-06-18 (session 2) — Audit LOW burndown: B9 D4 (false positive) + B10 R3 (#169)
+
+### What We Built
+
+The last two burndown batches — closing the fixable tail of `AUDIT-2026-06-13.md`. Both ran the now-standard discipline: **verify each finding against HEAD before touching code** (the triage agent over-claims). This session pushed the running over-claim tally to **six invented-bug findings**.
+
+- **B9 — D4 meds-import future-record guard: VERIFIED FALSE POSITIVE, no PR.** The audit (`:183`) flagged `js/export.js` `importAllData` for restoring meds verbatim "with no `schemaVersion`/future-record guard." The write *is* verbatim — but verbatim **preserves** every field (including future-schema ones); nothing is stripped at the write. The F19a/F19b guard correctly lives one layer **downstream** in `js/meds.js` (`loadState` flags future + sweeps unknown fields into `_forwardBag`; `getState` re-emits the captured `schemaVersion` + merges the bag back; `saveAll` skips `isFromFutureSchema()` records), protecting a future med on its next load+save **regardless of how it reached disk** (sync/disk/import). An `isFutureRecord`-*skip* at the import site would be *actively wrong* — it'd drop a future med the user explicitly asked to restore. Already tested: `tests/meds.test.js:562-598` plants a future record on disk via the *same* `setItem` mechanism import uses and asserts byte-clean survival; an export-side test would be vacuous or redundant → padding. **Adversarial skeptic UPHELD** (0 refutations), with the clincher: `importAllData → alert() → location.reload()` is synchronous from the meds write, so no save can interleave before the reload re-flags the record — the downstream guard is the *only* layer that can fire. Shipped nothing (6th over-claim: C6/R2/D2/M1/B4-hazard-b/D4). One *separate* low-severity candidate noticed (not D4, not fixed): a hand-assembled hybrid backup carrying both a stale pre-F18 `wellness_meds` blob and post-F18 `meds/*` for the same id could let `_migrateLegacyBlob()` clobber the richer per-record copy by enumeration order on reload.
+- **B10 (#169) — native wake-lock + notify (C2/R3).** **R3 fixed:** `Platform._wakeAcquireWeb` guarded only on `_wakeSentinel`, which is assigned *asynchronously* inside `request('screen').then()`; two `keepAwake(true)` calls in the resolution window both passed the guard, both requested a sentinel, and the first was overwritten + orphaned (never released → the screen stays awake until the OS reclaims it). Added `_wakeAcquiring`, a synchronous in-flight latch reset in every resolution path (success, desire-cleared, async reject, sync throw). **C2 reviewed + dropped (real-but-immaterial):** native `notify()` doesn't pre-check permission, but iOS enforces permission at the OS layer, so a pre-grant `LN.schedule()` simply doesn't display — the same net effect as the web path's `Notification.permission` early-return; a faithful fix would span all three native notification methods (`notify`/`scheduleNotification`/`cancelNotification`) for nil user benefit. CACHE_NAME → v139. `platform.js` isn't in the engine harness, so R3 ships code-only (`node --check` + reasoning), per the B5 precedent for non-harnessed files.
+
+### Verification
+
+B9: code-read + `tests/meds.test.js` coverage confirmed; adversarial sub-agent returned **UPHELD** (0 refutations); nothing shipped, suite untouched at **PASS (1213)**. B10: `node --check js/platform.js` clean; full engine suite **PASS (1213)** (provably unaffected — neither `platform.js` nor `sw.js` is in the harness); PR #169 open, **awaiting Kyle's merge go-ahead** (project gate on code PRs).
+
+### Suggested Next Steps
+
+- **Merge #169** once reviewed (R3). If you'd rather also close C2's cosmetic asymmetry, say so before merge and I'll add the three-method `checkPermissions` guard.
+- **The burndown's fixable Lows are now done.** What remains are the deferred spikes **D1/D3/R9/M5/R10** (each its own investigation) plus two product questions: bfrb-risk window 13-vs-14 days (`js/bfrb-risk.js:31`) and PWA `start_url` Home-vs-Timers (`manifest.json:7`).
+
+### PRs
+
+```
+#169  fix(platform): in-flight latch on web wake-lock acquire (B10/R3)                                 [open — awaiting merge]
+```
