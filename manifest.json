@@ -4,7 +4,7 @@
   "description": "Productivity and wellness timers — stopwatch, Pomodoro, Flow, intervals, and more.",
   "id": "./index.html",
   "scope": "./",
-  "start_url": "./index.html#/timers",
+  "start_url": "./index.html#/home",
   "display": "standalone",
   "lang": "en",
   "dir": "ltr",
