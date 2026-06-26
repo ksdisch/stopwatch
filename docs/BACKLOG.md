@@ -60,6 +60,7 @@ feature table.
 | 13 | Bugfix: Rhythm Timeline dose dots read deleted `wellness_meds` blob | Medium | Low | #14 | Shipped 2026-06-03 |
 | 15 | Tempo Coach — readiness-aware daily decision loop | High | Medium | #15 | Shipped 2026-06-05 (PR merged) |
 | 16 | BFRB Closed Loop — antecedent capture + Triggers panel | High | Medium | #16 | Shipped 2026-06-05 (PR #126) |
+| 17 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #17 | Shipped 2026-06-26 |
 
 ---
 
