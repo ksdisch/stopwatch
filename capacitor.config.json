@@ -2,6 +2,9 @@
   "appId": "com.ksdisch.tempo",
   "appName": "Tempo",
   "webDir": "www",
+  "server": {
+    "url": "https://ksdisch.github.io/stopwatch/"
+  },
   "ios": {
     "contentInset": "always"
   },
