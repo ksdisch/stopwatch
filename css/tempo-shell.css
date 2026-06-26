@@ -273,8 +273,32 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The item list grew past one screen (Tempo Coach + BFRB Support + Cloud
+     Sync + Todoist). With no height cap the drawer ran off the bottom of the
+     viewport, behind the fixed tab bar (z-index 100 > 20), leaving the
+     Todoist connect control unreachable. Bound it to the space between the
+     top bar and the tab bar and scroll the overflow. dvh tracks the live
+     viewport (mobile-Safari URL bar shrink); the vh line is the fallback for
+     engines without dvh so the cap still applies. */
+  max-height: calc(100vh - var(--tempo-topbar-h) - var(--tempo-tabbar-h) - env(safe-area-inset-bottom, 0px) - 16px);
+  max-height: calc(100dvh - var(--tempo-topbar-h) - var(--tempo-tabbar-h) - env(safe-area-inset-bottom, 0px) - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .tempo-settings-drawer.hidden { display: none; }
+/* The PWA install banner is JS-injected with app.prepend() (js/app.js), so when
+   it shows it consumes ~56px at the top of #app and pushes the absolutely-
+   positioned drawer down by that much — enough to run the drawer's tail behind
+   the fixed tab bar again. Tighten the cap while the banner exists. It only ever
+   injects for not-yet-installed mobile-web visitors: the native iOS app and
+   installed/standalone PWAs skip it (Platform.isNative + standalone guards), so
+   this never fires there. :has() unsupported ⇒ harmless fallback to the base
+   cap (controls stay reachable, the tail just tucks under). */
+#app:has(> .install-banner) .tempo-settings-drawer {
+  max-height: calc(100vh - var(--tempo-topbar-h) - var(--tempo-tabbar-h) - env(safe-area-inset-bottom, 0px) - 84px);
+  max-height: calc(100dvh - var(--tempo-topbar-h) - var(--tempo-tabbar-h) - env(safe-area-inset-bottom, 0px) - 84px);
+}
 .tempo-settings-item {
   display: flex;
   align-items: center;
