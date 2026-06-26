@@ -239,14 +239,16 @@ must resolve), `mermaid-lint`, `firestore-rules`. Always ship via PR — the flo
 ### iOS build (Capacitor)
 
 Same web codebase wraps in a Capacitor iOS shell (haptics + scheduled notifications work
-natively). Web keeps deploying via GitHub Pages unchanged; iOS is a separate target. Daily
-workflow + 7-day free-cert refresh playbook: [`iOS-BUILD.md`](iOS-BUILD.md).
+natively). The iOS shell loads the **live GitHub Pages payload at runtime** (`server.url` in
+`capacitor.config.json`), so a `git push` deploy updates the app on next cold launch — no
+rebuild for web-code changes (bundle still ships but is not an offline fallback). Daily
+workflow + live-payload tradeoffs + cert-refresh playbook: [`iOS-BUILD.md`](iOS-BUILD.md).
 
 ```bash
 npm install              # one-time: Capacitor + plugins
 brew install cocoapods   # one-time
 npx cap add ios          # one-time: scaffolds ios/
-npm run ios:open         # everyday: sync www/ → cap copy → open Xcode
+npm run ios:open         # activate a native/config change (web code auto-updates via Pages)
 ```
 
 `scripts/sync-www.mjs` mirrors static files (`index.html`, `manifest.json`, `sw.js`, `css/`,

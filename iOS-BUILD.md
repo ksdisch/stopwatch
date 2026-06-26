@@ -18,18 +18,41 @@ ios/App/Pods/, ios/App/build/   ← gitignored (reproducible)
 
 ## Updating the app on your iPhone
 
-When you change any web code (`js/`, `css/`, `index.html`, etc.) and want it on the phone:
+**Since the `server.url` switchover, web code updates land on the phone automatically.** Push to `main` → GitHub Pages deploys in ~1 min → the app loads the new `js/` / `css/` / `index.html` on its next cold launch. No `cap copy`, no Xcode rebuild for ordinary code changes. See "Live web payload" below for how and why.
 
-```bash
-cd "$(git rev-parse --show-toplevel)"   # repo root — works from any checkout or worktree
-npm run ios:copy
+You only need the local build steps for the three things the live payload can't carry:
+
+1. **One-time activation** — baking the `server.url` config into the installed app. Do this once, after the change is on the device:
+   ```bash
+   cd "$(git rev-parse --show-toplevel)"   # repo root — works from any checkout or worktree
+   npm run ios:open
+   ```
+   In Xcode, select your iPhone and hit `⌘R` (Run). From this build forward, code updates are automatic.
+2. **Native-layer changes** — adding/removing a Capacitor plugin, editing `capacitor.config.json`, or anything under `ios/`. Re-run `npm run ios:open` + `⌘R`.
+3. **Cert refresh** — see the signing-cert section below (annual on the paid Apple Developer Program).
+
+## Live web payload (server.url)
+
+`capacitor.config.json` sets:
+
+```json
+"server": { "url": "https://ksdisch.github.io/stopwatch/" }
 ```
 
-That runs `sync-www` to regenerate `www/` from the repo root, then `cap copy ios` to push it into the iOS bundle.
+This tells the native WebView to load the **deployed GitHub Pages site at runtime** instead of the bundled `www/` copy. Effect: your existing `git push` → Pages deploy *is* the mobile-update mechanism, and the web app and the iOS app can no longer drift — same bytes, same origin.
 
-Then in Xcode hit `⌘R` (Run). If Xcode is closed, run `npm run ios:open` instead — it does the copy AND opens Xcode in one step.
+**The bundle still ships, but it is not an offline fallback.** `sync-www` still generates `www/` and Capacitor still copies it in (a `webDir` is required, and keeping it preserves the revert path and the App Store option). But when `server.url` is set, Capacitor does **not** fall back to the bundle if the remote URL is unreachable — a *cold* launch with no network shows a WebKit connection error, not the bundled copy.
 
-The web version updates separately and instantly via `git push` to GitHub Pages.
+**Tradeoffs:**
+- ✅ Merge → on the phone next cold launch. Zero rebuild, zero cost, nothing to tap.
+- ✅ Web and native cannot diverge.
+- ✅ Native plugins (haptics, `LocalNotifications`, Firebase Auth) keep working — the Capacitor bridge is injected into whatever page loads, local or remote.
+- ✅ **Warm offline use is fine.** Once loaded, Tempo is a single-page app; it keeps running with no network, and `localStorage` / IndexedDB / the Firestore offline buffer all work. Only the *cold* launch needs a connection.
+- ⚠️ **Cold launch needs network.** The service worker does not fill this gap on native — `js/app.js` gates SW registration on `!Platform.isNative`, so there's no on-device cache. (If true offline cold-start matters later, that's the bundle-hot-swap / OTA path — "Option B" — not this one.)
+- ⚠️ **Re-verify Google sign-in on device after activation.** The WebView origin changes from `capacitor://localhost` to `https://ksdisch.github.io`. Native auth routes through the bridge and *should* be unaffected, but auth flows are origin-sensitive enough to warrant a real-device check. If sign-in breaks, first add `ksdisch.github.io` under Firebase console → Authentication → Settings → Authorized domains.
+- ⚠️ **App Store note.** A pure remote-load app can draw Guideline 4.2 ("minimum functionality") scrutiny at review. A non-issue for personal/TestFlight install; only relevant if you submit publicly — at which point the bundle-hot-swap model is the cleaner answer.
+
+**Reverting to a fully-bundled (offline-capable) app:** delete the `server` block from `capacitor.config.json`, then `npm run ios:open` + `⌘R`. The app goes back to loading the bundled `www/` — offline-capable, but back to needing a rebuild per code change.
 
 ## Podfile gotchas (Capacitor sync regenerates parts of the Podfile)
 
@@ -100,12 +123,11 @@ If you ever notice web behavior drift (e.g., haptics stop working on Android Chr
 
 | Task | Command |
 |------|---------|
-| Update web build | `git push` (deploys in ~1 min) |
-| Sync iPhone build (Xcode already open) | `npm run ios:copy` then `⌘R` in Xcode |
-| Sync iPhone build (Xcode closed) | `npm run ios:open` |
-| Refresh 7-day cert | `npm run ios:open` → ▶ Run |
+| Update web build **and the iPhone app** | `git push` (Pages deploys in ~1 min; app loads it next cold launch) |
+| Activate a native/config change on the phone | `npm run ios:open` → `⌘R` in Xcode |
+| Refresh signing cert (annual on paid program) | `npm run ios:open` → ▶ Run |
 | Run engine tests | open `tests/index.html` in any browser |
-| Bump SW cache (after asset changes) | edit `CACHE_NAME` in `sw.js` |
+| Bump SW cache (after web asset changes) | edit `CACHE_NAME` in `sw.js` |
 
 ## Out of scope for the current build
 
