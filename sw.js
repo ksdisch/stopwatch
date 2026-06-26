@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v141-bfrb-window';
+const CACHE_NAME = 'stopwatch-v142-flow-add-task';
 const ASSETS = [
   './',
   './index.html',
