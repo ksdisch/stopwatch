@@ -53,7 +53,7 @@ feature table.
 | 6 | Split-screen timer comparison | Medium | High | #2 | **Unshipped** |
 | 7 | Voice control | Low | Medium | #3 | **Unshipped** |
 | 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
-| 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102) |
+| 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102); mid-block add enhancement (PR #173) |
 | 10 | Todoist follow-up B — Pomo inline-rename + `updateTask` | Low | Low | #10-B | Shipped (PR #103) |
 | 11 | Sleep log bedtime/wake-time schema extension | Medium | Low | #12 | Shipped 2026-06-01 (bundled with #12) |
 | 12 | Rhythm insights section — multi-chart dashboard | High | Medium | #13 | Shipped 2026-06-01 (all 7 panels) |

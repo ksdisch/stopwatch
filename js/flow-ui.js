@@ -825,38 +825,50 @@ function updateFlowUserTaskCount() {
   countEl.textContent = `Tasks: ${done}/${items.length} done`;
 }
 
-// todoist-flow-tasks: add-task input handler. Mirrors pomodoro-ui.js
-// initChecklistInputFor — Enter commits, and when a Todoist token is set a
-// 'flow-'-prefixed localTag is minted so the late-stamp walker can correlate
-// the create response (sync OR offline-queue drain) back to this exact item.
-function initFlowUserTaskInput() {
-  const input = document.getElementById('flow-user-task-input');
-  if (!input) return;
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      const items = loadFlowUserTasks();
-      const newItem = { text, done: false };
-      if (typeof Todoist !== 'undefined' && Todoist.hasToken()) {
-        const localTag = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-          ? 'flow-' + crypto.randomUUID()
-          : 'flow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-        newItem.localTag = localTag;
-        Todoist.createTask({ content: text, localTag }).then(result => {
-          if (result && result.ok && result.data &&
-              typeof result.data.id !== 'undefined') {
-            _stampFlowTaskTodoistId(localTag, String(result.data.id));
-          }
-        }).catch(() => {});
+// todoist-flow-tasks: append one task to flow_user_tasks. Mints a
+// 'flow-'-prefixed localTag when a Todoist token is set so the late-stamp
+// walker can correlate the create response (sync OR offline-queue drain) back
+// to this exact item. Shared by both the setup and the running-view inputs so
+// tasks added mid-block take the identical path.
+function commitFlowUserTask(text) {
+  const items = loadFlowUserTasks();
+  const newItem = { text, done: false };
+  if (typeof Todoist !== 'undefined' && Todoist.hasToken()) {
+    const localTag = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? 'flow-' + crypto.randomUUID()
+      : 'flow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    newItem.localTag = localTag;
+    Todoist.createTask({ content: text, localTag }).then(result => {
+      if (result && result.ok && result.data &&
+          typeof result.data.id !== 'undefined') {
+        _stampFlowTaskTodoistId(localTag, String(result.data.id));
       }
-      items.push(newItem);
-      saveFlowUserTasks(items);
-      input.value = '';
-      renderFlowUserTasks();
-      updateFlowUserTaskCount();
-    }
+    }).catch(() => {});
+  }
+  items.push(newItem);
+  saveFlowUserTasks(items);
+  renderFlowUserTasks();
+  updateFlowUserTaskCount();
+}
+
+// todoist-flow-tasks: add-task input handler. Mirrors pomodoro-ui.js
+// initChecklistInputFor — Enter commits. Binds BOTH the setup input
+// (#flow-user-task-input) and the running-view input (#flow-running-task-input)
+// so tasks can be added before AND during a block; both route through
+// commitFlowUserTask.
+function initFlowUserTaskInput() {
+  ['flow-user-task-input', 'flow-running-task-input'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        commitFlowUserTask(text);
+        input.value = '';
+      }
+    });
   });
 }
 

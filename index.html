@@ -534,6 +534,13 @@
         <div id="flow-running-tasks" class="flow-running-tasks">
           <div id="flow-running-tasks-count" class="flow-running-tasks-count"></div>
           <div id="flow-running-tasks-items"></div>
+          <!-- todoist-flow-tasks: add tasks mid-block. Same commit path as the
+               setup input; Enter appends to flow_user_tasks. -->
+          <div class="flow-user-tasks-add">
+            <input type="text" id="flow-running-task-input"
+                   placeholder="Add a task..." maxlength="120"
+                   aria-label="Add a task during this block">
+          </div>
         </div>
         <div class="flow-run-actions">
           <button id="flow-distraction-btn" class="pomo-distraction-btn hidden">Distraction</button>

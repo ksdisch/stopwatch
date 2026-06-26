@@ -96,7 +96,7 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `todoist_default_project_id` | `js/todoist.js:66,118-130` | string id | no | no | Default project for new tasks. |
 | `todoist_default_filter` | `js/todoist.js:67,137-155` | string, default `'today'` | no | no | Picker filter. |
 | `todoist_pending_ops` | `js/todoist.js:68,443-467` | JSON op queue (`close`/`reopen`/`create`/`update`), 200-op FIFO cap | no | no | Drains on `online` + `visibilitychange:visible`. Read in `js/todoist-ui.js:216`. |
-| `flow_user_tasks` | `js/flow-ui.js:15,19-27` | JSON `Array<{ text, todoistId?, done, localTag? }>` | **no** (Todoist is cross-device truth) | yes (linkage stripped, `js/export.js:99,158`) | Flow "Tasks for this block". `done` resets each `Flow.start()`. |
+| `flow_user_tasks` | `js/flow-ui.js:15,19-27` | JSON `Array<{ text, todoistId?, done, localTag? }>` | **no** (Todoist is cross-device truth) | yes (linkage stripped, `js/export.js:99,158`) | Flow "Tasks for this block". Editable from BOTH the setup view and the running view (add mid-block via `#flow-running-task-input`). `done` resets each `Flow.start()`. |
 
 ### 1e. Sync infrastructure (markers / flags)
 
