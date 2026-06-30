@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v143-settings-drawer-scroll';
+const CACHE_NAME = 'stopwatch-v144-panel-safe-area';
 const ASSETS = [
   './',
   './index.html',
