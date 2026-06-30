@@ -2754,6 +2754,18 @@ body.focus-mode .global-bfrb-fab {
   display: none;
 }
 
+/* Also hide the FAB while a full-screen takeover panel is open — it otherwise
+   floats over the panel's bottom-right actions (notably History's destructive
+   "Clear All"). These panels toggle .hidden, so :not(.hidden) = open. :has()
+   matches the #176 idiom; engines without :has() just keep the FAB visible
+   (harmless fallback). */
+body:has(#history-panel:not(.hidden)) .global-bfrb-fab,
+body:has(#analytics-panel:not(.hidden)) .global-bfrb-fab,
+body:has(#presets-drawer:not(.hidden)) .global-bfrb-fab,
+body:has(#log-past-panel:not(.hidden)) .global-bfrb-fab {
+  display: none;
+}
+
 /* BFRB Closed Loop Slice B: the if-then competing-response plan banner.
    Anchored just above the FAB (bottom-right) so the plan reminder sits with the
    countdown it relates to. It is shown only AFTER the antecedent-capture popover
