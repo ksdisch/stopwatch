@@ -308,6 +308,11 @@ input:focus:not(:focus-visible) {
   z-index: 300;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Padded on the CONTAINER (not the shared .history-header) so
+     the History panel's header is untouched. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow: hidden;
 }
 
@@ -4484,6 +4489,12 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 300;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area: this full-screen fixed takeover paints over the tabbar
+     and escapes #app's padding, so it must inset its own header (title + close) off
+     the notch and its footer actions off the home indicator on notched iOS
+     standalone. Mirrors .focus-overlay; inert (no visual change) where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow: hidden;
 }
 
@@ -4518,6 +4529,11 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 1000;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Panel is the scroll container, so padding insets the scroll
+     content off the notch/home-indicator. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -5354,6 +5370,11 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 1000;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Header (title + close) clears the notch; .log-past-form keeps
+     its 40px bottom for breathing room above this inset. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
