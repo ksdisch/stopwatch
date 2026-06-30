@@ -1648,6 +1648,8 @@ input:focus:not(:focus-visible) {
   color: var(--text);
   font-size: 0.8rem;
   padding: 4px 8px;
+  /* >=44px touch target (mobile sweep B2): these Flow selects were ~25px tall. */
+  min-height: 44px;
   font-family: inherit;
   -webkit-appearance: none;
   appearance: none;
@@ -2422,9 +2424,10 @@ input:focus:not(:focus-visible) {
 
 .recovery-quality-btn {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  /* >=44px touch target (mobile sweep B2): was 36x36. */
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   border: 1px solid var(--btn-border);
   background: var(--bg);
   color: var(--text);

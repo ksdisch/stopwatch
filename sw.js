@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v144-panel-safe-area';
+const CACHE_NAME = 'stopwatch-v146-tap-targets';
 const ASSETS = [
   './',
   './index.html',
