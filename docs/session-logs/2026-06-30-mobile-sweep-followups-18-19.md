@@ -38,5 +38,5 @@ Fresh code, both viewports (Recipe B: `:8770` + `?nosw=1` + fresh Playwright `ne
 
 ### Commits
 ```
-<SHA>  fix(mobile): scope-hide FAB on recovery route (#18) + enlarge clock-toggle tap area (#19)  (PR #182)
+2810c18  fix(mobile): scope-hide FAB on recovery route (#18) + enlarge clock-toggle tap area (#19)  (PR #182)
 ```
