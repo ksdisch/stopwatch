@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v146-tap-targets';
+const CACHE_NAME = 'stopwatch-v147-fab-hide-takeover';
 const ASSETS = [
   './',
   './index.html',
