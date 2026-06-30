@@ -60,6 +60,9 @@ feature table.
 | 13 | Bugfix: Rhythm Timeline dose dots read deleted `wellness_meds` blob | Medium | Low | #14 | Shipped 2026-06-03 |
 | 15 | Tempo Coach — readiness-aware daily decision loop | High | Medium | #15 | Shipped 2026-06-05 (PR merged) |
 | 16 | BFRB Closed Loop — antecedent capture + Triggers panel | High | Medium | #16 | Shipped 2026-06-05 (PR #126) |
+| 17 | Mobile UX papercut sweep — safe-area on takeover panels + ≥44px tap targets | Medium | Low | #17 | Shipped 2026-06-30 (PR #178 safe-area, #179 tap-targets); inventory `docs/bug-hunt/2026-06-29-mobile-sweep.md` |
+| 18 | Mobile follow-up: BFRB FAB overlaps bottom-right actions (History "Clear All", Recovery "Log sleep") on takeover surfaces | Low | Low | #18 | **Unshipped** — from 2026-06-29 sweep; hide/shift FAB behind takeover panels |
+| 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → segmented control for a real ≥44px target | Low | Low–Med | #19 | **Unshipped** — deferred in PR #179 |
 
 ---
 
