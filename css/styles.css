@@ -610,6 +610,7 @@ input:focus:not(:focus-visible) {
 }
 
 .mode-dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -619,6 +620,23 @@ input:focus:not(:focus-visible) {
   padding: 0;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.2s;
+}
+
+/* Backlog #19: keep the visible dot at 8px (deliberate minimalist look on the
+   flagship timer screen) but expand the *clickable* area via a transparent
+   overlay so it's actually tappable. Horizontal reach is capped by the 8px
+   .mode-toggle gap — each side extends 4px so the two hit areas meet at the
+   midpoint and never overlap (no ambiguous taps); vertically there's no
+   neighbor, so it grows to a full ~44px. Net target ~16×44px vs the old 8×8
+   point. A true non-overlapping 44px-wide pair would need the dots spread
+   apart, which would alter the hero screen — out of scope for this papercut. */
+.mode-dot::after {
+  content: '';
+  position: absolute;
+  top: -18px;
+  bottom: -18px;
+  left: -4px;
+  right: -4px;
 }
 
 .mode-dot-active {
@@ -2763,6 +2781,16 @@ body:has(#history-panel:not(.hidden)) .global-bfrb-fab,
 body:has(#analytics-panel:not(.hidden)) .global-bfrb-fab,
 body:has(#presets-drawer:not(.hidden)) .global-bfrb-fab,
 body:has(#log-past-panel:not(.hidden)) .global-bfrb-fab {
+  display: none;
+}
+
+/* Backlog #18: the FAB also floats over the Recovery surface's bottom-right
+   "Log sleep" button on #/wellness/recovery (a normal route, not a takeover
+   panel — so the rule above doesn't catch it). Hide the FAB while that surface
+   is visible, same idiom. Wellness sub-surfaces toggle the native [hidden]
+   attribute (js/tempo-nav.js), so :not([hidden]) = recovery is the active sub.
+   Catches still have keyboard shortcut B. */
+body:has([data-wellness-sub="recovery"]:not([hidden])) .global-bfrb-fab {
   display: none;
 }
 
