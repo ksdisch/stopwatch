@@ -36,6 +36,16 @@ LOG_FILE="${LOG_DIR}/${DATE_TAG}.log"
 # `command -v node` preflight below instead of producing a useful log.
 export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}"
 
+# Pin node resolution to the nvm-managed install (survives Homebrew changes —
+# without this launchd finds Homebrew node first, and removing Homebrew node
+# would kill the preflight below). Resolve the newest installed nvm version
+# dynamically and put its bin dir FIRST; the Homebrew paths above remain the
+# fallback when no nvm install exists.
+NVM_NODE_BIN="$(ls -d "${HOME}/.nvm/versions/node"/*/bin 2>/dev/null | sort -V | tail -n 1)"
+if [[ -n "${NVM_NODE_BIN}" && -x "${NVM_NODE_BIN}/node" ]]; then
+  export PATH="${NVM_NODE_BIN}:${PATH}"
+fi
+
 # Source secret env vars (GOOGLE_APPLICATION_CREDENTIALS, TEMPO_UID,
 # SLACK_WEBHOOK_URL, optionally TWILIO_*). File is gitignored — see
 # council/.env.secrets.example for the format.
