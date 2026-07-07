@@ -270,7 +270,19 @@ const Export = (() => {
       }
     }
     if (data.settings && typeof data.settings === 'object') {
+      // F10 (hunt 2026-07-07): a backup legitimately carries ONE meds shape —
+      // pre-F18 files have the wellness_meds blob (no data.meds), post-F18
+      // files have the per-record data.meds array (blob key is null once
+      // migrated, so it's never captured). A hand-assembled HYBRID carrying
+      // both would silently regress meds on the post-import reload:
+      // meds.js _migrateLegacyBlob() runs before key enumeration and
+      // unconditionally overwrites meds/{id} from the blob. When the backup
+      // carries actual per-record meds, that array is the meds truth — skip
+      // the vestigial blob so the migration can't clobber. An EMPTY meds
+      // array still restores the blob (legacy-style rollback stays intact).
+      const skipLegacyMedsBlob = Array.isArray(data.meds) && data.meds.length > 0;
       EXPORT_SETTINGS_KEYS.forEach(key => {
+        if (key === 'wellness_meds' && skipLegacyMedsBlob) return;
         if (data.settings[key] !== undefined) {
           // Defensive: the backup format stores everything as strings, but
           // validate anyway so a malformed file can't poison localStorage.
