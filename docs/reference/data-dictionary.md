@@ -81,9 +81,9 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `bfrb_events` | `js/bfrb-events.js:48` | JSON entry array `{ takenAt, context, sessionId?, …, deviceId, updatedAt, schemaVersion }` | **yes** (`bfrb_events`) | no (synced via adapter) | F3 consolidated stream; `context ∈ global/flow/pomodoro`. |
 | `tempo_bfrb_events_migration_v1` | `js/bfrb-events.js:49,261` | `'1'` | no | no | Idempotency marker for legacy-bucket → `bfrb_events` migration. |
 | `mood_events` | `js/mood.js` | JSON entry array `{ at, valence: 1..5, tags? (≤3), note? (≤280), context?, deviceId, updatedAt, schemaVersion }` | **yes** (`mood_events`) | yes | Life-OS Phase 3 mood stream (ADR-0008); append-only, immutable, no legacy migration. Reserved additive-nullable `energy: 1..5`. Timestamp field is `at`, NOT `takenAt`. |
-| `bfrbs_global` | `js/bfrb-events.js:50` (legacy) / `js/global-bfrb.js:46` | JSON array | no | yes | **Legacy** BFRB bucket; retained one release, no scheduled removal. |
-| `flow_bfrbs` | `js/bfrb-events.js:50` (legacy) / `js/flow-ui.js:5,84` | JSON array | no | yes | **Legacy** bucket. |
-| `pomodoro_bfrbs` | `js/bfrb-events.js:50` (legacy) / `js/pomodoro-ui.js:1264` | JSON array | no | yes | **Legacy** bucket. |
+| `bfrbs_global` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** BFRB bucket — **deleted at boot** since the Pick-C cleanup (PR #192, 2026-07-07). Stays in EXPORT_SETTINGS_KEYS only so ancient pre-F3 backups restore → consolidate on fresh devices. |
+| `flow_bfrbs` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** bucket — deleted at boot (PR #192); export-listed for ancient-restore only. |
+| `pomodoro_bfrbs` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** bucket — deleted at boot (PR #192); export-listed for ancient-restore only. |
 | `flow_distractions` | `js/distractions.js:58` / `js/flow-ui.js:4` | JSON `sessionId`-keyed map `{ [sid]: [entries] }` | **yes** (`distractions`) | yes | F8 keyed map (was flat array). |
 | `pomodoro_distractions` | `js/distractions.js:59` / `js/pomodoro-ui.js:1204` | JSON `sessionId`-keyed map | **yes** (`distractions`) | yes | Same shape; both maps travel under one snapshot envelope. |
 | `tempo_distractions_migration_v1` | `js/distractions.js:60,329` | `'1'` | no | no | F8 flat-array → keyed-map migration marker. |

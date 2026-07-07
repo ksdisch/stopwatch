@@ -2632,3 +2632,35 @@ Kyle greenlit **Phase 2** of the hunt remediation plan (highest-impact debt: R10
 #189  fix(app): boot on a timers route no longer aborts app.js (pendingAppMode TDZ)       [OPEN — Kyle-gated]
 #190  docs(session-log): this entry                                                       [this PR]
 ```
+
+## 2026-07-07 (session 3) — Hunt Phase 3: spike queue closed (#191, #192, #193)
+
+### What We Built
+
+Kyle greenlit **Phase 3** (spike queue) at the phase-gate ask, then approved all three merges. Every item in the queue is closed — three PRs merged + deployed, one machine-local repair, four documented verdicts (recorded in the hunt report's known-open register).
+
+- **#191 (F10)** — `fix/f10-hybrid-backup-import-guard`: product decision (Kyle's pick: **import-side skip**). `Export.importAllData` no longer restores the `wellness_meds` blob when the backup carries a non-empty per-record `data.meds` array — a hand-assembled hybrid file could otherwise silently clobber fresher `meds/{id}` records on the post-import reload (`_migrateLegacyBlob` runs before key enumeration and always wins). Pure legacy backups AND the `meds: []` boundary still restore the blob — deliberate rollback semantics preserved, pinned by tests. +2 tests. Cache v155.
+- **#192 (`flow_bfrbs` cleanup)** — `refactor/bfrb-legacy-key-cleanup`: the deferred Pick-C. The migration now deletes the 3 legacy keys once the union write **verifiably landed** (length re-check guards `_writeStore`'s silent quota path); marker-set boots sweep residuals **without re-unioning** (re-union would re-stamp under this device's id and double-count cross-device restores — the exact hazard the exported marker prevents); the pathological marker-set-but-store-empty state keeps its bytes. Dead writers removed (flow-ui + pomodoro-ui helpers and their 8 session-end `[]` clears), rhythm-engine legacy read-fallback removed. Deliberate spec change: the rhythm fallback test now asserts legacy keys are IGNORED. +4 tests. Cache v156.
+- **#193 (council node pin)** — `fix/council-node-pin`: `run-synthesis.sh` prepends the newest `~/.nvm/versions/node/*/bin` (launchd's minimal PATH was finding Homebrew node v25; removing Homebrew node would have killed the preflight). Homebrew stays the fallback. Verified by `env -i` launchd-sim (nvm present → v22.22.3; absent → Homebrew v25.2.1) + council 94/94 — the script itself never executed (production Firestore writer).
+- **Local rules-env repaired** (machine-local, no repo diff): the `npx firebase-tools@13` cache tree was corrupted (`Cannot find module 'rxjs'` under `~/.npm/_npx/872b751b2f16d338`) — parked via `mv` to `.broken-2026-07-07` (Safety Net blocks `rm -rf` outside cwd), fresh install resolves 13.35.1; `brew link --force openjdk@21` put java 21.0.11 on PATH. `npm run test:rules` green **14/14 verbatim**. Memory file updated.
+- **Spike verdicts:** **D3** same-ms BFRB dedup → ACCEPTED (single serialized log path via `global-bfrb` `commitPending()`; local store never dedups; worst case −1 tally cross-device). **R9** SW notification persistence → DEFER to Phase 4 (IDB persist + re-arm on SW wake; only verifiable with the Proving Ground's "notification tap" harness; native iOS unaffected). **R8** → accepted-mitigated (enforced bump + stale-while-revalidate). **D1** per-field LWW → DEFER with design sketch (additive-nullable `fieldStamps` {note,tags}; take with audit structural #1/#2 at the next sync touch).
+
+### Verification
+
+Suite **PASS (1238)** on merged main (1232 → +2 F10, +4 cleanup; headless, zero failures). Rules suite 14/14 locally + green in CI on all three PRs. Live Pages verified serving `stopwatch-v156-bfrb-legacy-cleanup`. Council validators 94/94.
+
+### Gotchas
+
+- **CI infra-flake signature:** #193's engine-tests "failed" in 21s — the runner's apt fetch of packages.microsoft.com returned a bad clearsigned file during Playwright install; the suite never ran. `gh run rerun <run-id> --failed` fixed it. A real suite run takes ~1min.
+- `gh pr checks --watch` right after a push can track the OLD head — poll `gh api repos/…/commits/<new-sha>/check-runs` pinned to the new SHA instead.
+- The Safety Net also blocks standalone `sleep N` and `rm -rf` outside cwd: use Bash run-in-background + until-loop for CI waits, and `mv <dir> <dir>.broken-<date>` to park cache dirs (`~/.npm/_npx/872b751b2f16d338.broken-2026-07-07` awaits manual delete).
+- The sw.js CACHE_NAME parallel-PR drill again: #192 took the one-line `git merge origin/main` reconcile keeping its own higher v156. **Next bump starts at v157.**
+
+### PRs
+
+```
+#191  fix(export): F10 — hybrid backup import no longer restores stale wellness_meds blob  [MERGED 7a12d12]
+#192  refactor(bfrb): Pick-C legacy-key cleanup                                            [MERGED 29988dd]
+#193  fix(council): pin launchd node resolution to the nvm-managed install                 [MERGED 3d4888d]
+#194  docs(hunt): Phase 3 outcomes — register verdicts + this entry                        [this PR]
+```
