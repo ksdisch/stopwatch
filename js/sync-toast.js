@@ -40,10 +40,11 @@
 //     test case starts from a clean baseline. NOT production API; tests
 //     under `tests/sync-toast.test.js` consume it directly.
 //
-// **Deferred:** B-4 `Toast.medsArrival(medId, count)` — the
-// `sync-merge-meds.js` merge fn already emits `meds-arrival` events but no
-// UI surface paints them. Audit flags this as a freebie the implementer
-// MAY land in E-2; explicitly NOT bundled in E-3 either (separate PR).
+// **B-4 (landed 2026-07-07):** Toast.medsArrival(medId, count) — consumes
+// the `meds-arrival` event `js/sync-merge-meds.js` emits per-med when a
+// merge cycle applies ≥2 NEW remote doseLog entries (F15). The count rides
+// the copy; `medId` is accepted for payload parity but not surfaced
+// (matches the bufferOverflow/downlevelWarning param pattern).
 //
 // **No engine logic in this module** — pure DOM + event listener.
 // Engine-implementer ships in lockstep with the engine modules; Phase 4
@@ -144,6 +145,22 @@ const Toast = (() => {
     // Verbatim PLAN.md §E-3 line 409 copy.
     _show('Your phone is on a newer version. This device is read-only until you update.');
     _downlevelWarningShown = true;
+  }
+
+  // B-4 public — paint the F15 meds-arrival notice. Triggered by the
+  // `'meds-arrival'` event `js/sync-merge-meds.js` emits per-med when a
+  // merge cycle applies ≥2 NEW remote doseLog entries (cross-device
+  // arrivals). `medId` is accepted for payload parity but not surfaced.
+  // The emitter thresholds at ≥2; the 1/invalid tiers keep a direct
+  // caller sensible.
+  function medsArrival(medId, count) {
+    if (typeof count === 'number' && isFinite(count) && count >= 2) {
+      _show(count + ' doses synced from another device.');
+    } else if (count === 1) {
+      _show('1 dose synced from another device.');
+    } else {
+      _show('New doses synced from another device.');
+    }
   }
 
   // Public — paint an arbitrary non-blocking notice. Used by surfaces beyond
@@ -282,13 +299,16 @@ const Toast = (() => {
       });
     } catch (_) {}
 
-    // TODO (B-4 freebie — deferred per implementer scope decision):
-    // wire `Toast.medsArrival(medId, count)` here to consume the
-    // `meds-arrival` event emitted by `js/sync-merge-meds.js:10`. The
-    // method body would mirror `bufferOverflow` — a single-line listener
-    // registration. Splitting this into its own PR keeps the E-2/E-3
-    // commit messages focused; no functional reason it couldn't land
-    // alongside.
+    // B-4: meds-arrival listener. Consumes the F15 event emitted per-med
+    // by `js/sync-merge-meds.js` (threshold ≥2 new remote entries per
+    // cycle). Mirrors the buffer-overflow listener shape.
+    try {
+      SyncEngine.on('meds-arrival', (payload) => {
+        const medId = (payload && typeof payload.medId === 'string') ? payload.medId : '';
+        const count = (payload && typeof payload.count === 'number') ? payload.count : 0;
+        try { medsArrival(medId, count); } catch (_) {}
+      });
+    } catch (_) {}
   }
 
   try { _registerListener(); }
@@ -297,6 +317,7 @@ const Toast = (() => {
   return {
     bufferOverflow,
     downlevelWarning,
+    medsArrival,
     notice,
     action,
     // Test-only escape hatch — see `_resetForTests` definition above.

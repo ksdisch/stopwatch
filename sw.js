@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v150-nsdr-restore';
+const CACHE_NAME = 'stopwatch-v151-meds-arrival-toast';
 const ASSETS = [
   './',
   './index.html',
