@@ -389,6 +389,23 @@ on reload). This also fixes the F12 mandatory pre-push backup (`sync-engine.js:6
 `buildBackupData`). Pre-fix, local backups/exports silently omitted all medications post-migration —
 data-loss for users not on cloud sync.
 
+### Timer button handlers duplicated ui.js's (M5-maint — FIXED 2026-07-07)
+
+`onTimerLeft`/`onTimerRight` (timer-ui.js) and `onLeftClick`/`onRightClick` (ui.js) each
+re-derived button meaning from engine status twice — once in the click dispatch, once in the
+presentation switch (`updateButtons` / `updateTimerUI`) — so labels and behavior could drift
+per mode and conventions were re-encoded across modes. **Fix (`refactor/timer-handler-unify`):**
+extracted the pure decision table into `js/button-fsm.js` — `ButtonFsm.get(mode, status)` →
+frozen `{left, right}` cell specs (`label`/`cls`/`disabled`/`action`) — and both UI files now
+consult the same row for presentation AND dispatch; side-effect bodies (History capture,
+BgNotify, SFX, undo toasts) stay in their mode files. Verbs are behavior identities: timer
+"Reset" and "Done" both map to `'reset'` (capture + reset). 14 engine tests pin every cell
+(suite 1218 → 1232). **One deliberate behavior delta:** on the legacy-restore-only timer
+status `'finished'`, the right button rendered "Done" but dispatched nothing (dead button —
+`onTimerRight` had no `'finished'` branch); the table maps it to `'reset'`, which is what the
+label always promised. Drift-proofing pattern: presentation and dispatch must read the same
+row of one table.
+
 ---
 
 ## If migrating to ES modules

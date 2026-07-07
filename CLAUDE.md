@@ -64,7 +64,8 @@ js/history.js                   — History module. IndexedDB (db stopwatch_hist
 js/export.js                    — Export module. Clipboard, CSV, Web Share, full-data JSON export/import.
 js/analog.js                    — Analog clock face. SVG ticks/numbers/hands.
 js/offset-input.js              — "Start with time already elapsed" input UI + presets.
-js/ui.js (~490 lines)           — Main UI: RAF render loop, button state machine, lap list, swipe-to-delete, vibration, a11y.
+js/button-fsm.js                — ButtonFsm: pure shared button state machine (M5). get(mode, status) → frozen {left, right} cell specs (label/cls/disabled/action) for stopwatch+timer; ui.js + timer-ui.js derive presentation AND dispatch from it.
+js/ui.js (~500 lines)           — Main UI: RAF render loop, ButtonFsm-driven buttons, lap list, swipe-to-delete, vibration, a11y.
 js/cards-ui.js                  — Compact card rendering for non-primary stopwatch/timer instances.
 js/compare-ui.js                — Compare view: split-screen two-instance comparison.
 js/timer-ui.js                  — Timer mode UI: button handlers, render loop, alarm. Session saves carry `programName: Timer.getName()` (Chickens Mindfulness Area path 2).
@@ -126,7 +127,7 @@ icons/                          — 192px and 512px PNG icons.
 ### Script Load Order
 Mirrors the `<script>` tags in `index.html` exactly (that order IS the dependency graph; keep this block and `index.html` in lockstep):
 ```
-utils → dom-utils → platform → schema → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-buffer → sync-engine → sync-toast → sync-manual-dedupe → sync-merge-equal → sync-merge-meds → sync-merge-history → sync-merge-rest-log → sync-merge-presets → sync-merge-bfrb → sync-merge-distractions → sync-merge-mood → sync-auth → audio → themes → history → export → backup → analog → offset-input → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → distractions → todoist → todoist-ui → pomodoro-ui → tempo-coach → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → recovery-feed → synthesis-feed → home-ui → physicals-ui → chickens-ui → rhythm-engine → rhythm-insights → rhythm-panel-today → rhythm-panel-meds-sleep → rhythm-panel-recovery-trends → rhythm-panel-focus-minutes → rhythm-panel-bfrb-frequency → rhythm-panel-bfrb-triggers → rhythm-panel-distraction-rollup → rhythm-panel-event-zoom → rhythm-panel-correlations → rhythm-ui → bfrb-events → bfrb-risk → global-bfrb → mood → mood-ui → tempo-nav → app
+utils → dom-utils → platform → schema → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-buffer → sync-engine → sync-toast → sync-manual-dedupe → sync-merge-equal → sync-merge-meds → sync-merge-history → sync-merge-rest-log → sync-merge-presets → sync-merge-bfrb → sync-merge-distractions → sync-merge-mood → sync-auth → audio → themes → history → export → backup → analog → offset-input → button-fsm → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → distractions → todoist → todoist-ui → pomodoro-ui → tempo-coach → flow-ui → alert-ui → bg-notify → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → recovery-feed → synthesis-feed → home-ui → physicals-ui → chickens-ui → rhythm-engine → rhythm-insights → rhythm-panel-today → rhythm-panel-meds-sleep → rhythm-panel-recovery-trends → rhythm-panel-focus-minutes → rhythm-panel-bfrb-frequency → rhythm-panel-bfrb-triggers → rhythm-panel-distraction-rollup → rhythm-panel-event-zoom → rhythm-panel-correlations → rhythm-ui → bfrb-events → bfrb-risk → global-bfrb → mood → mood-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
@@ -214,8 +215,7 @@ Open items only. Resolved entries (the F18 `wellness_meds` orphaned-readers fixe
 2026-05-26 browser-verification notes) are archived in
 [`docs/BACKLOG.md` § Resolved tech debt](docs/BACKLOG.md#resolved-tech-debt-kept-as-migration-pattern-reference).
 
-- **iOS sign-out doesn't fully sign out (web OK):** the native `authStateChange` listener races back the Keychain-cached user after `signOut()`; fix belongs in `js/platform.js`'s native `authSignOut` branch. Workaround: toggle "Enable cloud sync" off. Full diagnosis: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
-- **Timer button handlers are duplicated:** `onTimerLeft`/`onTimerRight` (timer-ui.js) duplicate ui.js's `onLeftClick`/`onRightClick`. Could unify into a shared state machine.
+- **iOS sign-out race — fix landed 2026-07-07, on-device verify pending:** the native `authStateChange` listener raced the Keychain-cached user back after `signOut()`; `js/platform.js` now arms `_authSignOutGuard` on native sign-out and swallows stale non-null re-emits until the SDK's null teardown emit. Native-Keychain-specific, so it shipped on `node --check` + reasoning (#169 precedent) — confirm on device via the playbook's Diagnosis recipe, then drop this entry. Playbook: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
 - **No UI/integration tests:** engine suites only (see § Test commands for counts, runners, and the headless flake). UI verification is manual / via the `app-verifier` agent; a UI harness ("Tempo Proving Ground") is a backlog candidate.
 - **renderLaps does full innerHTML on lap events:** the perf path only covers the RAF tick; a new lap rebuilds the list. Low impact.
 - **Life-OS council runs under Homebrew node (v25), not nvm (v22):** works today (firebase-admin is portable), but removing Homebrew node breaks the launchd preflight — consider pinning node in `council/run-synthesis.sh`.
@@ -285,7 +285,7 @@ Store paperwork (developer account, privacy nutrition labels for meds + BFRB, sc
 
 ### Test commands
 
-Engine tests (~1,218 `it()` across ~54 `tests/*.test.js` as of 2026-07-07) execute **in a real
+Engine tests (~1,232 `it()` across ~55 `tests/*.test.js` as of 2026-07-07) execute **in a real
 browser** — no Node assertion runner. `npm test` drives headless Chromium over the same page;
 its `PASS (n)` line (echoed by the CI `engine-tests` job) is the canonical count — trust it
 over any number written in docs.

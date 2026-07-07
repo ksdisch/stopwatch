@@ -2603,3 +2603,32 @@ Phase 2: iOS sign-out (R10, `docs/playbooks/ios-signout.md`) + timer-handler uni
 #185  fix(sync-toast): land the deferred B-4 meds-arrival toast (hunt F3)            [merged 3348d58]
 #186  docs(hunt): F4–F7 — session-log backfill + backlog/Compare/count refresh       [this PR]
 ```
+
+## 2026-07-07 (session 2) — Hunt Phase 2: R10 sign-out guard + M5 ButtonFsm + boot-TDZ find (#187, #188, #189)
+
+### What We Built
+
+Kyle greenlit **Phase 2** of the hunt remediation plan (highest-impact debt: R10 + M5-maint). Three PRs opened; **all merges gated on Kyle** at session end.
+
+- **#187 (R10)** — iOS sign-out race fix, `fix/ios-signout-race`: the native `authSignOut` branch in `js/platform.js` arms `_authSignOutGuard` **before** `await fa.signOut()`; the `authStateChange` listener swallows non-null re-emits while armed and disarms on the SDK's own null emit (teardown confirmation — state-based, no timing window); the cold-boot rehydrate respects the guard; `authSignIn` disarms up front. Playbook Option A ruled out by evidence: `@capacitor-firebase/authentication@6.3.1` exposes no Keychain-clear API (`signOut()` is the only teardown hook). Playbook flipped to FIX LANDED / **on-device verify pending**; CLAUDE.md debt entry updated. Cache v152.
+- **#188 (M5)** — timer-handler unification, `refactor/timer-handler-unify`: new pure `js/button-fsm.js` — `ButtonFsm.get(mode, status)` → frozen `{left, right}` cells (label/cls/disabled/action). `ui.js` + `timer-ui.js` consult the same row for BOTH presentation and dispatch; side-effect bodies stay in mode files; verbs are behavior identities (timer Reset and Done both = `'reset'`). TDD: 14 tests written against a stub table first — **FAIL (13)**, every failure "missing row" — then filled: **PASS (1232)** (was 1218). One deliberate delta: on legacy-restore-only timer status `'finished'`, right-button "Done" was a dead button (no dispatch branch); the table maps it to `'reset'` as the label promises. All 4 wire-points; debt entry retired to BACKLOG § Resolved tech debt. Cache v153.
+- **#189 (new find)** — boot-TDZ fix, `fix/boot-route-mode-tdz`: the M5 verification drive caught a **pre-existing boot abort** — booting on a timers-route hash (deep link / reload on `#/timers`) → `TempoNav.init()` (app.js:114) → `switchAppMode` reads `let pendingAppMode` declared at app.js:234, below the call site and still in its temporal dead zone → throw aborts app.js top-level (everything after line 114 silently skipped). Fix: declaration moved up with the boot state; R6 comment stays with `switchAppMode`. Cache v154.
+
+### Verification
+
+**R10:** `node --check` clean; suite **PASS (1218)** no-regression; every behavioral change confined to `isNative` branches (web sign-out untouched by construction); ships on reasoning per the #169 precedent — **on-device confirm owed** (playbook's Diagnosis recipe doubles as the verify recipe). **M5:** suite **PASS (1232)**; fresh-context real-click drive (`:8771` + `?nosw=1` + fresh `newContext()`) — full stopwatch flow (idle/start/lap/stop/reset+undo), timer set-2s/start/overflowing "Done +0:00"/Done-captures-and-resets, injected legacy `'finished'` state now resets on Done; zero page errors (only favicon 404). **#189:** reproduce-then-verify on the same recipe — boot on `#/timers` went from 2 TDZ pageerrors + dead mode tabs to zero errors + working switch.
+
+### Gotchas
+
+- All three PRs bump CACHE_NAME from the same v151 base (v152/v153/v154), and #187/#188 touch adjacent CLAUDE.md tech-debt lines — whichever merges later takes a one-line rebase.
+- Playwright MCP "Browser is already in use … mcp-chrome-ba6b552": an orphaned automation Chrome from a prior session holds the shared profile — `pkill -f` the profile-dir slug frees BOTH MCP servers (they share it). Verified the process list first (automation flags + MCP profile path ≠ personal Chrome).
+- Booting the drive directly on `#/timers` is what surfaced #189 — the default `#/home` boot masks it, so verification scripts should exercise deep-link boots too.
+
+### PRs
+
+```
+#187  fix(platform): R10 iOS sign-out race — guard stale native authStateChange re-emit   [OPEN — Kyle-gated]
+#188  refactor(ui): M5 — unify stopwatch+timer button handlers through ButtonFsm          [OPEN — Kyle-gated]
+#189  fix(app): boot on a timers route no longer aborts app.js (pendingAppMode TDZ)       [OPEN — Kyle-gated]
+#190  docs(session-log): this entry                                                       [this PR]
+```

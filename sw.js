@@ -37,6 +37,7 @@ const ASSETS = [
   './js/backup.js',
   './js/analog.js',
   './js/offset-input.js',
+  './js/button-fsm.js',
   './js/ui.js',
   './js/cards-ui.js',
   './js/compare-ui.js',
