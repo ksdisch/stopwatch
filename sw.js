@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v151-meds-arrival-toast';
+const CACHE_NAME = 'stopwatch-v154-boot-mode-tdz';
 const ASSETS = [
   './',
   './index.html',
