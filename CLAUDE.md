@@ -204,6 +204,7 @@ preserves the original chronological numbering.
 | 17 | Mobile UX papercut sweep — safe-area on takeover panels + ≥44px tap targets | Medium | Low | #17 | Shipped 2026-06-30 (PR #178 safe-area, #179 tap-targets) |
 | 18 | Mobile follow-up: BFRB FAB overlaps bottom-right actions (History "Clear All", Recovery "Log sleep") | Low | Low | #18 | Shipped 2026-06-30 — takeover panels via PR #181; recovery route (`#/wellness/recovery`) via PR #182 (surface-scoped `:has([data-wellness-sub="recovery"])` hide) |
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
+| 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 
 ## Remaining Tech Debt
 

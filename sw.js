@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v149-ios-input-zoom-guard';
+const CACHE_NAME = 'stopwatch-v150-nsdr-restore';
 const ASSETS = [
   './',
   './index.html',

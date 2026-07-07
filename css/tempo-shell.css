@@ -1377,6 +1377,28 @@
   color: var(--text-secondary);
 }
 
+/* NSDR (Restore) card — full-width variant of the meditation card. */
+.mindful-nsdr-card {
+  width: 100%;
+  gap: 4px;
+}
+.mindful-nsdr-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+.mindful-nsdr-source {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.mindful-nsdr-cta {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--active-accent);
+}
+
 /* Shared buttons */
 .mindful-btn {
   font-family: inherit;
