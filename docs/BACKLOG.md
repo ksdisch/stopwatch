@@ -50,7 +50,7 @@ feature table.
 | 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
 | 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Unshipped** — unlocked by #1 |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
-| 6 | Split-screen timer comparison | Medium | High | #2 | **Unshipped** |
+| 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
 | 7 | Voice control | Low | Medium | #3 | **Unshipped** |
 | 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
 | 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102); mid-block add enhancement (PR #173) |
@@ -64,6 +64,8 @@ feature table.
 | 18 | Mobile follow-up: BFRB FAB overlaps bottom-right actions (History "Clear All", Recovery "Log sleep") | Low | Low | #18 | Shipped 2026-06-30 — takeover panels via PR #181; recovery route (`#/wellness/recovery`) via PR #182 (surface-scoped `:has([data-wellness-sub="recovery"])` hide) |
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
+| 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Spec merged 2026-06-30 (PR #183 → `docs/lifeos/`); **build pending — next major milestone** |
 
 ---
 
@@ -103,6 +105,11 @@ equivalent (separate effort). **Unlocked by:** item #1 (Capacitor wrapper alread
 ### #6 — Split-screen timer comparison (Medium / High)
 
 Side-by-side two timers. Requires significant layout rework.
+
+**Status correction (2026-07-07 hunt F6):** a V1 already shipped — `js/compare-ui.js`
+renders a split Compare view of the primary vs one other instance (⇔ button on
+instance cards, `js/cards-ui.js:48`, RAF-driven). What remains of the vision: two
+*independently controlled* running timers side-by-side.
 
 ### #7 — Voice control (Low / Medium)
 

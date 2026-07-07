@@ -95,7 +95,7 @@ js/history-ui.js                — History panel UI: session list, tag filter b
 js/meds.js                      — Medications engine. createMed(id) + MedsManager singleton. Dose logging w/ offset; opt-in supply tracking (derived remaining); D-2 reconcileDoseLog + onMergeComplete (F1/F16/F14/F19a/F4). Detail → data-dictionary.
 js/meds-ui.js                   — Wellness › Meds UI: med cards, add/edit, dose logging, due-time notifications, opt-in supply badge + ▲/▼ steppers + refill.
 js/exercise-ui.js               — Wellness › Exercise UI: 6 workout preset cards → Interval engine. Recent Activity from History (type=interval).
-js/mindful-ui.js                — Wellness › Mindful UI: breathing exercises + meditation presets → Timer. Breathing logs a History session (tags ['mindful']) on stop when ≥1 full cycle.
+js/mindful-ui.js                — Wellness › Mindful UI: breathing exercises + meditation presets → Timer + NSDR Restore card (external YouTube launch, auto-logs tags ['mindful','nsdr']). Breathing logs a History session (tags ['mindful']) on stop when ≥1 full cycle.
 js/wellness-cooking-ui.js       — Wellness › Cooking UI: 8 named cooking presets → Cook mode (createTimer). Recent Activity from History (type=cooking). ≤8 timers.
 js/recovery-ui.js               — Wellness › Recovery UI: daily sleep log + nap tracker + derived focus status. Persists `wellness_rest_log`.
 js/recovery-feed.js             — RecoveryFeed: READ-ONLY consumer of the external personal-health-elt pipeline (Firestore recovery_state). No write path. Contract: docs/reference/.
@@ -191,7 +191,7 @@ preserves the original chronological numbering.
 | 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
 | 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Unshipped** — unlocked by #1 |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
-| 6 | Split-screen timer comparison | Medium | High | #2 | **Unshipped** |
+| 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
 | 7 | Voice control (Web Speech API) | Low | Medium | #3 | **Unshipped** |
 | 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
 | 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102); mid-block add (PR #173) |
@@ -205,6 +205,8 @@ preserves the original chronological numbering.
 | 18 | Mobile follow-up: BFRB FAB overlaps bottom-right actions (History "Clear All", Recovery "Log sleep") | Low | Low | #18 | Shipped 2026-06-30 — takeover panels via PR #181; recovery route (`#/wellness/recovery`) via PR #182 (surface-scoped `:has([data-wellness-sub="recovery"])` hide) |
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
+| 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Spec merged 2026-06-30 (PR #183 → `docs/lifeos/`); **build pending — next major milestone** |
 
 ## Remaining Tech Debt
 
@@ -283,7 +285,7 @@ Store paperwork (developer account, privacy nutrition labels for meds + BFRB, sc
 
 ### Test commands
 
-Engine tests (~1,070 `it()` across ~51 `tests/*.test.js` as of 2026-06-12) execute **in a real
+Engine tests (~1,218 `it()` across ~54 `tests/*.test.js` as of 2026-07-07) execute **in a real
 browser** — no Node assertion runner. `npm test` drives headless Chromium over the same page;
 its `PASS (n)` line (echoed by the CI `engine-tests` job) is the canonical count — trust it
 over any number written in docs.
