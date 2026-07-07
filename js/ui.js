@@ -84,48 +84,58 @@ const UI = (() => {
   // announce(): shared global from js/dom-utils.js (Batch D — promoted so all
   // modes can use the same #sr-announce live region).
 
+  // M5: click dispatch reads the same ButtonFsm row as updateButtons, so the
+  // rendered label and the fired action can't drift apart.
   function onLeftClick() {
     if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
-    const status = Stopwatch.getStatus();
-    if (status === 'running') {
-      Stopwatch.lap();
-      Persistence.save();
-      haptic(10);
-      SFX.playLap();
-      announce('Lap ' + Stopwatch.getLaps().length + ' recorded');
-      renderLaps(true);
-    } else if (status === 'paused') {
-      lastResetState = Stopwatch.getState();
-      Stopwatch.reset();
-      Persistence.save();
-      haptic(25);
-      SFX.playReset();
-      announce('Stopwatch reset');
-      syncUI();
-      showUndoToast();
-    }
+    const row = ButtonFsm.get('stopwatch', Stopwatch.getStatus());
+    if (row) dispatchAction(row.left.action);
   }
 
   function onRightClick() {
     if (typeof appMode !== 'undefined' && appMode !== 'stopwatch') return;
-    const status = Stopwatch.getStatus();
-    if (status === 'running') {
-      Stopwatch.pause();
-      Persistence.save();
-      haptic(25);
-      SFX.playStop();
-      announce('Stopwatch paused');
-      stopRenderLoop();
-      syncUI();
-    } else {
-      // idle or paused -> start
-      Stopwatch.start();
-      Persistence.save();
-      haptic(10);
-      SFX.playStart();
-      announce('Stopwatch started');
-      startRenderLoop();
-      syncUI();
+    const row = ButtonFsm.get('stopwatch', Stopwatch.getStatus());
+    if (row) dispatchAction(row.right.action);
+  }
+
+  function dispatchAction(action) {
+    switch (action) {
+      case 'lap':
+        Stopwatch.lap();
+        Persistence.save();
+        haptic(10);
+        SFX.playLap();
+        announce('Lap ' + Stopwatch.getLaps().length + ' recorded');
+        renderLaps(true);
+        break;
+      case 'reset':
+        lastResetState = Stopwatch.getState();
+        Stopwatch.reset();
+        Persistence.save();
+        haptic(25);
+        SFX.playReset();
+        announce('Stopwatch reset');
+        syncUI();
+        showUndoToast();
+        break;
+      case 'pause':
+        Stopwatch.pause();
+        Persistence.save();
+        haptic(25);
+        SFX.playStop();
+        announce('Stopwatch paused');
+        stopRenderLoop();
+        syncUI();
+        break;
+      case 'start':
+        Stopwatch.start();
+        Persistence.save();
+        haptic(10);
+        SFX.playStart();
+        announce('Stopwatch started');
+        startRenderLoop();
+        syncUI();
+        break;
     }
   }
 
@@ -153,15 +163,13 @@ const UI = (() => {
   }
 
   function updateButtons(status) {
-    const leftText = status === 'paused' ? 'Reset' : 'Lap';
-    const rightText = status === 'running' ? 'Stop' : 'Start';
-    const leftClass = status === 'paused' ? 'control-btn btn-reset' : 'control-btn btn-lap';
-    const rightClass = status === 'running' ? 'control-btn btn-stop' : 'control-btn btn-start';
+    const row = ButtonFsm.get('stopwatch', status);
+    if (!row) return;
     const isRunning = status === 'running';
 
     // Animate button text swap
-    animateBtn(btnLeft, leftText, leftClass, status === 'idle', leftText === 'Lap' ? 'Lap' : 'Reset');
-    animateBtn(btnRight, rightText, rightClass, false, rightText === 'Start' ? 'Start' : 'Stop');
+    animateBtn(btnLeft, row.left.label, row.left.cls, row.left.disabled, row.left.label);
+    animateBtn(btnRight, row.right.label, row.right.cls, row.right.disabled, row.right.label);
 
     timerDisplay.classList.toggle('is-running', isRunning);
     appEl.classList.toggle('is-running', isRunning);
