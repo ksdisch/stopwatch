@@ -19,8 +19,8 @@
 // Daily rollover (global context only): the FAB label shows today's catches
 // only when the active context is 'global', so a left-open PWA flips to "0"
 // at local midnight. Session contexts (flow/pomodoro) keep showing the full
-// session count, filtered by current sessionId — those reset at session
-// boundaries already (saveFlowBFRBs([]) / savePomoBFRBs([]) on session end).
+// session count, filtered by current sessionId — a new session mints a new
+// sessionId, so the count naturally resets at session boundaries.
 
 const GlobalBFRB = (() => {
   const BTN_ID = 'global-bfrb-fab';

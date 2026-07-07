@@ -181,18 +181,19 @@ describe('Rhythm.getDayTimeline — BFRB entries', () => {
     assertEqual(entries[0].metadata.context, 'flow');
   });
 
-  it('falls back to legacy keys when BfrbEvents is empty', async () => {
+  it('ignores legacy keys — consolidated store is the only source (Pick-C cleanup)', async () => {
     rhClearStores();
     rhSetSessions([]);
-    // Force consolidated store empty
+    // Consolidated store empty + a residual legacy key present: pre-cleanup
+    // this fell back to reading flow_bfrbs; post-cleanup the legacy keys are
+    // dead input (bfrb-events.js deletes them at boot) and must NOT surface.
     localStorage.setItem('bfrb_events', JSON.stringify([]));
     localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
     const today = new Date();
     const t = atDate(today, 15);
     localStorage.setItem('flow_bfrbs', JSON.stringify([{ timestamp: t }]));
     const entries = await Rhythm.getDayTimeline(today);
-    assertEqual(entries.length, 1);
-    assertEqual(entries[0].metadata.context, 'flow');
+    assertEqual(entries.length, 0);
   });
 });
 

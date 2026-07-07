@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v154-boot-mode-tdz';
+const CACHE_NAME = 'stopwatch-v156-bfrb-legacy-cleanup';
 const ASSETS = [
   './',
   './index.html',

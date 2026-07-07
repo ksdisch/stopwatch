@@ -7,9 +7,11 @@
 //
 // One-way phased migration (Pick B on E-1d-f3 TODO #1): unions the 3
 // legacy keys → writes `bfrb_events` → sets idempotency marker
-// `tempo_bfrb_events_migration_v1='1'`. Legacy keys are NOT deleted
-// (cleanup PR deferred per Pick C on TODO #5). The marker is the
-// idempotency contract — subsequent boots check it and skip the union.
+// `tempo_bfrb_events_migration_v1='1'`. The Pick-C cleanup (hunt
+// 2026-07-07 Phase 3) then deletes the legacy keys once the union is
+// verifiably on disk; marker-set boots sweep residuals (e.g. a post-F3
+// backup restore) WITHOUT re-unioning. The marker is the idempotency
+// contract — subsequent boots check it and skip the union.
 // Defensive dedup by `(deviceId, takenAt)` in the union step guarantees
 // that a re-run (e.g. marker write failed) produces byte-identical
 // output.
@@ -150,14 +152,43 @@ const BfrbEvents = (() => {
   //      (deviceId, takenAt) — guarantees re-run idempotency (Risk #2).
   //   6. Write merged to `bfrb_events`.
   //   7. Set marker.
-  //   8. DO NOT delete legacy keys (Pick B — phased; cleanup deferred).
+  //   8. Delete the legacy keys once the merged write is verifiably on
+  //      disk (Pick-C cleanup — the migration itself is retained for
+  //      pre-migration devices and restored pre-F3 backups).
   //
   // Write order is critical: bfrb_events BEFORE marker. If the marker
   // write fails, next boot re-runs and self-heals via dedup.
+
+  // Pick-C cleanup helpers. The legacy keys' only remaining role is as
+  // migration INPUT — nothing reads or writes them at runtime anymore.
+  function _deleteLegacyKeys() {
+    for (const key of LEGACY_KEYS) {
+      try { localStorage.removeItem(key); } catch (_) {}
+    }
+  }
+
+  function _legacyKeysPresent() {
+    for (const key of LEGACY_KEYS) {
+      try { if (localStorage.getItem(key) !== null) return true; } catch (_) {}
+    }
+    return false;
+  }
+
   function _runMigration() {
     let marker = null;
     try { marker = localStorage.getItem(MIGRATION_MARKER_KEY); } catch (_) {}
-    if (marker === '1') return { migrated: false, count: 0, skipped: 0 };
+    if (marker === '1') {
+      // Pick-C cleanup: residual legacy keys on an already-migrated device
+      // are either this device's own leftovers or a post-F3 backup restore
+      // round-tripping them alongside the marker — both already represented
+      // in bfrb_events. Delete WITHOUT re-unioning: re-migrating here would
+      // re-stamp entries under THIS device's id and double-count cross-device
+      // restores (the exact hazard the exported marker prevents). Guarded on
+      // a non-empty consolidated store so the pathological marker-set-but-
+      // store-empty state keeps its only copy of the bytes.
+      if (_legacyKeysPresent() && _readStore().length > 0) _deleteLegacyKeys();
+      return { migrated: false, count: 0, skipped: 0 };
+    }
 
     const localDeviceId = _bfrbGetDeviceId();
     const stampedNow = Date.now();
@@ -265,6 +296,14 @@ const BfrbEvents = (() => {
     catch (e) {
       warnings.push('migration: failed to set marker: ' + (e && e.message));
     }
+
+    // Pick-C cleanup: drop the legacy source keys only once the merged
+    // store is verifiably on disk. _writeStore swallows quota failures, so
+    // re-read and length-check before deleting — never delete sources for
+    // a union that didn't land. (Union only adds: equal length means either
+    // the write landed or the legacy entries added nothing new — deletion
+    // is lossless in both cases.)
+    if (_readStore().length === merged.length) _deleteLegacyKeys();
 
     if (warnings.length > 0) {
       try { console.warn('[BfrbEvents] migration warnings: ' + warnings.length, warnings); }

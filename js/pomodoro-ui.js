@@ -278,9 +278,7 @@ function onPomodoroLeft() {
     savePomodoroState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('pomodoro', sessionIdToClear);
-    }
-    savePomoBFRBs([]);
-    renderChecklist();
+    }    renderChecklist();
     renderBreakChecklist();
     renderActualWork();
     SFX.playReset();
@@ -364,9 +362,7 @@ function onPomodoroRight() {
     savePomodoroState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('pomodoro', sessionIdToClear);
-    }
-    savePomoBFRBs([]);
-    renderChecklist();
+    }    renderChecklist();
     renderBreakChecklist();
     renderActualWork();
     updatePomodoroUI();
@@ -1313,25 +1309,12 @@ function updateDistractionBtnVisibility() {
 }
 
 // ── BFRB Tally (Pomodoro) ──
-const POMO_BFRB_KEY = 'pomodoro_bfrbs';
-
-function loadPomoBFRBs() {
-  try { return JSON.parse(localStorage.getItem(POMO_BFRB_KEY)) || []; }
-  catch (e) { return []; }
-}
-
-function savePomoBFRBs(items) {
-  localStorage.setItem(POMO_BFRB_KEY, JSON.stringify(items));
-}
-
 // Per-mode BFRB button and init removed in favor of the global floating button
 // (js/global-bfrb.js). E-1d-f3 consolidated BFRB writes into BfrbEvents
 // (`bfrb_events` localStorage store with `context: 'pomodoro'` tag). The
-// legacy `loadPomoBFRBs` / `savePomoBFRBs` helpers above are RETAINED so the
-// `savePomoBFRBs([])` session-end clears keep working — the legacy
-// `pomodoro_bfrbs` key stays on disk per Pick B on E-1d-f3 TODO #1 (cleanup
-// deferred per Pick C on TODO #5). `loadPomoBFRBs` is no longer used for
-// rendering — gatherTaskData below reads session-scoped BFRB entries from
+// legacy `pomodoro_bfrbs` key + its load/save helpers were removed by the
+// Pick-C cleanup (hunt 2026-07-07 Phase 3); js/bfrb-events.js deletes
+// residual on-disk keys at boot. Session-scoped reads come from
 // BfrbEvents.getByContext('pomodoro') filtered by Pomodoro.getSessionStartedAt().
 
 // Read this Pomodoro session's BFRB entries from the consolidated store,
@@ -1572,9 +1555,7 @@ function initActionsDrawer() {
     savePomodoroState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('pomodoro', sessionIdToClear);
-    }
-    savePomoBFRBs([]);
-    renderChecklist();
+    }    renderChecklist();
     renderBreakChecklist();
     renderActualWork();
     updatePomodoroUI();
