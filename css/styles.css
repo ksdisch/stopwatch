@@ -131,6 +131,30 @@ input:focus:not(:focus-visible) {
   outline: none;
 }
 
+/* iOS focus-zoom guard.
+   Mobile Safari / WKWebView auto-zooms whenever a focused form control has a
+   computed font-size below 16px. Because our viewport intentionally permits
+   user scaling (no maximum-scale / user-scalable=no — a deliberate a11y
+   choice), iOS never zooms back out, leaving the page stuck zoomed-in until a
+   relaunch (first reported on the Todoist API-token field). Enforce a 16px
+   floor on every text-entry control on touch devices so focusing one never
+   hijacks zoom. !important is required because per-control class rules
+   (e.g. .tempo-todoist-input) out-specify a bare `input` selector. Desktop
+   (fine pointer) keeps the existing compact sizing. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Controls intentionally sized above the 16px floor — keep them as-is
+     (already ≥16px, so they never triggered the zoom). */
+  .preset-save-icon-input { font-size: 1.5rem !important; }
+  .offset-field input { font-size: 1.2rem !important; }
+  .pomodoro-setting-row input { font-size: 1.1rem !important; }
+}
+
 /* Screen reader only */
 .sr-only {
   position: absolute;
