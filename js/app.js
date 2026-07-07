@@ -6,6 +6,14 @@ const APP_MODES = ['stopwatch', 'timer', 'pomodoro', 'flow', 'interval', 'cookin
 const _savedAppMode = localStorage.getItem('app_mode');
 let appMode = APP_MODES.includes(_savedAppMode) ? _savedAppMode : 'stopwatch';
 
+// switchAppMode's re-entrancy latch (R6 — see the comment on switchAppMode
+// below). Declared up here with the boot state because TempoNav.init()
+// dispatches switchAppMode while applying the boot hash: when this `let`
+// lived below that call site, the binding was still in its temporal dead
+// zone and any #/timers deep link or reload threw, aborting the app.js
+// boot half-way (2026-07-07 M5-verification find).
+let pendingAppMode = null;
+
 // ── Initialize IndexedDB for history (async, non-blocking) ──
 History.init().catch(e => console.error('History DB init failed:', e));
 
@@ -229,10 +237,9 @@ function initAppMode() {
 // R6: appMode is assigned inside the setTimeout below (deferred 100ms for the
 // fade), so a re-entrant call within that window would read a stale appMode,
 // pass the `mode === appMode` guard, and schedule a second switch. Track the
-// in-flight target synchronously and guard against it instead. Distinct rapid
+// in-flight target synchronously (pendingAppMode — declared with the boot
+// state at the top of this file) and guard against it instead. Distinct rapid
 // switches (A→B→C) still each apply; only a repeat to the same target is dropped.
-let pendingAppMode = null;
-
 function switchAppMode(mode) {
   const target = pendingAppMode !== null ? pendingAppMode : appMode;
   if (mode === target) return;
