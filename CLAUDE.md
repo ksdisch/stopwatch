@@ -215,7 +215,7 @@ Open items only. Resolved entries (the F18 `wellness_meds` orphaned-readers fixe
 2026-05-26 browser-verification notes) are archived in
 [`docs/BACKLOG.md` § Resolved tech debt](docs/BACKLOG.md#resolved-tech-debt-kept-as-migration-pattern-reference).
 
-- **iOS sign-out doesn't fully sign out (web OK):** the native `authStateChange` listener races back the Keychain-cached user after `signOut()`; fix belongs in `js/platform.js`'s native `authSignOut` branch. Workaround: toggle "Enable cloud sync" off. Full diagnosis: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
+- **iOS sign-out race — fix landed 2026-07-07, on-device verify pending:** the native `authStateChange` listener raced the Keychain-cached user back after `signOut()`; `js/platform.js` now arms `_authSignOutGuard` on native sign-out and swallows stale non-null re-emits until the SDK's null teardown emit. Native-Keychain-specific, so it shipped on `node --check` + reasoning (#169 precedent) — confirm on device via the playbook's Diagnosis recipe, then drop this entry. Playbook: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
 - **No UI/integration tests:** engine suites only (see § Test commands for counts, runners, and the headless flake). UI verification is manual / via the `app-verifier` agent; a UI harness ("Tempo Proving Ground") is a backlog candidate.
 - **renderLaps does full innerHTML on lap events:** the perf path only covers the RAF tick; a new lap rebuilds the list. Low impact.
 - **Life-OS council runs under Homebrew node (v25), not nvm (v22):** works today (firebase-admin is portable), but removing Homebrew node breaks the launchd preflight — consider pinning node in `council/run-synthesis.sh`.

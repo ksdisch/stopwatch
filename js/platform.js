@@ -209,6 +209,7 @@ const Platform = (() => {
   const _authListeners = [];         // callbacks registered via Platform.auth.onAuthChange
   let _authInitialized = false;      // idempotence guard for Platform.auth.init()
   let _authNativeUnavailableLogged = false;
+  let _authSignOutGuard = false;     // R10: armed by native authSignOut; swallows stale authStateChange re-emits
 
   function _flagOn() {
     return typeof SyncFlag !== 'undefined' && SyncFlag.isEnabled();
@@ -297,6 +298,13 @@ const Platform = (() => {
         if (typeof fa.addListener === 'function') {
           fa.addListener('authStateChange', (event) => {
             const u = event && event.user ? _normalizeUser(event.user) : null;
+            // R10: after a manual sign-out the Firebase iOS SDK can re-emit
+            // the still-Keychain-cached user before teardown finishes
+            // (docs/playbooks/ios-signout.md). While the guard is armed,
+            // swallow non-null re-emits; a null emit is the SDK's own
+            // teardown confirmation and disarms the guard.
+            if (u && _authSignOutGuard) return;
+            if (!u) _authSignOutGuard = false;
             _emitAuth(u);
           });
         }
@@ -308,7 +316,9 @@ const Platform = (() => {
         if (p && typeof p.then === 'function') {
           p.then((result) => {
             const u = result && result.user ? _normalizeUser(result.user) : null;
-            if (u) _emitAuth(u);
+            // R10: a late-resolving rehydrate must not resurrect a user the
+            // operator just signed out.
+            if (u && !_authSignOutGuard) _emitAuth(u);
           }).catch(() => {});
         }
       } catch (_e) {}
@@ -339,6 +349,7 @@ const Platform = (() => {
     if (isNative) {
       const fa = _nativePlugin();
       if (!fa) return null;
+      _authSignOutGuard = false; // R10: explicit sign-in restores normal emission
       try {
         const result = await fa.signInWithGoogle({ scopes: ['profile', 'email'] });
         const u = result && result.user ? _normalizeUser(result.user) : null;
@@ -402,6 +413,14 @@ const Platform = (() => {
         _emitAuth(null);
         return;
       }
+      // R10: arm before the await — the plugin's signOut() can resolve while
+      // the iOS SDK is still tearing down its Keychain auth state, and the
+      // trailing authStateChange re-emit of the stale user would otherwise
+      // land after our _emitAuth(null) and win the race
+      // (docs/playbooks/ios-signout.md). The plugin exposes no deeper
+      // teardown to await (checked v6.3.1: signOut() is the only hook), so
+      // suppression here is the whole fix.
+      _authSignOutGuard = true;
       try { await fa.signOut(); } catch (_e) {}
       _emitAuth(null);
       return;

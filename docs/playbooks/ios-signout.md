@@ -1,6 +1,6 @@
 # Playbook: iOS "Sign out" doesn't actually sign the user out
 
-- **Status:** OPEN — known bug, unfixed. This doc is a *known-issue + workaround*, not a fix record.
+- **Status:** FIX LANDED (2026-07-07) — Option B guard in `js/platform.js`; **on-device verification pending** (the [Diagnosis](#diagnosis) recipe doubles as the verify recipe).
 - **Platform:** iOS Capacitor shell only. Web sign-out works correctly.
 - **First documented:** surfaced 2026-05-20 during the PR #86 smoke test; canonical entry in `../../CLAUDE.md` "Remaining Tech Debt" (`../../CLAUDE.md:189`).
 - **Severity:** low-to-moderate. No data loss; the account stays signed in but the user *believes* they signed out. The [workaround](#workaround-do-this-today) fully pauses sync.
@@ -19,7 +19,14 @@ What you observe:
 
 ## Status
 
-**Open / unfixed.** No fix has landed.
+**Fix landed 2026-07-07, on-device verification pending.** The Option B guard
+(`_authSignOutGuard` in `js/platform.js`) arms on native sign-out, swallows
+non-null `authStateChange` re-emits while armed, and disarms on the SDK's own
+null emit (teardown confirmation), an explicit `signIn`, or app relaunch (it is
+an in-memory flag). Worst case, if the plugin's `signOut()` genuinely fails,
+the device *behaves* signed-out until relaunch — consistent with `SyncAuth`'s
+existing signed-out-locally semantics (its empty `catch` already force-clears
+local state on plugin failure).
 
 - The bug **predates PR #86** — that PR had zero auth-code diff, it only surfaced the behavior during a smoke test (`../../CLAUDE.md:189`).
 - It is **likely present since B-2** — commit `1db244c` ("feat(sync): Google sign-in + settings drawer Cloud Sync section (B-2)", 2026-05-11), which introduced the sign-in flow and the drawer Cloud Sync section. Confirm with `git show -s --format='%h %ad %s' --date=short 1db244c`.
@@ -80,14 +87,38 @@ Confirm the re-emit race with Safari Web Inspector against the live iPhone WebVi
 
 If you see the null emit followed by a non-null re-emit, the hypothesis holds. If the null emit is the *last* one and `getCurrentUser()` is still non-null, the problem is elsewhere (e.g. the plugin's `getCurrentUser()` rehydrate at `js/platform.js:306-314` firing late) and this playbook's root-cause section needs revising.
 
-## Likely fix
+## The fix (landed 2026-07-07)
 
-The fix lives in the **native branch of `authSignOut`** (`js/platform.js:399-408`). Two candidate shapes, neither yet implemented:
+**Option B — suppress the stale re-emit**, implemented in the native branches of
+`js/platform.js`:
 
-- **Option A — await a real tear-down, not just the JS-side resolve.** `await fa.signOut()` AND a deauth + Keychain clear, so the plugin's `authStateChange` can't fire with a stale user after the call returns. This is the correct fix if the plugin exposes a Keychain-clearing call; it removes the race at the source rather than papering over the re-emit.
-- **Option B — suppress the next re-emit.** Install a guard flag set at the top of `authSignOut` that makes the `authStateChange` listener (`js/platform.js:298-301`) ignore exactly one re-emit immediately following a manual sign-out, then clears itself. Cheaper and self-contained, but it's a debounce around a symptom — if the SDK re-emits more than once, or on a longer delay, the window has to be tuned, which is fragile.
+- `authSignOut` arms `_authSignOutGuard` **before** `await fa.signOut()` — the
+  stale event can be delivered while JS is suspended at that await, so arming
+  after would leave a window.
+- The `authStateChange` listener swallows **non-null** emits while the guard is
+  armed; a **null** emit is the SDK's own teardown confirmation and disarms it.
+  State-based, not time-based: no one-shot counter or timing window to tune,
+  and multiple stale re-emits are all swallowed.
+- The cold-boot rehydrate (`fa.getCurrentUser()`) also respects the guard, so a
+  late-resolving rehydrate can't resurrect a just-signed-out user.
+- `authSignIn` disarms the guard up front — an explicit sign-in must never be
+  masked.
 
-Option A is structurally cleaner; Option B is the pragmatic stopgap if the plugin offers no Keychain-clear hook. Either way the change is confined to `js/platform.js` and **requires Xcode + a physical iPhone to verify** — the bug cannot be reproduced in the web test harness (`tests/index.html`), since it is native-Keychain-specific. That verification constraint is the same reason the sibling native parity work is deferred (`../adr/0009-defer-native-cas-listener-parity.md`).
+**Option A (await a real tear-down) was ruled out as unavailable:** checked
+`@capacitor-firebase/authentication@6.3.1` — `signOut(): Promise<void>` is the
+plugin's only teardown hook (no Keychain-clear API; `deleteUser()` destroys the
+account, `revokeAccessToken()` is Apple-token plumbing). `await fa.signOut()`
+was already the maximal await, so suppression is the whole available fix.
+
+The change is confined to `js/platform.js` and **still requires Xcode + a
+physical iPhone to confirm** — the bug cannot be reproduced in the web test
+harness (`tests/index.html`), since it is native-Keychain-specific; the change
+shipped on `node --check` + reasoning per the #169 R3 precedent (same
+constraint that defers the sibling native parity work,
+`../adr/0009-defer-native-cas-listener-parity.md`). Expected post-fix signature
+under the [Diagnosis](#diagnosis) recipe: `_emitAuth(null)` from `authSignOut`,
+any stale non-null `authStateChange` swallowed (no `_emitAuth` call), drawer
+stays signed-out.
 
 ## See also
 
