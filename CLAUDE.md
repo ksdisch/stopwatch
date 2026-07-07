@@ -201,7 +201,10 @@ preserves the original chronological numbering.
 | 13 | Bugfix: Rhythm Timeline dose dots read deleted `wellness_meds` blob | Medium | Low | #14 | Shipped 2026-06-03 |
 | 15 | Tempo Coach — readiness-aware daily decision loop | High | Medium | #15 | Shipped 2026-06-05 |
 | 16 | BFRB Closed Loop — antecedent capture + Triggers panel | High | Medium | #16 | Shipped 2026-06-05 (PR #126) |
-| 17 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #17 | Shipped 2026-06-26 |
+| 17 | Mobile UX papercut sweep — safe-area on takeover panels + ≥44px tap targets | Medium | Low | #17 | Shipped 2026-06-30 (PR #178 safe-area, #179 tap-targets) |
+| 18 | Mobile follow-up: BFRB FAB overlaps bottom-right actions (History "Clear All", Recovery "Log sleep") | Low | Low | #18 | Shipped 2026-06-30 — takeover panels via PR #181; recovery route (`#/wellness/recovery`) via PR #182 (surface-scoped `:has([data-wellness-sub="recovery"])` hide) |
+| 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
+| 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 
 ## Remaining Tech Debt
 
@@ -240,14 +243,16 @@ must resolve), `mermaid-lint`, `firestore-rules`. Always ship via PR — the flo
 ### iOS build (Capacitor)
 
 Same web codebase wraps in a Capacitor iOS shell (haptics + scheduled notifications work
-natively). Web keeps deploying via GitHub Pages unchanged; iOS is a separate target. Daily
-workflow + 7-day free-cert refresh playbook: [`iOS-BUILD.md`](iOS-BUILD.md).
+natively). The iOS shell loads the **live GitHub Pages payload at runtime** (`server.url` in
+`capacitor.config.json`), so a `git push` deploy updates the app on next cold launch — no
+rebuild for web-code changes (bundle still ships but is not an offline fallback). Daily
+workflow + live-payload tradeoffs + cert-refresh playbook: [`iOS-BUILD.md`](iOS-BUILD.md).
 
 ```bash
 npm install              # one-time: Capacitor + plugins
 brew install cocoapods   # one-time
 npx cap add ios          # one-time: scaffolds ios/
-npm run ios:open         # everyday: sync www/ → cap copy → open Xcode
+npm run ios:open         # activate a native/config change (web code auto-updates via Pages)
 ```
 
 `scripts/sync-www.mjs` mirrors static files (`index.html`, `manifest.json`, `sw.js`, `css/`,

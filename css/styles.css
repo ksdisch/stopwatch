@@ -131,6 +131,30 @@ input:focus:not(:focus-visible) {
   outline: none;
 }
 
+/* iOS focus-zoom guard.
+   Mobile Safari / WKWebView auto-zooms whenever a focused form control has a
+   computed font-size below 16px. Because our viewport intentionally permits
+   user scaling (no maximum-scale / user-scalable=no — a deliberate a11y
+   choice), iOS never zooms back out, leaving the page stuck zoomed-in until a
+   relaunch (first reported on the Todoist API-token field). Enforce a 16px
+   floor on every text-entry control on touch devices so focusing one never
+   hijacks zoom. !important is required because per-control class rules
+   (e.g. .tempo-todoist-input) out-specify a bare `input` selector. Desktop
+   (fine pointer) keeps the existing compact sizing. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Controls intentionally sized above the 16px floor — keep them as-is
+     (already ≥16px, so they never triggered the zoom). */
+  .preset-save-icon-input { font-size: 1.5rem !important; }
+  .offset-field input { font-size: 1.2rem !important; }
+  .pomodoro-setting-row input { font-size: 1.1rem !important; }
+}
+
 /* Screen reader only */
 .sr-only {
   position: absolute;
@@ -308,6 +332,11 @@ input:focus:not(:focus-visible) {
   z-index: 300;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Padded on the CONTAINER (not the shared .history-header) so
+     the History panel's header is untouched. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow: hidden;
 }
 
@@ -605,6 +634,7 @@ input:focus:not(:focus-visible) {
 }
 
 .mode-dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -614,6 +644,23 @@ input:focus:not(:focus-visible) {
   padding: 0;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.2s;
+}
+
+/* Backlog #19: keep the visible dot at 8px (deliberate minimalist look on the
+   flagship timer screen) but expand the *clickable* area via a transparent
+   overlay so it's actually tappable. Horizontal reach is capped by the 8px
+   .mode-toggle gap — each side extends 4px so the two hit areas meet at the
+   midpoint and never overlap (no ambiguous taps); vertically there's no
+   neighbor, so it grows to a full ~44px. Net target ~16×44px vs the old 8×8
+   point. A true non-overlapping 44px-wide pair would need the dots spread
+   apart, which would alter the hero screen — out of scope for this papercut. */
+.mode-dot::after {
+  content: '';
+  position: absolute;
+  top: -18px;
+  bottom: -18px;
+  left: -4px;
+  right: -4px;
 }
 
 .mode-dot-active {
@@ -1643,6 +1690,8 @@ input:focus:not(:focus-visible) {
   color: var(--text);
   font-size: 0.8rem;
   padding: 4px 8px;
+  /* >=44px touch target (mobile sweep B2): these Flow selects were ~25px tall. */
+  min-height: 44px;
   font-family: inherit;
   -webkit-appearance: none;
   appearance: none;
@@ -2417,9 +2466,10 @@ input:focus:not(:focus-visible) {
 
 .recovery-quality-btn {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  /* >=44px touch target (mobile sweep B2): was 36x36. */
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   border: 1px solid var(--btn-border);
   background: var(--bg);
   color: var(--text);
@@ -2743,6 +2793,28 @@ input:focus:not(:focus-visible) {
 /* Hide the FAB when Focus Mode is on — Focus mode intentionally strips
    chrome. Catches still have keyboard shortcut. */
 body.focus-mode .global-bfrb-fab {
+  display: none;
+}
+
+/* Also hide the FAB while a full-screen takeover panel is open — it otherwise
+   floats over the panel's bottom-right actions (notably History's destructive
+   "Clear All"). These panels toggle .hidden, so :not(.hidden) = open. :has()
+   matches the #176 idiom; engines without :has() just keep the FAB visible
+   (harmless fallback). */
+body:has(#history-panel:not(.hidden)) .global-bfrb-fab,
+body:has(#analytics-panel:not(.hidden)) .global-bfrb-fab,
+body:has(#presets-drawer:not(.hidden)) .global-bfrb-fab,
+body:has(#log-past-panel:not(.hidden)) .global-bfrb-fab {
+  display: none;
+}
+
+/* Backlog #18: the FAB also floats over the Recovery surface's bottom-right
+   "Log sleep" button on #/wellness/recovery (a normal route, not a takeover
+   panel — so the rule above doesn't catch it). Hide the FAB while that surface
+   is visible, same idiom. Wellness sub-surfaces toggle the native [hidden]
+   attribute (js/tempo-nav.js), so :not([hidden]) = recovery is the active sub.
+   Catches still have keyboard shortcut B. */
+body:has([data-wellness-sub="recovery"]:not([hidden])) .global-bfrb-fab {
   display: none;
 }
 
@@ -4481,6 +4553,12 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 300;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area: this full-screen fixed takeover paints over the tabbar
+     and escapes #app's padding, so it must inset its own header (title + close) off
+     the notch and its footer actions off the home indicator on notched iOS
+     standalone. Mirrors .focus-overlay; inert (no visual change) where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow: hidden;
 }
 
@@ -4515,6 +4593,11 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 1000;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Panel is the scroll container, so padding insets the scroll
+     content off the notch/home-indicator. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -5351,6 +5434,11 @@ body.focus-mode .mood-capture { display: none; }
   z-index: 1000;
   display: flex;
   flex-direction: column;
+  /* Reserve iOS safe-area — full-screen takeover; mirrors .focus-overlay (see
+     .history-panel). Header (title + close) clears the notch; .log-past-form keeps
+     its 40px bottom for breathing room above this inset. Inert where env()=0. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
