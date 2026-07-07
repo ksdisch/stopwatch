@@ -149,9 +149,9 @@ const Rhythm = (() => {
     return out;
   }
 
-  // Legacy fallback fires only when the consolidated F3 store is empty —
-  // mirrors the analytics.js BfrbEvents fallback pattern. Remove when the
-  // legacy bfrbs_global / flow_bfrbs / pomodoro_bfrbs cleanup PR lands.
+  // Consolidated F3 store (BfrbEvents) is the ONLY source — the legacy-key
+  // fallback was removed by the Pick-C cleanup (hunt 2026-07-07 Phase 3);
+  // js/bfrb-events.js deletes residual legacy keys at boot.
   function getBfrbEntries(startMs, endMs) {
     const events = [];
     if (typeof BfrbEvents !== 'undefined' && typeof BfrbEvents.getAll === 'function') {
@@ -159,17 +159,6 @@ const Rhythm = (() => {
         const all = BfrbEvents.getAll();
         if (Array.isArray(all)) all.forEach(e => events.push(e));
       } catch (_) { /* malformed — skip */ }
-    }
-    if (events.length === 0) {
-      ['bfrbs_global', 'flow_bfrbs', 'pomodoro_bfrbs'].forEach(key => {
-        const arr = readJSON(key);
-        if (!Array.isArray(arr)) return;
-        const ctx = key === 'flow_bfrbs' ? 'flow' : key === 'pomodoro_bfrbs' ? 'pomodoro' : 'global';
-        arr.forEach(e => {
-          if (!e || typeof e.timestamp !== 'number') return;
-          events.push({ takenAt: e.timestamp, context: ctx });
-        });
-      });
     }
     const out = [];
     events.forEach(e => {

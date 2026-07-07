@@ -2,7 +2,6 @@
 let flowRafId = null;
 
 const FLOW_DISTRACTION_KEY = 'flow_distractions';
-const FLOW_BFRB_KEY = 'flow_bfrbs';
 const FLOW_CHECKLIST_STATE_KEY = 'flow_checklist_state';
 const FLOW_CHECKLIST_SKIPPED_KEY = 'flow_checklist_skipped';
 
@@ -129,15 +128,6 @@ function loadFlowDistractions() {
 
 function saveFlowDistractions(items) {
   localStorage.setItem(FLOW_DISTRACTION_KEY, JSON.stringify(items));
-}
-
-function loadFlowBFRBs() {
-  try { return JSON.parse(localStorage.getItem(FLOW_BFRB_KEY)) || []; }
-  catch (e) { return []; }
-}
-
-function saveFlowBFRBs(items) {
-  localStorage.setItem(FLOW_BFRB_KEY, JSON.stringify(items));
 }
 
 function loadFlowChecklistState() {
@@ -302,8 +292,9 @@ function initFlowUI() {
   });
 
   // BFRB tally — now handled by the global floating button (js/global-bfrb.js).
-  // The button writes into flow_bfrbs when Flow is the active running session,
-  // so saveFlowSessionToHistory still captures per-session catches below.
+  // The button logs into BfrbEvents (context 'flow' + sessionId) when Flow is
+  // the active running session, so saveFlowSessionToHistory still captures
+  // per-session catches below.
 
   // Summary card buttons
   document.getElementById('flow-start-recovery').addEventListener('click', () => {
@@ -337,9 +328,7 @@ function initFlowUI() {
     resetFlowChecklistState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('flow', sessionIdToClear);
-    }
-    saveFlowBFRBs([]);
-    saveFlowState();
+    }    saveFlowState();
     updateFlowUI();
   });
 
@@ -392,9 +381,7 @@ function onFlowLeft() {
     resetFlowChecklistState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('flow', sessionIdToClear);
-    }
-    saveFlowBFRBs([]);
-    saveFlowState();
+    }    saveFlowState();
     SFX.playReset();
     updateFlowUI();
   }
@@ -412,9 +399,7 @@ function onFlowRight() {
     // E-1d-f8: distractions are now sessionId-keyed. A new Flow.start()
     // mints a fresh sessionId, so the new session's bucket is naturally
     // empty — no clear needed. Past-session keys are retained (cleanup
-    // PR deferred per Pick C on TODO #6).
-    saveFlowBFRBs([]);
-    Flow.start();
+    // PR deferred per Pick C on TODO #6).    Flow.start();
     // tempo-coach-daily-loop: clear the readiness-override latch so the NEXT
     // idle (after this block finishes/resets) re-evaluates today's signal.
     flowDurUserOverride = false;
@@ -479,9 +464,7 @@ function onFlowRight() {
     resetFlowChecklistState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('flow', sessionIdToClear);
-    }
-    saveFlowBFRBs([]);
-    saveFlowState();
+    }    saveFlowState();
     updateFlowUI();
   } else if (status === 'done') {
     // Capture sessionId BEFORE Flow.reset() clears it (E-1d-f8 audit Risk #3).
@@ -490,9 +473,7 @@ function onFlowRight() {
     resetFlowChecklistState();
     if (typeof Distractions !== 'undefined' && sessionIdToClear != null) {
       Distractions.clearSession('flow', sessionIdToClear);
-    }
-    saveFlowBFRBs([]);
-    saveFlowState();
+    }    saveFlowState();
     updateFlowUI();
   }
 }
@@ -1015,11 +996,9 @@ function updateFlowDistractionBtnVisibility() {
 // Per-mode BFRB button and init removed in favor of the global floating button
 // (js/global-bfrb.js). E-1d-f3 consolidated BFRB writes into BfrbEvents
 // (`bfrb_events` localStorage store with `context: 'flow'` tag). The legacy
-// `loadFlowBFRBs` / `saveFlowBFRBs` helpers above are RETAINED so the
-// `saveFlowBFRBs([])` session-end clears keep working — the legacy
-// `flow_bfrbs` key stays on disk per Pick B on E-1d-f3 TODO #1 (cleanup
-// deferred per Pick C on TODO #5). `loadFlowBFRBs` is no longer used for
-// rendering — renderFlowSummary and saveFlowSessionToHistory below read
+// `flow_bfrbs` key + its load/save helpers were removed by the Pick-C cleanup
+// (hunt 2026-07-07 Phase 3); js/bfrb-events.js deletes residual on-disk keys
+// at boot. renderFlowSummary and saveFlowSessionToHistory below read
 // session-scoped BFRB entries from BfrbEvents.getByContext('flow') filtered
 // by Flow.getSessionStartedAt().
 

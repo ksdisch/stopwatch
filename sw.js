@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v155-f10-import-guard';
+const CACHE_NAME = 'stopwatch-v156-bfrb-legacy-cleanup';
 const ASSETS = [
   './',
   './index.html',

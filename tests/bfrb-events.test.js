@@ -366,6 +366,95 @@ describe('BfrbEvents — module + migration', () => {
     }
   });
 
+  it('11. Pick-C cleanup — full migration deletes the legacy keys once the union landed', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.setItem('bfrbs_global', JSON.stringify([{ timestamp: 1000 }]));
+      localStorage.setItem('flow_bfrbs', JSON.stringify([{ timestamp: 2000, phase: 'focus' }]));
+      localStorage.setItem('pomodoro_bfrbs', JSON.stringify([{ timestamp: 3000, phase: 'work', cycleIndex: 0 }]));
+
+      const r = BfrbEvents._runMigration();
+      assertEqual(r.migrated, true, 'migration ran');
+      assertEqual(JSON.parse(localStorage.getItem('bfrb_events')).length, 3, 'union written');
+      assertEqual(localStorage.getItem('bfrbs_global'), null, 'bfrbs_global deleted');
+      assertEqual(localStorage.getItem('flow_bfrbs'), null, 'flow_bfrbs deleted');
+      assertEqual(localStorage.getItem('pomodoro_bfrbs'), null, 'pomodoro_bfrbs deleted');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('12. Pick-C cleanup — marker-set cheap path deletes residuals WITHOUT re-unioning (no cross-device double-count)', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      // Simulate a post-F3 backup restore: marker + consolidated store
+      // round-tripped, residual legacy keys carried alongside (pre-cleanup
+      // backups contain them — they were never deleted from disk).
+      localStorage.setItem('bfrb_events', JSON.stringify([
+        { takenAt: 500, context: 'global', deviceId: 'device-A', updatedAt: 1, schemaVersion: 1 },
+      ]));
+      localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
+      localStorage.setItem('bfrbs_global', JSON.stringify([{ timestamp: 9999 }]));
+
+      const r = BfrbEvents._runMigration();
+      assertEqual(r.migrated, false, 'cheap path — no migration');
+      const store = JSON.parse(localStorage.getItem('bfrb_events'));
+      assertEqual(store.length, 1, 'store untouched — legacy entries NOT re-unioned under this device id');
+      assertEqual(store[0].takenAt, 500, 'existing entry preserved verbatim');
+      assertEqual(localStorage.getItem('bfrbs_global'), null, 'residual legacy key deleted');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('13. Pick-C guard — cheap path preserves legacy bytes when the consolidated store is empty', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      // Pathological state: marker claims consolidation but the store is
+      // empty. Deleting here could lose the only copy — keep the bytes.
+      localStorage.setItem('tempo_bfrb_events_migration_v1', '1');
+      localStorage.setItem('flow_bfrbs', JSON.stringify([{ timestamp: 4000, phase: 'focus' }]));
+
+      const r = BfrbEvents._runMigration();
+      assertEqual(r.migrated, false, 'cheap path — no migration');
+      assert(localStorage.getItem('flow_bfrbs') !== null, 'legacy key preserved (store empty)');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
+  it('14. Pick-C guard — legacy keys survive when the union write fails (quota path)', () => {
+    const saved = _bfrb_savedEnv();
+    try {
+      _bfrb_clearAll();
+      localStorage.setItem('bfrbs_global', JSON.stringify([{ timestamp: 1000 }]));
+
+      // Make the bfrb_events write fail (quota simulation); the marker write
+      // stays functional so the run completes its normal path.
+      const originalSetItem = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = (k, v) => {
+        if (k === 'bfrb_events') throw new Error('QuotaExceededError (simulated)');
+        return originalSetItem(k, v);
+      };
+      try {
+        BfrbEvents._runMigration();
+      } finally {
+        localStorage.setItem = originalSetItem;
+      }
+      assert(localStorage.getItem('bfrbs_global') !== null,
+        'legacy key NOT deleted — union never landed');
+    } finally {
+      _bfrb_clearAll();
+      _bfrb_restore(saved);
+    }
+  });
+
 });
 
 // ────────────────────────────────────────────────────────────────────────
