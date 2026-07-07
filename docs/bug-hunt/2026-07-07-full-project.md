@@ -8,6 +8,14 @@ explicitly tagged *doc-sourced*. Context: the 17-finder AUDIT-2026-06-13 was
 fully remediated (all Highs/Mediums + fixable Lows shipped by 2026-06-23), so
 this hunt targeted what's new, stalled, or deliberately deferred since.
 
+> **Outcome (2026-07-07, same session):** Kyle greenlit Phases 0+1 — executed in full.
+> **F8** → PR #184 (`16475f5`) · **F1** → PR #177 merged (`6883d76`, cache v149) ·
+> **F2** → PR #174 merged (`7151eba`, v150; backlog row renumbered #20) · **F3** →
+> PR #185 (`3348d58`, v151, suite PASS 1218) · **F4–F7** → PR #186 (docs refresh) ·
+> **F9** → 17 stale remote branches deleted; 44 squash-merged local ones blocked by
+> the Safety Net hook (manual `git branch -D` command handed to Kyle) · **F10** →
+> open by design (Phase 3 product decision).
+
 ## TL;DR verdict
 
 **The codebase itself is in genuinely good shape.** Suites green (engine

@@ -2555,3 +2555,51 @@ B9: code-read + `tests/meds.test.js` coverage confirmed; adversarial sub-agent r
 ```
 #169  fix(platform): in-flight latch on web wake-lock acquire (B10/R3)                                 [open — awaiting merge]
 ```
+
+---
+
+## 2026-06-23 → 2026-06-30 — BACKFILLED 2026-07-07 (gap closed by hunt finding F4)
+
+> The entries below are reconstructions from merged-PR records — these sessions went
+> unlogged here at the time (two have fuller /wrap files in `docs/session-logs/`).
+> **Convention note (F4):** this file stays the canonical one-entry-per-session log per
+> CLAUDE.md; `docs/session-logs/*.md` are auxiliary /wrap artifacts, not a replacement.
+
+- **2026-06-23 — audit product questions C7 + C5 (#171, #172).** `manifest.json` `start_url` → `#/home` (PWA opens the Home hub) and bfrb-risk baseline widened to a true 14 prior days. Cache v141. Closed the AUDIT-2026-06-13 LOW tier entirely.
+- **2026-06-25 — Flow mid-block task add (#173).** `commitFlowUserTask()` extraction; running-view input `#flow-running-task-input` shares the setup input's commit path (Todoist localTag late-stamp preserved). Cache v142.
+- **2026-06-26 — iOS live-payload (#175) + settings drawer scroll (#176) + NSDR PR opened (#174).** #175 pointed `capacitor.config.json` `server.url` at GitHub Pages (iOS app auto-updates on deploy); #176 made the settings drawer scrollable on mobile (cache v143). #174 went CONFLICTING and stalled (landed 2026-07-07).
+- **2026-06-27 — iOS input-zoom draft PR opened (#177).** Root-caused the WKWebView focus-zoom trap to sub-16px inputs (Todoist token field); fix drafted, stalled (landed 2026-07-07).
+- **2026-06-29/30 — mobile papercut sweep + follow-ups (#178–#182) + Finances spec (#183).** Full logs: `docs/session-logs/2026-06-29-mobile-papercut-sweep.md`, `docs/session-logs/2026-06-30-mobile-sweep-followups-18-19.md`, inventory `docs/bug-hunt/2026-06-29-mobile-sweep.md`. Cache v148. #183 merged the Phase 5 Life Building — Finances slice design spec (build pending).
+
+---
+
+## 2026-07-07 — Full-project hunt + Phase 0/1 remediation (#184, #177, #174, #185, #186)
+
+### What We Built
+
+Ran a whole-repo bug hunt (max-effort inline, adversarial self-verify — every finding confirmed against HEAD): **10 verified findings**, a consolidated known-open register (deferred spike IDs decoded: D1/D3/R9/R10/M5-maint), and a 6-phase remediation plan. Report: `docs/bug-hunt/2026-07-07-full-project.md`. Headline: the codebase core is healthy (suite PASS 1214 pre-session, guards 88=88, live deploy current); the real problems were rot at the edges. Kyle greenlit Phases 0+1; executed same-session:
+
+- **#184** — hunt report committed + **F8** (`firestore-debug.log` gitignored). Squash `16475f5`.
+- **#177 MERGED (F1)** — iOS focus-zoom guard live: 16px floor on text controls under `pointer: coarse`, desktop compact sizing kept. Conflict was CACHE_NAME-only; verified in a touch-emulated fresh context (Todoist token field 13.6px → 16px; desktop unchanged). Cache v149. Squash `6883d76`.
+- **#174 MERGED (F2)** — NSDR Restore card on Wellness › Mindful; backlog row renumbered #17→#20 (the mobile sweep had claimed 17–19 while the PR sat open). Verified: tap captures the YouTube URL, logs a `['mindful','nsdr']` History session, toast fires, zero console errors. Cache v150. Squash `7151eba`.
+- **#185 (F3)** — landed the deferred **B-4 `Toast.medsArrival`**: `sync-merge-meds.js` has emitted `meds-arrival` (threshold ≥2 new remote doses) since E-1c, but no production consumer existed — the F15 toast never showed. Method mirrors `bufferOverflow`; listener replaces the standing TODO at `sync-toast.js:285`. 4 new tests; suite **PASS (1218)**. Cache v151. Squash `3348d58`.
+- **#186 (F4–F7)** — this docs PR: session-log backfill + convention note, backlog rows #21/#22, Compare row 6 status correction (**F6**: `js/compare-ui.js` V1 is shipped + wired, row said Unshipped), test-count refresh (~1,070/51 → ~1,218/54).
+- **F9** — 17 stale remote branches deleted (each verified PR-merged first). The 44 squash-merged **local** branches are blocked by the Safety Net hook (`git branch -D`) — exact manual command handed to Kyle. Kept deliberately: `feat/live-activities-timer-mvp` (closed PR #91 WIP, backlog #4), `feat/sync-native-listener-parity` (backlog #3 WIP), `feat/cloud-sync`, `feat/engine-test-coverage`, `feat/bl-11-pomo-phase-revert` (closed/unmerged), and unidentified `tmp-113/114/115` + `verify-rhythm-panels` (flagged for review).
+
+### Verification
+
+Suite PASS (1218) post-F3 (headless, zero failures — the known flake didn't fire this session); guard scripts clean (88=88=88); both UI merges browser-verified on fresh contexts (`:8771` + `?nosw=1`); F10 (meds hybrid-backup clobber) re-verified real at `js/meds.js:594-599` and left open by design (Phase 3 product decision).
+
+### What Remains (hunt plan Phases 2–5)
+
+Phase 2: iOS sign-out (R10, `docs/playbooks/ios-signout.md`) + timer-handler unification (M5-maint). Phase 3 spikes: D1 per-field LWW · D3 same-ms BFRB dedup · R9+R8 SW notification/versioning persistence · F10 meds-hybrid guard decision · `flow_bfrbs` cleanup · council node pin · local rules-env repair. Phase 4: **Tempo Proving Ground** UI harness (the single biggest quality lever). Phase 5: Finances P5 build → native CAS (#3) → App Store paperwork → Live Activities (#4).
+
+### PRs
+
+```
+#184  docs(bug-hunt): full-project hunt report 2026-07-07 + gitignore emulator log   [merged 16475f5]
+#177  fix: prevent iOS focus-zoom on sub-16px form inputs                            [merged 6883d76]
+#174  feat(mindful): NSDR launcher — one-tap Restore card → YouTube + auto-log       [merged 7151eba]
+#185  fix(sync-toast): land the deferred B-4 meds-arrival toast (hunt F3)            [merged 3348d58]
+#186  docs(hunt): F4–F7 — session-log backfill + backlog/Compare/count refresh       [this PR]
+```
