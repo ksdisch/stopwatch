@@ -360,3 +360,51 @@ describe('Toast — sync-error recovery (H3)', () => {
   });
 
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// Toast.medsArrival (B-4 / F15)
+// ────────────────────────────────────────────────────────────────────────
+
+describe('Toast.medsArrival', () => {
+
+  it('1. paints toast with the dose count in the copy', () => {
+    try {
+      _toast_purge();
+      Toast.medsArrival('med-abc', 3);
+      const all = document.querySelectorAll('#' + TOAST_ID);
+      assertEqual(all.length, 1, 'exactly one toast in DOM (got ' + all.length + ')');
+      assertEqual(all[0].textContent, '3 doses synced from another device.',
+        'count rides the copy (got "' + all[0].textContent + '")');
+    } finally { _toast_purge(); }
+  });
+
+  it('2. singular copy for count 1 (defensive — emitter thresholds at >=2)', () => {
+    try {
+      _toast_purge();
+      Toast.medsArrival('med-abc', 1);
+      assertEqual(_toast_getEl().textContent, '1 dose synced from another device.',
+        'singular copy');
+    } finally { _toast_purge(); }
+  });
+
+  it('3. invalid count falls back to the generic copy', () => {
+    try {
+      _toast_purge();
+      Toast.medsArrival('med-abc', undefined);
+      assertEqual(_toast_getEl().textContent, 'New doses synced from another device.',
+        'generic fallback for a missing count');
+    } finally { _toast_purge(); }
+  });
+
+  it('4. SyncEngine.emit("meds-arrival") paints via the module listener', () => {
+    try {
+      _toast_purge();
+      SyncEngine.emit('meds-arrival', { medId: 'med-xyz', count: 2 });
+      const el = _toast_getEl();
+      assert(el, 'toast painted from the event');
+      assertEqual(el.textContent, '2 doses synced from another device.',
+        'payload count surfaced (got "' + (el && el.textContent) + '")');
+    } finally { _toast_purge(); }
+  });
+
+});
