@@ -50,11 +50,26 @@ function initTimerUI() {
   }
 }
 
+// M5: both handlers read the same ButtonFsm row updateTimerUI renders from,
+// so the label and the fired action can't drift (pre-M5, "Done" on the
+// legacy 'finished' status had no dispatch branch — a dead button; the
+// table maps it to 'reset', which is what its label promises).
 function onTimerLeft() {
   if (appMode !== 'timer') return;
   if (sequenceMode) { onSequenceLeft(); return; }
-  const status = Timer.getStatus();
-  if (status === 'paused' || status === 'finished' || status === 'overflowing') {
+  const row = ButtonFsm.get('timer', Timer.getStatus());
+  if (row) dispatchTimerAction(row.left.action);
+}
+
+function onTimerRight() {
+  if (appMode !== 'timer') return;
+  if (sequenceMode) { onSequenceRight(); return; }
+  const row = ButtonFsm.get('timer', Timer.getStatus());
+  if (row) dispatchTimerAction(row.right.action);
+}
+
+function dispatchTimerAction(action) {
+  if (action === 'reset') {
     // Save session before reset. Read overshoot BEFORE reset() clears it.
     const elapsed = Timer.getElapsedMs();
     const overshootMs = Timer.getOvershootMs ? Timer.getOvershootMs() : 0;
@@ -84,23 +99,13 @@ function onTimerLeft() {
     saveTimerState();
     stopTimerRenderLoop();
     updateTimerUI();
-  }
-}
-
-function onTimerRight() {
-  if (appMode !== 'timer') return;
-  if (sequenceMode) { onSequenceRight(); return; }
-  const status = Timer.getStatus();
-  if (status === 'running' || status === 'overflowing') {
-    // 'overflowing' right-button is "Done" — same effect as the legacy
-    // 'finished' Done: capture and reset.
-    if (status === 'overflowing') { onTimerLeft(); return; }
+  } else if (action === 'pause') {
     Timer.pause();
     BgNotify.cancel('timer-' + Timer.getId());
     saveTimerState();
     stopTimerRenderLoop();
     updateTimerUI();
-  } else if (status === 'idle' || status === 'paused') {
+  } else if (action === 'start') {
     if (Timer.getDurationMs() === 0) return;
     Timer.start();
     BgNotify.schedule('timer-' + Timer.getId(), Timer.getRemainingMs(), 'Timer Complete', 'Your countdown has finished!');
@@ -181,46 +186,24 @@ function updateTimerUI() {
   // Timer set area visibility
   document.getElementById('timer-set-area').classList.toggle('hidden', status !== 'idle');
 
-  // Buttons
-  switch (status) {
-    case 'idle':
-      btnLeft.innerHTML = '<span class="btn-inner">--</span>';
-      btnLeft.className = 'control-btn btn-lap';
-      btnLeft.disabled = true;
-      btnRight.innerHTML = '<span class="btn-inner">Start</span>';
-      btnRight.className = 'control-btn btn-start';
-      break;
-    case 'running':
-      btnLeft.innerHTML = '<span class="btn-inner">--</span>';
-      btnLeft.className = 'control-btn btn-lap';
-      btnLeft.disabled = true;
-      btnRight.innerHTML = '<span class="btn-inner">Stop</span>';
-      btnRight.className = 'control-btn btn-stop';
-      break;
-    case 'paused':
-      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
-      btnLeft.className = 'control-btn btn-reset';
-      btnLeft.disabled = false;
-      btnRight.innerHTML = '<span class="btn-inner">Start</span>';
-      btnRight.className = 'control-btn btn-start';
-      break;
-    case 'finished':
-      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
-      btnLeft.className = 'control-btn btn-reset';
-      btnLeft.disabled = false;
-      btnRight.innerHTML = '<span class="btn-inner">Done</span>';
-      btnRight.className = 'control-btn btn-start';
-      break;
-    case 'overflowing': {
+  // Buttons — presentation reads the same ButtonFsm row the click handlers
+  // dispatch from (M5), so a label can't promise an action the handler
+  // doesn't implement.
+  const row = ButtonFsm.get('timer', status);
+  if (row) {
+    // The overshoot suffix ("Done +0:12") is presentation-only; build the
+    // decorated string locally — table cells are frozen.
+    let rightLabel = row.right.label;
+    if (isOver) {
       const short = Utils.formatShort ? Utils.formatShort(overshootMs) : '';
-      const suffix = short ? ` +${short}` : '';
-      btnLeft.innerHTML = '<span class="btn-inner">Reset</span>';
-      btnLeft.className = 'control-btn btn-reset';
-      btnLeft.disabled = false;
-      btnRight.innerHTML = `<span class="btn-inner">Done${suffix}</span>`;
-      btnRight.className = 'control-btn btn-start';
-      break;
+      if (short) rightLabel += ` +${short}`;
     }
+    btnLeft.innerHTML = `<span class="btn-inner">${row.left.label}</span>`;
+    btnLeft.className = row.left.cls;
+    btnLeft.disabled = row.left.disabled;
+    btnRight.innerHTML = `<span class="btn-inner">${rightLabel}</span>`;
+    btnRight.className = row.right.cls;
+    btnRight.disabled = row.right.disabled;
   }
 
   if (typeof updateTimeAdjustControls === 'function') updateTimeAdjustControls();
