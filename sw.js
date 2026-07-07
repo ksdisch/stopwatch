@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v154-boot-mode-tdz';
+const CACHE_NAME = 'stopwatch-v155-f10-import-guard';
 const ASSETS = [
   './',
   './index.html',

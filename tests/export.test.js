@@ -531,6 +531,55 @@ describe('Export — per-record meds sweep (post-F18)', () => {
     }
   });
 
+  it('F10: hybrid backup — per-record meds win, the stale wellness_meds blob is NOT restored', async () => {
+    clearMedsRecords();
+    localStorage.removeItem('wellness_meds');
+    window.History = makeHistoryStub();
+    // Hand-assembled hybrid: stale blob + fresher per-record copy of the SAME
+    // med id. Restoring the blob would let meds.js's _migrateLegacyBlob()
+    // overwrite the fresher meds/{id} key on the post-import reload.
+    const payload = JSON.stringify({
+      version: 1, sessions: [], settings: {
+        wellness_meds: JSON.stringify({ meds: [{ id: 'med-h', name: 'Stale', doseLog: [] }] }),
+      },
+      meds: [{ id: 'med-h', name: 'Fresh', dose: '10 mg',
+        doseLog: [{ takenAt: 1700000000000, deviceId: 'd1' }] }],
+    });
+    try {
+      const result = await Export.importAllData(payload);
+      assertEqual(result.medsRestored, 1);
+      assertEqual(localStorage.getItem('wellness_meds'), null);
+      assertEqual(JSON.parse(localStorage.getItem('meds/med-h')).name, 'Fresh');
+    } finally {
+      clearMedsRecords();
+      localStorage.removeItem('wellness_meds');
+    }
+  });
+
+  it('F10 boundary: an EMPTY meds array still restores the blob (legacy-style rollback)', async () => {
+    clearMedsRecords();
+    localStorage.removeItem('wellness_meds');
+    window.History = makeHistoryStub();
+    // meds: [] clears device meds/* wholesale (restore-replaces semantics), so
+    // no fresher per-record key survives for the blob migration to clobber —
+    // restoring the blob here is coherent legacy rollback, not a hazard.
+    const payload = JSON.stringify({
+      version: 1, sessions: [], settings: {
+        wellness_meds: JSON.stringify({ meds: [{ id: 'med-r', name: 'Rollback', doseLog: [] }] }),
+      },
+      meds: [],
+    });
+    try {
+      const result = await Export.importAllData(payload);
+      assertEqual(result.medsRestored, 0);
+      const blob = JSON.parse(localStorage.getItem('wellness_meds'));
+      assertEqual(blob.meds[0].name, 'Rollback');
+    } finally {
+      clearMedsRecords();
+      localStorage.removeItem('wellness_meds');
+    }
+  });
+
   it('round-trips per-record meds through export → import onto a fresh store', async () => {
     clearMedsRecords();
     localStorage.removeItem('wellness_meds');
