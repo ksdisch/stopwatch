@@ -81,6 +81,7 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 | `bfrb_events` | `js/bfrb-events.js:48` | JSON entry array `{ takenAt, context, sessionId?, …, deviceId, updatedAt, schemaVersion }` | **yes** (`bfrb_events`) | no (synced via adapter) | F3 consolidated stream; `context ∈ global/flow/pomodoro`. |
 | `tempo_bfrb_events_migration_v1` | `js/bfrb-events.js:49,261` | `'1'` | no | no | Idempotency marker for legacy-bucket → `bfrb_events` migration. |
 | `mood_events` | `js/mood.js` | JSON entry array `{ at, valence: 1..5, tags? (≤3), note? (≤280), context?, deviceId, updatedAt, schemaVersion }` | **yes** (`mood_events`) | yes | Life-OS Phase 3 mood stream (ADR-0008); append-only, immutable, no legacy migration. Reserved additive-nullable `energy: 1..5`. Timestamp field is `at`, NOT `takenAt`. |
+| `finances` | `js/finances.js` | JSON object keyed `YYYY-MM`: `{ month, savingsRate?, creditScore?, debtRemaining?, netWorth?, deviceId, updatedAt, schemaVersion }` | **yes** (`finances`) | yes | Life-OS Phase 5 — the **8th synced store**; per-month **editable** LWW (a month's numbers get corrected). Every metric optional; `setMonth` partial-merges a patch. Council reads it server-side to produce `synthesis/life_building`. |
 | `bfrbs_global` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** BFRB bucket — **deleted at boot** since the Pick-C cleanup (PR #192, 2026-07-07). Stays in EXPORT_SETTINGS_KEYS only so ancient pre-F3 backups restore → consolidate on fresh devices. |
 | `flow_bfrbs` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** bucket — deleted at boot (PR #192); export-listed for ancient-restore only. |
 | `pomodoro_bfrbs` | `js/bfrb-events.js` (`LEGACY_KEYS` — migration input only) | JSON array | no | yes | **Legacy** bucket — deleted at boot (PR #192); export-listed for ancient-restore only. |
@@ -150,7 +151,7 @@ persistence is self-contained.
 
 ## 3. Firestore synced stores
 
-Registry: `SYNCED_STORES` in `js/sync-engine.js:138-145` (six stores). Each carries a
+Registry: `SYNCED_STORES` in `js/sync-engine.js:138-146` (eight stores). Each carries a
 `snapshotForSync()` adapter. Per-store merge rules: ADR 0004
 (`docs/adr/0004-per-store-merge-strategy.md`). All client-side, same code web + native.
 
@@ -163,6 +164,7 @@ Registry: `SYNCED_STORES` in `js/sync-engine.js:138-145` (six stores). Each carr
 | `bfrb_events` | `BfrbEvents.snapshotForSync()` (`js/sync-engine.js:143`) | Union-dedup; deterministic doc id `deviceId-takenAt` | `(deviceId, takenAt)` | `js/sync-merge-bfrb.js:7,18,32` |
 | `distractions` | `Distractions.snapshotForSync()` (`js/sync-engine.js:144`) | Union-dedup within each `(context, sessionId)` pair | `(context, sessionId, deviceId, timestamp)` | `js/sync-merge-distractions.js:7,36,39` |
 | `mood_events` | `Mood.snapshotForSync()` (`js/sync-engine.js:145`) | Union-dedup; deterministic doc id `deviceId-at`; no F15 toast | `(deviceId, at)` | `js/sync-merge-mood.js` |
+| `finances` | `Finances.snapshotForSync()` (`js/sync-engine.js:156`) | Per-month key; whole-record LWW (latest `updatedAt` per month wins); no F15 toast | month `YYYY-MM` | `js/sync-merge-finances.js` |
 
 ### Read-only recovery feed (NOT in `SYNCED_STORES`)
 

@@ -9,6 +9,7 @@ Backend-agnostic strategy for evolving Tempo's local-first storage to multi-devi
 - `wellness_meds` (localStorage) — medication list + per-med `doseLog: [{takenAt}]`. Drives "did I take it today?".
 - IndexedDB `stopwatch_history_db.sessions` — every completed stopwatch / timer / pomodoro / flow / interval / cooking session, plus mutable `note` / `tags` / `bfrbs` per row.
 - `wellness_rest_log` — daily sleep hours/quality + naps, keyed by `YYYY-MM-DD`.
+- `finances` — monthly finance snapshots (savings rate, credit score, debt remaining, net worth), keyed by `YYYY-MM` (Life-OS Phase 5, the 8th synced store; editable per-month LWW).
 
 **Medium stakes** — append-only event streams and user-curated content.
 
@@ -36,6 +37,7 @@ Backend-agnostic strategy for evolving Tempo's local-first storage to multi-devi
 | BFRB events | Append-merge, dedup by `(deviceId, loggedAt)` | Either consolidate `bfrbs_global` / `flow_bfrbs` / `pomodoro_bfrbs` into one tagged stream with `context: 'flow' \| 'pomodoro' \| 'global'`, or exclude the session-local buckets entirely and treat `session.bfrbs` (in the synced history row) as canonical (F3). Decision deferred to implementation; both shapes preserve correctness. |
 | Distraction logs | Append-merge with session tombstones | Either move to `sessionId`-keyed storage (UI filters by current session, never reset) or emit explicit session-cleared tombstone events into the same stream so reset is representable in append-merge (F8). |
 | Mood events (`mood_events`) | Append-merge, dedup by `(deviceId, at)`; deterministic doc id `deviceId-at` | Life-OS Phase 3 — the 7th synced store (ADR-0008). Append-only, immutable; NOTE the timestamp field is `at` (not `takenAt`). No F15 arrival toast (high-frequency precedent). Reserved additive-nullable `energy`. `js/sync-merge-mood.js` clones `js/sync-merge-bfrb.js`. |
+| Finances (`finances`) | LWW per-month-key (latest `updatedAt` per `YYYY-MM` wins) | Life-OS Phase 5 — the **8th synced store** and the first **editable-per-period** store (a month's numbers get corrected); deterministic doc id = the `YYYY-MM` month string. No F15 arrival toast. `js/sync-merge-finances.js` clones `js/sync-merge-rest-log.js` (per-key LWW), NOT the mood/bfrb append-only dedup. |
 | Templates / presets / saved tasks | LWW per-record by `id` + `updatedAt`, with tombstones for deletes | Records carry `schemaVersion`; loaders pass unknown fields through `__forward` (schema rules F19a/b). |
 | Engine state, per-session checklists, primary pointers | **Excluded from sync** | Q4 resolution. `loadState` recoveries (auto-advance, `focusEndedAt`, `alarmFired`) are local rendering only, never persisted back (F7). `alarmFired` is intrinsically per-device — Device B must still play the chime even after Device A fires (F21). |
 | UI prefs (low-stakes block) | **Excluded from sync** | Per-device taste. |
