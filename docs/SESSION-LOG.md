@@ -2664,3 +2664,31 @@ Suite **PASS (1238)** on merged main (1232 → +2 F10, +4 cleanup; headless, zer
 #193  fix(council): pin launchd node resolution to the nvm-managed install                 [MERGED 3d4888d]
 #194  docs(hunt): Phase 3 outcomes — register verdicts + this entry                        [this PR]
 ```
+
+---
+
+## 2026-07-07 (session 4) — Hunt Phase 4: Tempo Proving Ground Slice 1 (UI/integration harness + attribute-XSS fix)
+
+### What We Built
+
+Brainstormed → specced → planned → built **Phase 4** of the 2026-07-07 hunt: the **Tempo Proving Ground**, a CI-gated `@playwright/test` UI/integration suite that loads the real `index.html` in headless Chromium with the service worker blocked (`use.serviceWorkers:'block'` — zero production change; `app.js`'s `register().catch()` swallows the block) and a fresh browser context per test for free localStorage/IndexedDB isolation.
+
+- **Harness** — `playwright.config.js` (testDir `tests/ui/`, port 8766 so it runs beside the engine suite's 8765), `tests/ui/support/app.js` (helpers + attack payloads), `npm run test:ui`. `@playwright/test` pinned to the incumbent `playwright@1.60.0` so the engine suite's browser is unchanged. `smoke.spec.js` proves the real app boots headless with no page error.
+- **Live bug caught + fixed** — `xss-render.spec.js` went **red** (a hostile med name injected an `<img>` element + an `onmouseover` handler via an unescaped `aria-label` at `analytics-ui.js:303`), **green** after wrapping the name in `escapeHtml` (already quote-safe per dom-utils M7). Cache **v157**. A real attribute-XSS the ~1,238-test engine suite structurally could never reach.
+- **Import boundary regression-locked** — planning revealed `Export.importAllData` is already hardened (version/shape validation + a caller try/catch), so `import-survival.spec.js` is a lock + XSS-delivery cross-check (malformed JSON handled without an uncaught error, no `__proto__` pollution, a hostile imported med name renders inert), not a bug hunt. The deviation was surfaced in the plan's Reality-deltas section, not silent.
+- **7th CI job** `ui-tests` gates every PR; flipped CLAUDE.md's "No UI/integration tests" debt entry; `tests/ui/README.md` documents run + add-a-spec + the SW-block rationale.
+
+Slice 2 = R9 notification-tap (IDB-persist pending notifications + re-arm on SW wake), deferred — it needs a production change first and a per-spec `serviceWorkers:'allow'` override.
+
+Design spec + plan: `docs/superpowers/specs/2026-07-07-tempo-proving-ground-design.md`, `docs/superpowers/plans/2026-07-07-tempo-proving-ground.md`.
+
+### Verification
+
+UI suite **6 passed** (`npm run test:ui`: 1 smoke + 2 xss + 3 import). Engine suite **PASS (1238)** — re-run and unaffected by the playwright pin. CI verdict on push pending.
+
+### PRs
+
+```
+#195  docs(proving-ground): Phase-4 UI/integration harness design spec              [MERGED 5084247]
+#___  feat(proving-ground): Slice 1 — harness + attribute-XSS fix + import lock      [this PR]
+```
