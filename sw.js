@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v158-notification-persistence';
+const CACHE_NAME = 'stopwatch-v159-life-building-finances';
 const ASSETS = [
   './',
   './index.html',
@@ -34,6 +34,7 @@ const ASSETS = [
   './js/sync-merge-bfrb.js',
   './js/sync-merge-distractions.js',
   './js/sync-merge-mood.js',
+  './js/sync-merge-finances.js',
   './js/sync-auth.js',
   './js/audio.js',
   './js/themes.js',
@@ -75,9 +76,11 @@ const ASSETS = [
   './js/recovery-ui.js',
   './js/recovery-feed.js',
   './js/synthesis-feed.js',
+  './js/finances.js',
   './js/home-ui.js',
   './js/physicals-ui.js',
   './js/chickens-ui.js',
+  './js/life-building-ui.js',
   './js/rhythm-engine.js',
   './js/rhythm-insights.js',
   './js/rhythm-panel-today.js',

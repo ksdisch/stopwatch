@@ -6810,6 +6810,190 @@ rect.rhythm-day-hi {
   color: var(--text-secondary);
 }
 
+/* ── Life-OS Life Building hub (Phase 5) ──────────────────────────────────
+   The dedicated Life Building pillar: a composite hero + Finances Area card
+   (council verdict + local raw numbers) + this week's moves + the monthly
+   finance capture form. Mirrors the Physicals/Chickens hubs for the verdict
+   side; mirrors recovery-ui's form for the write path. Reuses the Home
+   hub's .home-card chrome, .home-band-chip primitive, --home-band-* tokens
+   and .home-moves* list — only the layout + text classes are new. */
+.life-building-pillar-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Hero (the composite Life Building read) ── */
+.life-building-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.life-building-hero-kicker {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.life-building-hero-headline {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* ── Area cards ── */
+.life-building-areas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.life-building-area-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.life-building-area-card-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.life-building-area-card-signal {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Raw numbers breakdown (per-metric mini-status on the Finances Area card) ── */
+.life-building-raw-numbers {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.life-building-raw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.life-building-raw-label {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.life-building-raw-value {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Empty state (the DEFAULT path) ── */
+.life-building-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+.life-building-empty-mark {
+  font-size: 2rem;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+.life-building-empty-title {
+  margin-top: var(--space-3);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.life-building-empty-body {
+  margin-top: var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+}
+
+/* ── Capture form ("Update this month's numbers") ── */
+.life-building-capture {
+  padding: var(--space-4);
+}
+.life-building-capture-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+.life-building-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.life-building-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.life-building-form-label-text {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.life-building-form-input {
+  font-size: 1rem;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary);
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 44px; /* ≥44px tap target (#17) */
+}
+.life-building-form-input:focus {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 2px;
+}
+/* Prevent iOS zoom on focus (sub-16px inputs) */
+@media (pointer: coarse) {
+  .life-building-form-input {
+    font-size: 1rem; /* 16px floor — same as recovery-ui + #21 fix */
+  }
+}
+.life-building-form-submit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+.life-building-form-save-btn {
+  padding: 10px 24px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px; /* ≥44px tap target (#17) */
+}
+.life-building-form-save-btn:active {
+  opacity: 0.85;
+}
+.life-building-form-saved-msg {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── 8-tab tabbar fallback (Phase 5) ─────────────────────────────────────
+   With Life Building the phone tabbar holds 8 tabs. We continue the
+   Phase 3 icon-only pattern at ≤374px — the existing rule already hides
+   span text, so no change needed there. This comment tracks the addition. */
+
 /* ── 7-tab tabbar fallback (Phase 3) ─────────────────────────────────────
    With Chickens the phone tabbar holds 7 tabs; at ≤374px each gets ~45px
    and the longest labels ("Analytics") risk truncation. Ratified fallback:

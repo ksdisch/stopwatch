@@ -655,6 +655,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       bfrb_events: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood_events: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
 
     try {
@@ -678,6 +679,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = () => ({ ok: true });
       SyncMergeDistractions.merge = () => ({ ok: true });
       SyncMergeMood.merge = () => ({ ok: true });
+      SyncMergeFinances.merge = () => ({ ok: true });
 
       // Wait for cycle to complete.
       const completeP = new Promise((resolve) => {
@@ -700,6 +702,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
       SyncMergeDistractions.merge = savedMerges.distractions;
       SyncMergeMood.merge = savedMerges.mood_events;
+      SyncMergeFinances.merge = savedMerges.finances;
       _e1c_restore(saved);
     }
   });
@@ -715,6 +718,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       bfrb_events: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood_events: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
 
     try {
@@ -731,6 +735,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = () => ({ ok: true });
       SyncMergeDistractions.merge = () => ({ ok: true });
       SyncMergeMood.merge = () => ({ ok: true });
+      SyncMergeFinances.merge = () => ({ ok: true });
 
       SyncEngine._runMergeCycle();
 
@@ -749,6 +754,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
       SyncMergeDistractions.merge = savedMerges.distractions;
       SyncMergeMood.merge = savedMerges.mood_events;
+      SyncMergeFinances.merge = savedMerges.finances;
       _e1c_restore(saved);
     }
   });
@@ -764,6 +770,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       bfrb_events: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood_events: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
 
     try {
@@ -781,6 +788,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = function () { throw 'string-throw-bfrb'; };
       SyncMergeDistractions.merge = function () { throw 'string-throw-distractions'; };
       SyncMergeMood.merge = function () { throw 'string-throw-mood'; };
+      SyncMergeFinances.merge = function () { throw 'string-throw-finances'; };
 
       SyncEngine._runMergeCycle();
 
@@ -794,6 +802,7 @@ describe('SyncMergeMeds — F13 dispatcher-wide write gate', () => {
       SyncMergeBfrb.merge = savedMerges.bfrb_events;
       SyncMergeDistractions.merge = savedMerges.distractions;
       SyncMergeMood.merge = savedMerges.mood_events;
+      SyncMergeFinances.merge = savedMerges.finances;
       _e1c_restore(saved);
     }
   });

@@ -41,6 +41,9 @@
 // flicker, presets edits). The other storeKeys (meds, history,
 // rest_log-naps, bfrb_events, distractions, mood_events) are append-only
 // with sub-second timestamps — collision is engineering-zero, no compaction.
+// `finances` is editable-per-MONTH LWW (not append-only): each YYYY-MM key
+// is its own buffer entry keyed by month, so it is NOT compacted here
+// (monthly cadence → collision is likewise engineering-zero).
 //
 // **Cap** (Pick A on TODO #4) — `PENDING_OP_CAP = 1000` immutable per
 // release; no localStorage override. On overflow, drop the OLDEST entry
@@ -433,6 +436,9 @@ const SyncBuffer = (() => {
     }
     if (storeKey === 'mood_events' && typeof SyncMergeMood !== 'undefined' && SyncMergeMood.merge) {
       return SyncMergeMood.merge;
+    }
+    if (storeKey === 'finances' && typeof SyncMergeFinances !== 'undefined' && SyncMergeFinances.merge) {
+      return SyncMergeFinances.merge;
     }
     return null;
   }

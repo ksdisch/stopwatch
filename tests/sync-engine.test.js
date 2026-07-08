@@ -399,10 +399,11 @@ describe('SyncEngine.getSnapshot — shape', () => {
       try {
         const snap = await SyncEngine.getSnapshot();
 
-        // Seven registry keys, in registry order (E-1d-f3 added bfrb_events,
-        // E-1d-f8 added distractions, Life-OS Phase 3 added mood_events).
+        // Eight registry keys, in registry order (E-1d-f3 added bfrb_events,
+        // E-1d-f8 added distractions, Life-OS Phase 3 added mood_events,
+        // Life-OS Phase 5 added finances).
         const keys = Object.keys(snap);
-        assertEqual(keys.length, 7);
+        assertEqual(keys.length, 8);
         assertEqual(keys[0], 'meds');
         assertEqual(keys[1], 'history');
         assertEqual(keys[2], 'rest_log');
@@ -410,6 +411,7 @@ describe('SyncEngine.getSnapshot — shape', () => {
         assertEqual(keys[4], 'bfrb_events');
         assertEqual(keys[5], 'distractions');
         assertEqual(keys[6], 'mood_events');
+        assertEqual(keys[7], 'finances');
 
         // Each value has the envelope shape
         for (const key of keys) {
@@ -836,6 +838,7 @@ function _e1b_saveSteadyEnv() {
     merge_bfrb: SyncMergeBfrb.merge,
     merge_distractions: SyncMergeDistractions.merge,
     merge_mood: SyncMergeMood.merge,
+    merge_finances: SyncMergeFinances.merge,
     auth_getCurrentUser: SyncAuth.getCurrentUser,
     prev_setInterval: window.setInterval,
     prev_clearInterval: window.clearInterval,
@@ -889,6 +892,7 @@ function _e1b_restoreSteadyEnv(saved) {
   SyncMergeBfrb.merge = saved.merge_bfrb;
   SyncMergeDistractions.merge = saved.merge_distractions;
   SyncMergeMood.merge = saved.merge_mood;
+  SyncMergeFinances.merge = saved.merge_finances;
   // Restore auth.
   SyncAuth.getCurrentUser = saved.auth_getCurrentUser;
   // Restore Platform / SyncState.
@@ -1022,7 +1026,7 @@ describe('SyncEngine — startSteadyState (E-1b)', () => {
 });
 
 describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
-  it('invokes all 7 stub merge functions in order: meds → history → rest_log → presets → bfrb_events → distractions → mood_events', () => {
+  it('invokes all 8 stub merge functions in order: meds → history → rest_log → presets → bfrb_events → distractions → mood_events → finances', () => {
     const saved = _e1b_saveSteadyEnv();
     try {
       // Ensure all preconditions pass so the dispatcher gets past the guards.
@@ -1038,24 +1042,25 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeBfrb.merge = function () { order.push('bfrb_events'); };
       SyncMergeDistractions.merge = function () { order.push('distractions'); };
       SyncMergeMood.merge = function () { order.push('mood_events'); };
+      SyncMergeFinances.merge = function () { order.push('finances'); };
 
       SyncEngine._runMergeCycle();
 
-      assertArrayEqual(order, ['meds', 'history', 'rest_log', 'presets', 'bfrb_events', 'distractions', 'mood_events'],
+      assertArrayEqual(order, ['meds', 'history', 'rest_log', 'presets', 'bfrb_events', 'distractions', 'mood_events', 'finances'],
         'dispatcher iterates SYNCED_STORES order');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }
   });
 
-  it('tolerates per-store throws — all 7 stubs invoked even when each throws', () => {
+  it('tolerates per-store throws — all 8 stubs invoked even when each throws', () => {
     const saved = _e1b_saveSteadyEnv();
     try {
       localStorage.setItem('tempo_sync_enabled', '1');
       SyncAuth.getCurrentUser = () => ({ uid: 'u-test' });
       delete window.SyncState;
 
-      const calls = { meds: 0, history: 0, rest_log: 0, presets: 0, bfrb_events: 0, distractions: 0, mood_events: 0 };
+      const calls = { meds: 0, history: 0, rest_log: 0, presets: 0, bfrb_events: 0, distractions: 0, mood_events: 0, finances: 0 };
       SyncMergeMeds.merge = function () { calls.meds++; throw new Error('not implemented until E-1c'); };
       SyncMergeHistory.merge = function () { calls.history++; throw new Error('not implemented until E-1d'); };
       SyncMergeRestLog.merge = function () { calls.rest_log++; throw new Error('not implemented until E-1e'); };
@@ -1063,6 +1068,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeBfrb.merge = function () { calls.bfrb_events++; throw new Error('stub'); };
       SyncMergeDistractions.merge = function () { calls.distractions++; throw new Error('stub'); };
       SyncMergeMood.merge = function () { calls.mood_events++; throw new Error('stub'); };
+      SyncMergeFinances.merge = function () { calls.finances++; throw new Error('stub'); };
 
       const errors = [];
       const errCb = (p) => { errors.push(p); };
@@ -1083,12 +1089,13 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       assertEqual(calls.bfrb_events, 1, 'bfrb_events merge invoked once');
       assertEqual(calls.distractions, 1, 'distractions merge invoked once');
       assertEqual(calls.mood_events, 1, 'mood_events merge invoked once');
-      assertEqual(errors.length, 7, 'merge-error fired 7 times (one per store)');
+      assertEqual(calls.finances, 1, 'finances merge invoked once');
+      assertEqual(errors.length, 8, 'merge-error fired 8 times (one per store)');
 
       // Check distinct store keys on each emit
       const storesSeen = errors.map(e => e.store).sort();
-      assertArrayEqual(storesSeen, ['bfrb_events', 'distractions', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
-        'merge-error events cover all 7 stores');
+      assertArrayEqual(storesSeen, ['bfrb_events', 'distractions', 'finances', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
+        'merge-error events cover all 8 stores');
 
       SyncEngine.off('merge-error', errCb);
     } finally {
@@ -1111,6 +1118,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeBfrb.merge = function () { throw new Error('stub'); };
       SyncMergeDistractions.merge = function () { throw new Error('stub'); };
       SyncMergeMood.merge = function () { throw new Error('stub'); };
+      SyncMergeFinances.merge = function () { throw new Error('stub'); };
 
       const events = [];
       const cb = (p) => { events.push(p); };
@@ -1121,10 +1129,10 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       assertEqual(events.length, 1, 'merge-cycle-complete fires exactly once');
       assert(events[0] && events[0].storeResults && typeof events[0].storeResults === 'object',
         'payload includes storeResults');
-      // All 7 store entries present
+      // All 8 store entries present
       const resultKeys = Object.keys(events[0].storeResults).sort();
-      assertArrayEqual(resultKeys, ['bfrb_events', 'distractions', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
-        'storeResults has all 7 store keys');
+      assertArrayEqual(resultKeys, ['bfrb_events', 'distractions', 'finances', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
+        'storeResults has all 8 store keys');
 
       SyncEngine.off('merge-cycle-complete', cb);
     } finally {
@@ -1147,6 +1155,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeBfrb.merge = function () { mergeCalls++; };
       SyncMergeDistractions.merge = function () { mergeCalls++; };
       SyncMergeMood.merge = function () { mergeCalls++; };
+      SyncMergeFinances.merge = function () { mergeCalls++; };
 
       SyncEngine._runMergeCycle();
 
@@ -1170,6 +1179,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
       SyncMergeBfrb.merge = function () { mergeCalls++; };
       SyncMergeDistractions.merge = function () { mergeCalls++; };
       SyncMergeMood.merge = function () { mergeCalls++; };
+      SyncMergeFinances.merge = function () { mergeCalls++; };
 
       window.SyncState = { get: () => 'hydrating' };
       SyncEngine._runMergeCycle();
@@ -1181,7 +1191,7 @@ describe('SyncEngine._runMergeCycle dispatcher (E-1b)', () => {
 
       window.SyncState = { get: () => 'ready' };
       SyncEngine._runMergeCycle();
-      assertEqual(mergeCalls, 7, 'ready state allows all 7 merges');
+      assertEqual(mergeCalls, 8, 'ready state allows all 8 merges');
     } finally {
       _e1b_restoreSteadyEnv(saved);
     }
@@ -1435,6 +1445,7 @@ function _e1e_saveEnv() {
     merge_bfrb: SyncMergeBfrb.merge,
     merge_distractions: SyncMergeDistractions.merge,
     merge_mood: SyncMergeMood.merge,
+    merge_finances: SyncMergeFinances.merge,
     prev_setInterval: window.setInterval,
     prev_clearInterval: window.clearInterval,
     prev_addEventListener: document.addEventListener,
@@ -1483,6 +1494,7 @@ function _e1e_restore(saved) {
   SyncMergeBfrb.merge = saved.merge_bfrb;
   SyncMergeDistractions.merge = saved.merge_distractions;
   SyncMergeMood.merge = saved.merge_mood;
+  SyncMergeFinances.merge = saved.merge_finances;
   console.warn = saved.prev_console_warn;
   if (saved.sync_flag_storage === null) localStorage.removeItem('tempo_sync_enabled');
   else localStorage.setItem('tempo_sync_enabled', saved.sync_flag_storage);
@@ -1554,6 +1566,7 @@ describe('E-1e — dispatcher F19a snapshot gate (Pick C on TODO #4)', () => {
       SyncMergeBfrb.merge = () => null;
       SyncMergeDistractions.merge = () => null;
       SyncMergeMood.merge = () => null;
+      SyncMergeFinances.merge = () => null;
 
       try {
         SyncEngine._runMergeCycle();
@@ -1598,6 +1611,7 @@ describe('E-1e — dispatcher F19a snapshot gate (Pick C on TODO #4)', () => {
       SyncMergeBfrb.merge = () => null;
       SyncMergeDistractions.merge = () => null;
       SyncMergeMood.merge = () => null;
+      SyncMergeFinances.merge = () => null;
 
       let threw = false;
       try { SyncEngine._runMergeCycle(); }
@@ -1636,6 +1650,7 @@ describe('E-1e — dispatcher F19a snapshot gate (Pick C on TODO #4)', () => {
       SyncMergeBfrb.merge = () => null;
       SyncMergeDistractions.merge = () => null;
       SyncMergeMood.merge = () => null;
+      SyncMergeFinances.merge = () => null;
 
       SyncEngine._runMergeCycle();
       const found = msgs.some(m => m.indexOf('rest_log') !== -1
@@ -1679,6 +1694,7 @@ describe('E-1e — dispatcher F19a snapshot gate (Pick C on TODO #4)', () => {
         SyncMergeBfrb.merge = () => null;
         SyncMergeDistractions.merge = () => null;
         SyncMergeMood.merge = () => null;
+        SyncMergeFinances.merge = () => null;
 
         SyncEngine._runMergeCycle();
         const found = msgs.some(m => m.indexOf('presets') !== -1
@@ -1749,6 +1765,7 @@ describe('E-1e — dispatcher F19a snapshot gate (Pick C on TODO #4)', () => {
         SyncMergeBfrb.merge = () => null;
         SyncMergeDistractions.merge = () => null;
         SyncMergeMood.merge = () => null;
+        SyncMergeFinances.merge = () => null;
 
         SyncEngine._runMergeCycle();
         const foundBfrb = msgs.some(m => m.indexOf('bfrb_events') !== -1
@@ -1962,6 +1979,7 @@ function _e2_saveEnv() {
     merge_bfrb: SyncMergeBfrb.merge,
     merge_distractions: SyncMergeDistractions.merge,
     merge_mood: SyncMergeMood.merge,
+    merge_finances: SyncMergeFinances.merge,
     sync_buffer_enqueue: (typeof SyncBuffer !== 'undefined') ? SyncBuffer.enqueue : undefined,
     sync_buffer_drain:   (typeof SyncBuffer !== 'undefined') ? SyncBuffer.drain   : undefined,
     prev_platform: window.Platform,
@@ -1986,6 +2004,7 @@ function _e2_restore(saved) {
   SyncMergeBfrb.merge = saved.merge_bfrb;
   SyncMergeDistractions.merge = saved.merge_distractions;
   SyncMergeMood.merge = saved.merge_mood;
+  SyncMergeFinances.merge = saved.merge_finances;
   if (typeof SyncBuffer !== 'undefined') {
     if (saved.sync_buffer_enqueue !== undefined) SyncBuffer.enqueue = saved.sync_buffer_enqueue;
     if (saved.sync_buffer_drain !== undefined)   SyncBuffer.drain   = saved.sync_buffer_drain;
@@ -2040,6 +2059,7 @@ function _e2_stubAllMerges() {
   SyncMergeBfrb.merge = () => null;
   SyncMergeDistractions.merge = () => null;
   SyncMergeMood.merge = () => null;
+  SyncMergeFinances.merge = () => null;
 }
 
 describe('E-2 — buffer-engine integration', () => {
@@ -2082,6 +2102,8 @@ describe('E-2 — buffer-engine integration', () => {
       Distractions.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { flow: {}, pomodoro: {} } });
       const prevMoodSnap = Mood.snapshotForSync;
       Mood.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { events: [] } });
+      const prevFinancesSnap = Finances.snapshotForSync;
+      Finances.snapshotForSync = () => ({ deviceId: 'dev-x', schemaVersion: 1, payload: { finances: {} } });
       // History.snapshotForSync (async) + RecoveryUI.snapshotForSync stubs.
       window.History = {
         getDeviceId: () => 'dev-x',
@@ -2108,6 +2130,7 @@ describe('E-2 — buffer-engine integration', () => {
         BfrbEvents.snapshotForSync = prevBfrbSnap;
         Distractions.snapshotForSync = prevDistSnap;
         Mood.snapshotForSync = prevMoodSnap;
+        Finances.snapshotForSync = prevFinancesSnap;
       }
     } finally {
       _e2_restore(saved);
@@ -2185,15 +2208,16 @@ describe('E-2 — buffer-engine integration', () => {
       SyncMergeBfrb.merge = () => { mergeCalls++; };
       SyncMergeDistractions.merge = () => { mergeCalls++; };
       SyncMergeMood.merge = () => { mergeCalls++; };
+      SyncMergeFinances.merge = () => { mergeCalls++; };
 
       let threw = false;
       try { SyncEngine._runMergeCycle(); }
       catch (_) { threw = true; }
       assertEqual(threw, false, 'must not throw when Platform.network is undefined');
       assertEqual(enqueueCalls.length, 0, 'no enqueue calls (no offline-branch trigger)');
-      // Normal merge cycle proceeded — all 7 merges ran.
-      assertEqual(mergeCalls, 7,
-        'feature-detect fall-through runs the 7 per-store merges');
+      // Normal merge cycle proceeded — all 8 merges ran.
+      assertEqual(mergeCalls, 8,
+        'feature-detect fall-through runs the 8 per-store merges');
     } finally {
       _e2_restore(saved);
     }
@@ -2223,10 +2247,11 @@ describe('E-2 — buffer-engine integration', () => {
       SyncMergeBfrb.merge = () => { mergeCalls++; };
       SyncMergeDistractions.merge = () => { mergeCalls++; };
       SyncMergeMood.merge = () => { mergeCalls++; };
+      SyncMergeFinances.merge = () => { mergeCalls++; };
 
       SyncEngine._runMergeCycle();
       assertEqual(enqueueCalls.length, 0, 'no buffer enqueue when online');
-      assertEqual(mergeCalls, 7, 'all 7 stores ran normal merge cycle');
+      assertEqual(mergeCalls, 8, 'all 8 stores ran normal merge cycle');
     } finally {
       _e2_restore(saved);
     }
@@ -2260,13 +2285,14 @@ describe('E-2 — buffer-engine integration', () => {
       SyncMergeBfrb.merge = () => { mergeCalls++; };
       SyncMergeDistractions.merge = () => { mergeCalls++; };
       SyncMergeMood.merge = () => { mergeCalls++; };
+      SyncMergeFinances.merge = () => { mergeCalls++; };
 
       let threw = false;
       try { SyncEngine._runMergeCycle(); }
       catch (_) { threw = true; }
       assertEqual(threw, false, 'must not throw when SyncBuffer.enqueue is missing');
       // SyncBuffer.enqueue missing → offline branch falls through to normal cycle.
-      assertEqual(mergeCalls, 7,
+      assertEqual(mergeCalls, 8,
         'normal cycle runs when SyncBuffer.enqueue is undefined (defensive fall-through)');
     } finally {
       _e2_restore(saved);
@@ -2419,7 +2445,7 @@ function _e3_makeSubscribeSpy() {
 
 describe('E-3 — listener lifecycle + per-store dispatch', () => {
 
-  it('1. _runMergeCycleForStore invokes the correct per-store merge fn only (not all 7)', async () => {
+  it('1. _runMergeCycleForStore invokes the correct per-store merge fn only (not all 8)', async () => {
     // Flush any pending promises from prior tests (E-2 test 7/8 may leak
     // a pending _runMergeCycle's `_steadyRunInFlight=true` latch — the
     // real merge fns return promises that settle on the microtask queue
@@ -2441,11 +2467,12 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
       SyncMergeBfrb.merge = () => { order.push('bfrb_events'); };
       SyncMergeDistractions.merge = () => { order.push('distractions'); };
       SyncMergeMood.merge = () => { order.push('mood_events'); };
+      SyncMergeFinances.merge = () => { order.push('finances'); };
 
       SyncEngine._runMergeCycleForStore('history');
 
       assertArrayEqual(order, ['history'],
-        'only history merge fn called — other 6 untouched');
+        'only history merge fn called — other 7 untouched');
     } finally {
       _e2_restore(saved);
     }
@@ -2512,7 +2539,7 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
     }
   });
 
-  it('4. startSteadyState arms 7 listeners via SyncFirestore.subscribe', () => {
+  it('4. startSteadyState arms 8 listeners via SyncFirestore.subscribe', () => {
     const saved = _e2_saveEnv();
     try {
       localStorage.setItem('tempo_sync_enabled', '1');
@@ -2540,12 +2567,12 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
 
       try {
         SyncEngine.startSteadyState();
-        assertEqual(spy.subs.length, 7,
-          'startSteadyState armed 7 per-store listeners');
+        assertEqual(spy.subs.length, 8,
+          'startSteadyState armed 8 per-store listeners');
         const stores = spy.subs.map(s => s.path.split('/').pop()).sort();
         assertArrayEqual(stores,
-          ['bfrb_events', 'distractions', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
-          'paths cover all 7 SYNCED_STORES entries');
+          ['bfrb_events', 'distractions', 'finances', 'history', 'meds', 'mood_events', 'presets', 'rest_log'],
+          'paths cover all 8 SYNCED_STORES entries');
       } finally {
         try { SyncEngine.stopSteadyState(); } catch (_) {}
         SyncFirestore.subscribe = prevSubscribe;
@@ -2584,7 +2611,7 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
 
       try {
         SyncEngine.startSteadyState();
-        assertEqual(spy.subs.length, 7, 'armed 7 listeners pre-stop');
+        assertEqual(spy.subs.length, 8, 'armed 8 listeners pre-stop');
 
         SyncEngine.stopSteadyState();
         for (const sub of spy.subs) {
@@ -2623,6 +2650,7 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
       SyncMergeBfrb.merge = () => {};
       SyncMergeDistractions.merge = () => {};
       SyncMergeMood.merge = () => {};
+      SyncMergeFinances.merge = () => {};
 
       const visDesc = Object.getOwnPropertyDescriptor(document, 'visibilityState');
       try {
@@ -2641,7 +2669,7 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
       try {
         SyncEngine.startSteadyState();
         const armedFirst = spy.subs.length;
-        assertEqual(armedFirst, 7, 'first arm: 7 listeners');
+        assertEqual(armedFirst, 8, 'first arm: 8 listeners');
 
         // Reset the cycleCalls counter — startSteadyState itself does NOT
         // fire a cycle; we want to count ONLY the catch-up cycle.
@@ -2653,9 +2681,9 @@ describe('E-3 — listener lifecycle + per-store dispatch', () => {
         // Fire online — re-subscribes + catch-up cycle.
         net.fireChange({ connected: true });
 
-        // After online: another 7 fresh subscribes (round 2).
-        assertEqual(spy.subs.length, armedFirst + 7,
-          '7 fresh subscribes after online resume');
+        // After online: another 8 fresh subscribes (round 2).
+        assertEqual(spy.subs.length, armedFirst + 8,
+          '8 fresh subscribes after online resume');
         // Catch-up cycle fired meds merge at least once.
         assert(cycleCalls >= 1,
           'catch-up _runMergeCycle fired (meds merge count: ' + cycleCalls + ')');

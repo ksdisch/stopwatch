@@ -61,6 +61,10 @@
        ADR-0008; no migration). Loaded with the other event-store data
        modules so the sync-engine adapter + merge tests see it. -->
   <script src="../js/mood.js"></script>
+  <!-- Life-OS Phase 5: Finances owns the finances store (8th synced store,
+       editable per-month LWW; no migration). Loaded with the other event-store
+       data modules so the sync-engine adapter + merge tests see it. -->
+  <script src="../js/finances.js"></script>
   <!-- E-1d-f8: Distractions owns the consolidated flow_distractions +
        pomodoro_distractions stores + migration. Load before any UI deps. -->
   <script src="../js/distractions.js"></script>
@@ -97,6 +101,13 @@
        ChickensUI._internals. render() is a DOM wrapper covered by Playwright,
        not this suite. Loaded after physicals-ui.js for parity with runtime. -->
   <script src="../js/chickens-ui.js"></script>
+  <!-- Life Building hub (Life-OS Phase 5): pure helpers (titleCase /
+       bandForScore / bandLabel / bandColorVar / areaCardModel / areaModelsFrom /
+       heroModel / isEmptyState / formPrefillFrom / serializeForm) on
+       LifeBuildingUI._internals. render() is a DOM wrapper covered by Playwright,
+       not this suite. Loaded after chickens-ui.js for parity with runtime; also
+       after finances.js (render path reads Finances.getMonth). -->
+  <script src="../js/life-building-ui.js"></script>
   <!-- Rhythm engine: read-side daily timeline aggregator. Stubs
        window.History per-case + writes localStorage fixtures (mirrors
        analytics pattern). -->
@@ -143,6 +154,7 @@
   <script src="../js/sync-merge-bfrb.js"></script>
   <script src="../js/sync-merge-distractions.js"></script>
   <script src="../js/sync-merge-mood.js"></script>
+  <script src="../js/sync-merge-finances.js"></script>
   <script src="../js/sync-auth.js"></script>
   <script src="../js/backup.js"></script>
   <!-- bl-2-todoist: Todoist REST v2 client + offline write queue.
@@ -176,6 +188,8 @@
   <script src="sync-merge-bfrb.test.js"></script>
   <script src="mood.test.js"></script>
   <script src="sync-merge-mood.test.js"></script>
+  <script src="finances.test.js"></script>
+  <script src="sync-merge-finances.test.js"></script>
   <script src="distractions.test.js"></script>
   <script src="sync-merge-distractions.test.js"></script>
   <script src="sync-merge-rest-log.test.js"></script>
@@ -203,6 +217,7 @@
   <script src="home-ui.test.js"></script>
   <script src="physicals-ui.test.js"></script>
   <script src="chickens-ui.test.js"></script>
+  <script src="life-building-ui.test.js"></script>
   <script src="export.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>

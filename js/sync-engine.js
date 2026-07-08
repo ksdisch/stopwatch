@@ -153,6 +153,7 @@ const SyncEngine = (() => {
     { key: 'bfrb_events',  adapter: { read: () => BfrbEvents.snapshotForSync(),   write: writeStub } },
     { key: 'distractions', adapter: { read: () => Distractions.snapshotForSync(), write: writeStub } },
     { key: 'mood_events',  adapter: { read: () => Mood.snapshotForSync(),         write: writeStub } },
+    { key: 'finances',     adapter: { read: () => Finances.snapshotForSync(),     write: writeStub } },
   ];
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -351,6 +352,7 @@ const SyncEngine = (() => {
   //   - bfrb_events:  payload.events[]
   //   - distractions: payload.flow{sessionId: [entries]} + payload.pomodoro{...}
   //   - mood_events:  payload.events[]
+  //   - finances:     payload.finances{} — object keyed by YYYY-MM
   //
   // Returns a NEW snapshot with the filtered payload + a `__skipped`
   // counter for observability. The dispatcher logs the skip count via
@@ -448,6 +450,21 @@ const SyncEngine = (() => {
       if (arr) {
         out.payload.events = arr.filter(r => { if (isFuture(r)) { _trackSkip(r); return false; } return true; });
       }
+    } else if (key === 'finances') {
+      // payload.finances is an OBJECT keyed by YYYY-MM month; each value is
+      // a flat metric record. Drop the whole month record if its envelope
+      // is future-schema (no sub-record structure to preserve, unlike
+      // rest_log's sleep/naps).
+      const obj = (snapshot.payload.finances && typeof snapshot.payload.finances === 'object'
+                   && !Array.isArray(snapshot.payload.finances))
+        ? snapshot.payload.finances : {};
+      const filtered = {};
+      for (const k of Object.keys(obj)) {
+        const rec = obj[k];
+        if (isFuture(rec)) { _trackSkip(rec); continue; }
+        filtered[k] = rec;
+      }
+      out.payload.finances = filtered;
     } else {
       // Unknown store key — pass through verbatim (defensive forward-compat
       // for future stores added by E-2+ work).
@@ -683,6 +700,16 @@ const SyncEngine = (() => {
         // merge code (E-1) can find it without re-deriving from path.
         const entry = obj[key] || {};
         out.push({ id: key, record: Object.assign({ date: key }, entry) });
+      }
+      return out;
+    }
+    if (storeKey === 'finances') {
+      // Per-month-keyed like rest_log: the YYYY-MM month key IS the doc id.
+      // The record already carries `month`, so no need to stamp a key on.
+      const obj = snapshot.payload.finances || {};
+      for (const key of Object.keys(obj)) {
+        const entry = obj[key] || {};
+        out.push({ id: key, record: entry });
       }
       return out;
     }
@@ -1957,7 +1984,7 @@ const SyncEngine = (() => {
   // Payload shapes are the same per-store envelopes consumed by
   // `_filterFutureRecordsInSnapshot` — meds[], history.sessions[],
   // rest_log{date}, presets[], bfrb_events.events[],
-  // distractions.flow{}/.pomodoro{}, mood_events.events[].
+  // distractions.flow{}/.pomodoro{}, mood_events.events[], finances{month}.
   function _enqueueDirtyRecordsForStore(storeKey, snapshot) {
     if (!snapshot || typeof snapshot !== 'object' || !snapshot.payload) return;
     const payload = snapshot.payload;
@@ -2022,6 +2049,20 @@ const SyncEngine = (() => {
         const recordId = dev + '-' + r.at;
         const wc = (typeof r.updatedAt === 'number') ? r.updatedAt : r.at;
         _maybeBufferOnOffline('mood_events', recordId, wc);
+      }
+      return;
+    }
+    if (storeKey === 'finances') {
+      // Per-month-keyed like rest_log: the YYYY-MM month key IS the record
+      // id. finances is editable-per-period LWW, so the record's own
+      // updatedAt is the write-clock.
+      const obj = (payload.finances && typeof payload.finances === 'object'
+                   && !Array.isArray(payload.finances))
+        ? payload.finances : {};
+      for (const monthKey of Object.keys(obj)) {
+        const rec = obj[monthKey];
+        const wc = (rec && typeof rec.updatedAt === 'number') ? rec.updatedAt : now;
+        _maybeBufferOnOffline('finances', String(monthKey), wc);
       }
       return;
     }
@@ -2113,7 +2154,7 @@ const SyncEngine = (() => {
     if (_offlineBuffered) return;
 
     _steadyRunInFlight = true;
-    const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null, distractions: null, mood_events: null };
+    const storeResults = { meds: null, history: null, rest_log: null, presets: null, bfrb_events: null, distractions: null, mood_events: null, finances: null };
 
     // E-1c: F13 dispatcher-wide write gate flip (Pick B on E-1c-PROMPT
     // TODO #2). Flip SyncState to 'hydrating' BEFORE the per-store loop
@@ -2145,6 +2186,7 @@ const SyncEngine = (() => {
       bfrb_events:  (typeof SyncMergeBfrb         !== 'undefined') ? SyncMergeBfrb         : null,
       distractions: (typeof SyncMergeDistractions !== 'undefined') ? SyncMergeDistractions : null,
       mood_events:  (typeof SyncMergeMood         !== 'undefined') ? SyncMergeMood         : null,
+      finances:     (typeof SyncMergeFinances     !== 'undefined') ? SyncMergeFinances     : null,
     };
 
     // E-1c: collect async per-store promises so we can chain a single
@@ -2341,6 +2383,7 @@ const SyncEngine = (() => {
       bfrb_events:  (typeof SyncMergeBfrb         !== 'undefined') ? SyncMergeBfrb         : null,
       distractions: (typeof SyncMergeDistractions !== 'undefined') ? SyncMergeDistractions : null,
       mood_events:  (typeof SyncMergeMood         !== 'undefined') ? SyncMergeMood         : null,
+      finances:     (typeof SyncMergeFinances     !== 'undefined') ? SyncMergeFinances     : null,
     };
     const mod = moduleByKey[storeKey];
     if (!mod || typeof mod.merge !== 'function') {

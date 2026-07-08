@@ -63,6 +63,10 @@ if (typeof PhysicalsUI !== 'undefined' && typeof PhysicalsUI.init === 'function'
 // PhysicalsUI so the hub repaints when the council's `chickens` record lands.
 // Init AFTER SynthesisFeed so onUpdate exists.
 if (typeof ChickensUI !== 'undefined' && typeof ChickensUI.init === 'function') ChickensUI.init();
+// Life Building hub (Life-OS Phase 5): same onUpdate-subscription pattern as
+// ChickensUI so the hub repaints when the council's `life_building` record
+// lands. Init AFTER SynthesisFeed so onUpdate exists.
+if (typeof LifeBuildingUI !== 'undefined' && typeof LifeBuildingUI.init === 'function') LifeBuildingUI.init();
 
 // C-1: boot-trigger backstop for hydrate-from-cloud.
 //

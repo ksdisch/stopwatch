@@ -1,27 +1,29 @@
 // Tempo navigation — pillar tabs + sub-nav + hash routing.
 //
 // Pillars:
-//   home       → Life-OS Home hub (bubble map + synthesis cards). DEFAULT landing.
-//   timers     → wraps existing Stopwatch / Timer / Pomodoro / Flow / Interval / Cooking modes
-//   wellness   → placeholder surfaces (Meds / Exercise / Mindful / Cooking / Recovery)
-//   physicals  → Life-OS Physicals hub (composite + 4 Area cards from the council)
-//   chickens   → Life-OS Chickens hub (composite + 5 Area cards from the council)
-//   rhythm     → placeholder
-//   analytics  → opens the existing Analytics panel
+//   home           → Life-OS Home hub (bubble map + synthesis cards). DEFAULT landing.
+//   timers         → wraps existing Stopwatch / Timer / Pomodoro / Flow / Interval / Cooking modes
+//   wellness       → placeholder surfaces (Meds / Exercise / Mindful / Cooking / Recovery)
+//   physicals      → Life-OS Physicals hub (composite + 4 Area cards from the council)
+//   chickens       → Life-OS Chickens hub (composite + 5 Area cards from the council)
+//   life-building  → Life-OS Life Building hub (composite + Finances Area + capture form)
+//   rhythm         → placeholder
+//   analytics      → opens the existing Analytics panel
 //
 // Hash routing (per docs/TEMPO-PLAN §10):
-//   #/home              → Home hub (default landing — no hash → here)
-//   #/timers            → stopwatch
-//   #/timers/countdown  → timer
-//   #/timers/pomodoro   → pomodoro
-//   #/timers/flow       → flow
-//   #/timers/interval   → interval
-//   #/timers/cook       → cooking
-//   #/wellness[/:sub]   → wellness pillar, optional sub-nav
-//   #/physicals         → Physicals hub
-//   #/chickens          → Chickens hub
-//   #/rhythm            → rhythm pillar
-//   #/analytics         → analytics pillar
+//   #/home                → Home hub (default landing — no hash → here)
+//   #/timers              → stopwatch
+//   #/timers/countdown    → timer
+//   #/timers/pomodoro     → pomodoro
+//   #/timers/flow         → flow
+//   #/timers/interval     → interval
+//   #/timers/cook         → cooking
+//   #/wellness[/:sub]     → wellness pillar, optional sub-nav
+//   #/physicals           → Physicals hub
+//   #/chickens            → Chickens hub
+//   #/life-building       → Life Building hub
+//   #/rhythm              → rhythm pillar
+//   #/analytics           → analytics pillar
 //
 // Legacy URL support: ?mode=X is mapped to the right hash and replaced
 // in-place so the URL bar reflects the new scheme.
@@ -62,7 +64,7 @@ const TempoNav = (() => {
     cooking:   '#/timers/cook',
   };
 
-  let activePillar = 'home';  // 'home' | 'timers' | 'wellness' | 'physicals' | 'chickens' | 'rhythm' | 'analytics'
+  let activePillar = 'home';  // 'home' | 'timers' | 'wellness' | 'physicals' | 'chickens' | 'life-building' | 'rhythm' | 'analytics'
   let initialised  = false;
 
   function init() {
@@ -129,7 +131,7 @@ const TempoNav = (() => {
   // ── Applying a route ─────────────────────────────────────────────────
 
   function applyRoute({ pillar, sub }, { updateHash = true } = {}) {
-    if (!['home', 'timers', 'wellness', 'physicals', 'chickens', 'rhythm', 'analytics'].includes(pillar)) {
+    if (!['home', 'timers', 'wellness', 'physicals', 'chickens', 'life-building', 'rhythm', 'analytics'].includes(pillar)) {
       pillar = 'home';
     }
     activePillar = pillar;
@@ -209,6 +211,15 @@ const TempoNav = (() => {
       // doesn't throw.
       if (typeof ChickensUI !== 'undefined' && typeof ChickensUI.render === 'function') {
         ChickensUI.render();
+      }
+    } else if (pillar === 'life-building') {
+      // Life Building hub (Life-OS Phase 5): the composite hero + Finances Area
+      // card from the council's `life_building` synthesis record (render-from-
+      // cache) + the monthly finance capture form (write path). No sub-nav.
+      // Guarded so a page without life-building-ui.js (e.g. a test harness)
+      // doesn't throw.
+      if (typeof LifeBuildingUI !== 'undefined' && typeof LifeBuildingUI.render === 'function') {
+        LifeBuildingUI.render();
       }
     } else if (pillar === 'analytics') {
       // Placeholder shows an "Open dashboard" CTA that opens the existing
