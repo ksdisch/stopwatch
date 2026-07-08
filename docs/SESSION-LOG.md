@@ -2692,3 +2692,26 @@ UI suite **6 passed** (`npm run test:ui`: 1 smoke + 2 xss + 3 import). Engine su
 #195  docs(proving-ground): Phase-4 UI/integration harness design spec              [MERGED 5084247]
 #___  feat(proving-ground): Slice 1 — harness + attribute-XSS fix + import lock      [this PR]
 ```
+
+---
+
+## 2026-07-08 — Hunt Phase 4: Proving Ground Slice 2 — R9 notification persistence
+
+### What We Built
+
+Built **Slice 2** of the Tempo Proving Ground (2026-07-07 hunt, Phase 4): the **R9 fix** — web notifications now survive service-worker eviction. Test-first throughout (RED→GREEN at both the engine and integration layers).
+
+- **Root cause** — `sw.js` scheduled web notifications with an in-memory `setTimeout` + a top-level `pendingNotifications` Map. The browser evicts idle service workers, and both the timer and the Map die with it, so a notification scheduled minutes out was silently lost. Native iOS was never affected (`Platform.scheduleNotification` hands native schedules to `@capacitor/local-notifications` at the OS level).
+- **Fix — durable store + rearm-on-wake.** New `js/bg-notify-store.js`: a pure `plan(records, now)` (overdue→`fire` / upcoming→`arm` with clamped delay; malformed timestamps fire rather than being lost) + IDB CRUD on a dedicated `tempo_notify_db`. SW-safe (only `indexedDB`/`self`), so `sw.js` uses the SAME bytes via `importScripts` while the engine harness loads it as a page `<script>` — no logic duplication. `sw.js` now persists on schedule, `_rearm()` fires-overdue + re-arms on every SW wake (activate, cold top-level spin-up, and a `rearmNotifications` message), and deletes the record on fire/cancel. `js/bg-notify.js` adds `rearm()` + a `visibilitychange` listener so returning to the tab flushes overdue reminders (the most reliable client-driven wake) — a small in-scope addition beyond the bare SW fix.
+- **Two-layer TDD** — engine `tests/bg-notify-store.test.js` (12 `it()`: pure `plan()` boundary/malformed/mixed + IDB round-trip/replace/remove) drove the module RED→GREEN; UI `tests/ui/notification-tap.spec.js` (3 tests, per-spec `serviceWorkers:'allow'`) drove the SW wiring, including the R9 core (an overdue record left by an "evicted" SW fires on rearm). The UI spec's "fired" signal is **IDB record consumption**, not `getNotifications()` — Playwright's bundled old-headless Chromium disables the notification platform (`Notification.permission` stays `denied`), but `_fire()` deleting the durable record is a deterministic, CI-robust proof the fire path ran (confirmed via a throwaway diagnostic). The boot helper does a manual reload to design out app.js's F-pwa `controllerchange→reload` race.
+- **Wiring + docs** — new module wired through all four touch-points (index.html `<script>`, CLAUDE.md file-map + load-order chain, sw.js ASSETS + `CACHE_NAME` v157→**v158**); `tempo_notify_db` added to `docs/reference/data-dictionary.md` + CLAUDE.md persistence topology; R9 flipped to SHIPPED in the hunt register, CLAUDE.md debt entry, and `docs/BACKLOG.md`.
+
+### Verification
+
+Engine **PASS (1250)** (1238 + 12 new). UI **9 passed** (`npm run test:ui`: prior 6 + 3 new). Both structural guards green (`check-asset-integrity` 90==90, `check-load-order` 90==90). Fresh-context browser verify + CI verdict on push pending.
+
+### PRs
+
+```
+#___  fix(proving-ground): Slice 2 — R9 notification persistence (durable tempo_notify_db + SW rearm)   [this PR]
+```

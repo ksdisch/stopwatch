@@ -130,18 +130,21 @@ local backup / full-data JSON export. Many synced stores are NOT raw-keyed in
 
 ## 2. IndexedDB stores
 
-Two separate IDB databases by design — see ADR 0006 (planned, `docs/adr/README.md:21-22`).
-Sessions are canonical user data; the pending-op buffer is transient sync infrastructure.
-Orthogonal lifecycles → independently revertable (`js/sync-buffer.js:19-22`).
+Three separate IDB databases by design — see ADR 0006 (planned, `docs/adr/README.md:21-22`).
+Sessions are canonical user data; the pending-op buffer is transient sync infrastructure;
+the notification queue is transient SW-scheduling state. Orthogonal lifecycles →
+independently revertable (`js/sync-buffer.js:19-22`).
 
 | DB / store | Owner | keyPath | Indexes | Cap | Purpose |
 |---|---|---|---|---|---|
 | `stopwatch_history_db` v1 / `sessions` | `js/history.js:2-3,53-57` | `id` (string `deviceId-ts-counter`, `js/history.js:32-34`) | none | unbounded | Canonical session history. Migrates legacy `stopwatch_history` localStorage on first load (`js/history.js:68-94`). Synced as the `history` store. |
 | `tempo_sync_db` v1 / `pending_ops` | `js/sync-buffer.js:69-72` | `id` (autoincrement) | `enqueuedAt` (FIFO drain) | **1000** (`PENDING_OP_CAP`, `js/sync-buffer.js:75`) | Offline write buffer. Holds pointer-shaped ops `{ id, store, recordId, originalWallClock, enqueuedAt }` — never a record copy (`js/sync-buffer.js:12-17`). Drained FIFO on `Platform.network` online. Overflow drops oldest + emits `buffer-overflow`. |
+| `tempo_notify_db` v1 / `pending_notifications` | `js/bg-notify-store.js` | `id` (string — the notification id, e.g. `timer`, `cooking-3`) | none | unbounded | **R9** durable web-notification queue. Holds `{ id, fireAt, title, body }` so scheduled notifications survive SW eviction (the in-memory `setTimeout` + Map in `sw.js` die on eviction). SW writes on schedule; `_rearm()` fires overdue + re-arms upcoming on every SW wake (`sw.js`); the record is deleted on fire/cancel. **Web-only** (native schedules at the OS level via `@capacitor/local-notifications`). NOT synced, NOT exported. |
 
-**Why two DBs:** keeping the buffer out of `stopwatch_history_db` lets the entire E-2
+**Why separate DBs:** keeping the buffer out of `stopwatch_history_db` lets the entire E-2
 offline-buffer feature be reverted without touching the canonical history schema
-(`js/sync-buffer.js:19-22`).
+(`js/sync-buffer.js:19-22`); `tempo_notify_db` is likewise isolated so the R9 notification
+persistence is self-contained.
 
 ---
 
