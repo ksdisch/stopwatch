@@ -74,5 +74,23 @@ const BgNotify = (() => {
     });
   }
 
-  return { schedule, cancel, requestPermission };
+  // R9: nudge the SW to fire any overdue notifications + re-arm upcoming ones
+  // from its durable store. The SW also rearms on its own wakes, but a
+  // foregrounding client is the most reliable, most timely trigger — and it
+  // covers the "tab stayed open in the background" case where no navigation
+  // (hence no SW fetch-wake) occurs. Native schedules at the OS level, so
+  // there is nothing to rearm there.
+  function rearm() {
+    if (isNative()) return;
+    postToSW({ type: 'rearmNotifications' });
+  }
+
+  // Fire the nudge whenever the page becomes visible again.
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') rearm();
+    });
+  }
+
+  return { schedule, cancel, requestPermission, rearm };
 })();

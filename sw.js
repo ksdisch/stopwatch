@@ -1,4 +1,9 @@
-const CACHE_NAME = 'stopwatch-v157-analytics-aria-escape';
+// R9: pull in the durable notification store (pure plan() + tempo_notify_db IDB
+// CRUD). Same bytes the page loads via <script>; here the SW uses it to persist
+// pending notifications so they survive worker eviction.
+importScripts('./js/bg-notify-store.js');
+
+const CACHE_NAME = 'stopwatch-v158-notification-persistence';
 const ASSETS = [
   './',
   './index.html',
@@ -50,6 +55,7 @@ const ASSETS = [
   './js/history-ui.js',
   './js/interval.js',
   './js/bg-notify.js',
+  './js/bg-notify-store.js',
   './js/interval-ui.js',
   './js/cooking-ui.js',
   './js/pomodoro-stats.js',
@@ -106,14 +112,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      )
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+    );
+    await self.clients.claim();
+    // R9: a newly-activated worker fires any overdue notifications + re-arms
+    // upcoming ones from the durable store.
+    await _rearm();
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -183,39 +191,91 @@ self.addEventListener('fetch', (event) => {
   })());
 });
 
-// ── Background Notification Scheduling ──
-const pendingNotifications = new Map();
+// ── Background Notification Scheduling (R9: survives SW eviction) ──
+//
+// The DURABLE source of truth is BgNotifyStore (IndexedDB, imported at the top
+// of this file). `pendingTimers` holds only the in-memory setTimeout handles
+// for the fast path while the SW stays alive — they die on eviction, but the
+// IDB records don't, and `_rearm()` re-creates the timers (and fires any
+// overdue) whenever the SW next wakes.
+const pendingTimers = new Map();
+
+function _showNotif(rec) {
+  return self.registration.showNotification(rec.title || 'Timer', {
+    body: rec.body || 'Time is up!',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    vibrate: [200, 100, 200, 100, 200],
+    tag: rec.id,
+    requireInteraction: true,
+  });
+}
+
+// Fire now: drop the in-memory timer, delete the durable record FIRST (so a
+// concurrent rearm on another wake can't double-fire — and the `tag` coalesces
+// any residual duplicate anyway), then show.
+function _fire(rec) {
+  const t = pendingTimers.get(rec.id);
+  if (t) { clearTimeout(t); pendingTimers.delete(rec.id); }
+  return Promise.resolve(self.BgNotifyStore.remove(rec.id).catch(() => {}))
+    .then(() => _showNotif(rec))
+    .catch(() => {}); // a denied/blocked platform must not leave an unhandled rejection
+}
+
+// Arm the in-memory fast-path timer for a still-upcoming record.
+function _armTimer(rec, delayMs) {
+  const existing = pendingTimers.get(rec.id);
+  if (existing) clearTimeout(existing);
+  const t = setTimeout(() => { _fire(rec); }, Math.max(0, delayMs));
+  pendingTimers.set(rec.id, t);
+}
+
+// Replay the durable store against the wall clock: fire overdue records,
+// (re)arm upcoming ones. Runs on every SW wake — activate, top-level spin-up
+// after an eviction, and the client's rearmNotifications nudge.
+async function _rearm() {
+  let records;
+  try { records = await self.BgNotifyStore.all(); }
+  catch (_) { return; }
+  const { fire, arm } = self.BgNotifyStore.plan(records, Date.now());
+  for (const rec of fire) { _fire(rec); }
+  for (const item of arm) { _armTimer(item.record, item.delayMs); }
+}
 
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || !data.type) return;
 
   if (data.type === 'scheduleNotification') {
-    // Cancel any existing notification with the same ID
-    if (pendingNotifications.has(data.id)) {
-      clearTimeout(pendingNotifications.get(data.id));
-    }
-    const timeoutId = setTimeout(() => {
-      pendingNotifications.delete(data.id);
-      self.registration.showNotification(data.title || 'Timer', {
-        body: data.body || 'Time is up!',
-        icon: './icons/icon-192.png',
-        badge: './icons/icon-192.png',
-        vibrate: [200, 100, 200, 100, 200],
-        tag: data.id,
-        requireInteraction: true,
-      });
-    }, Math.max(0, data.delayMs));
-    pendingNotifications.set(data.id, timeoutId);
+    const rec = {
+      id: data.id,
+      fireAt: Date.now() + Math.max(0, data.delayMs),
+      title: data.title,
+      body: data.body,
+    };
+    // Durable first (survives eviction), then arm the in-memory fast path.
+    event.waitUntil(
+      self.BgNotifyStore.put(rec)
+        .catch(() => {})
+        .then(() => { _armTimer(rec, rec.fireAt - Date.now()); })
+    );
   }
 
   if (data.type === 'cancelNotification') {
-    if (pendingNotifications.has(data.id)) {
-      clearTimeout(pendingNotifications.get(data.id));
-      pendingNotifications.delete(data.id);
-    }
+    const t = pendingTimers.get(data.id);
+    if (t) { clearTimeout(t); pendingTimers.delete(data.id); }
+    event.waitUntil(self.BgNotifyStore.remove(data.id).catch(() => {}));
+  }
+
+  if (data.type === 'rearmNotifications') {
+    event.waitUntil(_rearm());
   }
 });
+
+// Fire-overdue / re-arm on cold spin-up too: the SW global is re-evaluated
+// every time the browser restarts an evicted worker, and neither install nor
+// activate re-runs then — this top-level call is the only "on startup" hook.
+_rearm();
 
 // M11: handle taps on background notifications. Without this, the
 // `requireInteraction: true` alarms above are a no-op when tapped and leave a

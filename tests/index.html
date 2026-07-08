@@ -37,6 +37,10 @@
   <!-- escapeHtml — used by rhythm-insights card chrome + panel renders. -->
   <script src="../js/dom-utils.js"></script>
   <script src="../js/schema.js"></script>
+  <!-- R9: durable notification store (pure plan() + tempo_notify_db IDB CRUD).
+       No deps — only indexedDB/self. sw.js loads the same bytes via
+       importScripts; here it loads on the page so the engine suite can test it. -->
+  <script src="../js/bg-notify-store.js"></script>
   <script src="../js/stopwatch.js"></script>
   <script src="../js/timer.js"></script>
   <script src="../js/button-fsm.js"></script>
@@ -204,6 +208,7 @@
   <script src="audio.test.js"></script>
   <script src="todoist.test.js"></script>
   <script src="button-fsm.test.js"></script>
+  <script src="bg-notify-store.test.js"></script>
 
   <!-- Report -->
   <script>reportResults();</script>
