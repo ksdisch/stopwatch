@@ -2713,5 +2713,5 @@ Engine **PASS (1250)** (1238 + 12 new). UI **9 passed** (`npm run test:ui`: prio
 ### PRs
 
 ```
-#___  fix(proving-ground): Slice 2 — R9 notification persistence (durable tempo_notify_db + SW rearm)   [this PR]
+#197  fix(proving-ground): Slice 2 — R9 notification persistence (durable tempo_notify_db + SW rearm)   [open — awaiting Kyle's merge go-ahead]
 ```
