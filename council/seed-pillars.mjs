@@ -14,8 +14,12 @@
 //
 // PHASE 3: `chickens` is NO LONGER seeded here — it has a real producer
 // (synthesize.mjs → lib/chickens-synthesizer.mjs reading mood_events /
-// bfrb_events / history + the physicals RECORD). The remaining three are
-// seeded until their own phases land real synthesizers.
+// bfrb_events / history + the physicals RECORD).
+//
+// PHASE 5 slice 1: `life_building` is NO LONGER seeded here — it has a real
+// producer (synthesize.mjs → lib/life-building-synthesizer.mjs reading
+// Tempo's synced 'finances' store). The remaining two (relationships / growth)
+// are seeded until their own phases land real synthesizers.
 //
 // Each record is a VALID synthesis record (validated before write) and is
 // clearly synthetic: producer "council/seed", provenance.sources ["seed"]. On
@@ -51,13 +55,6 @@ const balanceConfig = JSON.parse(
 // The remaining seed pillar records. score → band derived; each carries its
 // own short headline + 1..3 signals + a single short move (own nudge).
 const SEED_PILLARS = [
-  {
-    node: 'life_building',
-    score: 52,
-    headline: 'SEED — Life Building strained: admin backlog growing.',
-    signals: ['Overdue admin tasks up', 'Habit adherence slipping', 'Finance check overdue'],
-    nudges: [{ text: 'Clear the 3 oldest overdue admin tasks', priority: 1 }],
-  },
   {
     node: 'relationships',
     score: 34,

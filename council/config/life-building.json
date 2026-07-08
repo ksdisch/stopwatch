@@ -1,0 +1,13 @@
+{
+  "_comment": "Life Building pillar SCORING config (Phase 5 slice 1 — Finances Area only). Separate from balance.json (which holds the cross-pillar importance/target the Balance engine ranks by). This file tunes how the Life Building synthesizer (lib/life-building-synthesizer.mjs) turns Tempo's synced 'finances' store into the Finances Area score and the composite. Kyle's tuning surface — edit values here, no code change. NOTE: savingsTarget and creditTarget/creditFloor are Phase-5 PLACEHOLDERS (open item confirmed in spec) — the real targets are refined after first data entry via the P7 approve-on-change loop.",
+  "windowDays": 14,
+  "weights": {
+    "savingsRate": 0.40,
+    "creditScore": 0.30,
+    "debtRemaining": 0.15,
+    "netWorth": 0.15
+  },
+  "savingsTarget": 20,
+  "creditTarget": 800,
+  "creditFloor": 670
+}

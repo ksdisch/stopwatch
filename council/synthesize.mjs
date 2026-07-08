@@ -29,6 +29,7 @@ import { validateSynthesisRecord } from './lib/synthesis-record.mjs';
 import { buildHomeRecord } from './lib/home-synthesizer.mjs';
 import { buildPhysicalsRecord } from './lib/physicals-synthesizer.mjs';
 import { buildChickensRecord } from './lib/chickens-synthesizer.mjs';
+import { buildLifeBuildingRecord } from './lib/life-building-synthesizer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,6 +199,53 @@ async function synthesizeChickens({ db, uid, mode }) {
   );
 }
 
+/**
+ * synthesizeLifeBuilding({ db, uid, mode }) — Phase 5 slice 1: the Life
+ * Building pillar producer. Reads Tempo's synced 'finances' store (monthly
+ * snapshots at users/{uid}/finances/{month}) via the Admin SDK (reads bypass
+ * firestore.rules), rolls them into a normalized life_building synthesis record
+ * (Finances Area + composite + the additive `balance{}` stamp the PWA lenses
+ * read), validates, and WRITES users/{uid}/synthesis/life_building.
+ *
+ * Called AFTER chickens and BEFORE the pillar-read loop so the home roll-up
+ * reads the fresh record. Replaces the Phase-1 seed (seed-pillars.mjs no
+ * longer seeds life_building). The scoring math is the pure
+ * lib/life-building-synthesizer.mjs (testable, no I/O).
+ */
+async function synthesizeLifeBuilding({ db, uid, mode }) {
+  const scoring = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'life-building.json'), 'utf8'),
+  );
+  const balanceConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'config', 'balance.json'), 'utf8'),
+  );
+
+  // Tempo's synced 'finances' store: collection of per-month docs at
+  // users/{uid}/finances/{month}. Doc id IS the YYYY-MM month key.
+  const finSnap = await db.collection(`users/${uid}/finances`).get();
+  const financesDocs = finSnap.docs.map((d) => ({ month: d.id, ...d.data() }));
+
+  const producer = mode === 'daily' ? 'council/life-building-daily' : 'council/life-building-weekly';
+
+  // buildLifeBuildingRecord validates + throws on a contract violation internally.
+  const record = buildLifeBuildingRecord({
+    financesDocs,
+    config: scoring,
+    balanceConfig: balanceConfig.life_building || {},
+    mode,
+    producer,
+    now: Date.now(),
+  });
+
+  const lbPath = `users/${uid}/synthesis/life_building`;
+  await db.doc(lbPath).set(record);
+  console.log(
+    `OK: wrote ${mode} life_building synthesis record to ${lbPath} ` +
+      `(band=${record.state.band}, score=${record.state.score}, ` +
+      `coverage=${record.provenance.coverage.toFixed(2)}, areas=${record.areas.length}).`,
+  );
+}
+
 async function main() {
   // TEMPO_UID is required — the Firebase Auth uid whose synthesis subcollection
   // we read from + write to. GOOGLE_APPLICATION_CREDENTIALS is read by
@@ -245,6 +293,17 @@ async function main() {
     await synthesizeChickens({ db, uid, mode });
   } catch (err) {
     console.error('ERROR: chickens synthesis failed (home continues on the prior record):', err);
+  }
+
+  // Phase 5 slice 1: synthesize the REAL life_building pillar from Tempo's
+  // synced 'finances' store. Placed AFTER chickens and BEFORE the pillar-read
+  // loop so the home roll-up reads the fresh record. Same NON-FATAL posture as
+  // physicals/chickens: a life_building failure logs + continues on the prior
+  // Firestore record, so the home refresh never blanks.
+  try {
+    await synthesizeLifeBuilding({ db, uid, mode });
+  } catch (err) {
+    console.error('ERROR: life_building synthesis failed (home continues on the prior record):', err);
   }
 
   // Read the five pillar records (nodeId == node for single-segment pillars).
