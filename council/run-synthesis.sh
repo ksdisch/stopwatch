@@ -60,7 +60,17 @@ if [[ -f "${REPO}/council/.env.secrets" ]]; then
                || stat -f '%A' "${REPO}/council/.env.secrets" 2>/dev/null \
                || echo '')"
   if [[ "${SECRETS_PERMS}" != "600" ]]; then
-    echo "COUNCIL FAILED: council/.env.secrets has perms ${SECRETS_PERMS:-<unknown>}, expected 600 — run: chmod 600 council/.env.secrets" >&2
+    perms_msg="COUNCIL FAILED: council/.env.secrets has perms ${SECRETS_PERMS:-<unknown>}, expected 600 — run: chmod 600 council/.env.secrets"
+    echo "${perms_msg}" >&2
+    # This guard runs BEFORE the dated-log header (below) and BEFORE
+    # notify_failure() is defined, so historically a perms failure wrote NO entry
+    # to council/logs/nightly/ and fired no alert — only launchd's unwatched
+    # err.log caught it, which silently took the council down 2026-06-14..07-08.
+    # Record the dated per-run log here too, so a perms failure is visible where
+    # run outcomes are actually checked. (A push alert still can't fire this
+    # early: the Slack/Twilio creds live inside this very unreadable file.)
+    echo "=== life-os council run ${DATE_TAG} ===" >> "${LOG_FILE}"
+    echo "${perms_msg}" >> "${LOG_FILE}"
     exit 1
   fi
   # shellcheck disable=SC1091
