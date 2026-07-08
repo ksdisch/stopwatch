@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stopwatch-v156-bfrb-legacy-cleanup';
+const CACHE_NAME = 'stopwatch-v157-analytics-aria-escape';
 const ASSETS = [
   './',
   './index.html',
