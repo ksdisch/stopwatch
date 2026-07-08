@@ -141,6 +141,11 @@ const Export = (() => {
     // portability. No migration marker needed (mood_events starts fresh —
     // unlike bfrb_events there are no legacy keys to consolidate).
     'mood_events',
+    // Life-OS Phase 5 finances store — the 8th synced store (editable
+    // per-month LWW, keyed YYYY-MM). Export captures the full per-month map
+    // for cross-device restore portability. No migration marker (finances
+    // starts fresh — no legacy keys to consolidate).
+    'finances',
 
     // Preferences
     'theme', 'sound_muted', 'sound_profile', 'bfrb_volume',

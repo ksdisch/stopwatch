@@ -281,6 +281,7 @@ describe('SyncBuffer — drain', () => {
       bfrb: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
     try {
       await _sb_resetDb();
@@ -300,6 +301,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = () => { order.push('bfrb_events'); return { ok: true, count: 1 }; };
       SyncMergeDistractions.merge = () => { order.push('distractions'); return { ok: true, count: 1 }; };
       SyncMergeMood.merge = () => { order.push('mood_events'); return { ok: true, count: 1 }; };
+      SyncMergeFinances.merge = () => { order.push('finances'); return { ok: true, count: 1 }; };
 
       const result = await SyncBuffer.drain();
       assertEqual(result.ok, true, 'drain ok');
@@ -317,6 +319,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = realMerges.bfrb;
       SyncMergeDistractions.merge = realMerges.distractions;
       SyncMergeMood.merge = realMerges.mood;
+      SyncMergeFinances.merge = realMerges.finances;
       _sb_restore(saved);
       await _sb_resetDb();
     }
@@ -332,6 +335,7 @@ describe('SyncBuffer — drain', () => {
       bfrb: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
     try {
       await _sb_resetDb();
@@ -347,6 +351,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = incrementer;
       SyncMergeDistractions.merge = incrementer;
       SyncMergeMood.merge = incrementer;
+      SyncMergeFinances.merge = incrementer;
 
       const r1 = await SyncBuffer.drain();
       assertEqual(r1.ok, true, 'first drain ok');
@@ -366,6 +371,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = realMerges.bfrb;
       SyncMergeDistractions.merge = realMerges.distractions;
       SyncMergeMood.merge = realMerges.mood;
+      SyncMergeFinances.merge = realMerges.finances;
       _sb_restore(saved);
       await _sb_resetDb();
     }
@@ -381,6 +387,7 @@ describe('SyncBuffer — drain', () => {
       bfrb: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
     try {
       await _sb_resetDb();
@@ -396,6 +403,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = () => ({ ok: true, count: 0 });
       SyncMergeDistractions.merge = () => ({ ok: true, count: 0 });
       SyncMergeMood.merge = () => ({ ok: true, count: 0 });
+      SyncMergeFinances.merge = () => ({ ok: true, count: 0 });
 
       const result = await SyncBuffer.drain();
       assertEqual(result.ok, true, 'drain returns ok:true even when one store throws');
@@ -412,6 +420,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = realMerges.bfrb;
       SyncMergeDistractions.merge = realMerges.distractions;
       SyncMergeMood.merge = realMerges.mood;
+      SyncMergeFinances.merge = realMerges.finances;
       _sb_restore(saved);
       await _sb_resetDb();
     }
@@ -427,6 +436,7 @@ describe('SyncBuffer — drain', () => {
       bfrb: SyncMergeBfrb.merge,
       distractions: SyncMergeDistractions.merge,
       mood: SyncMergeMood.merge,
+      finances: SyncMergeFinances.merge,
     };
     try {
       await _sb_resetDb();
@@ -444,6 +454,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = incrementer;
       SyncMergeDistractions.merge = incrementer;
       SyncMergeMood.merge = incrementer;
+      SyncMergeFinances.merge = incrementer;
 
       SyncFlag.isEnabled = () => false;
       localStorage.setItem('tempo_sync_enabled', '0');
@@ -459,6 +470,7 @@ describe('SyncBuffer — drain', () => {
       SyncMergeBfrb.merge = realMerges.bfrb;
       SyncMergeDistractions.merge = realMerges.distractions;
       SyncMergeMood.merge = realMerges.mood;
+      SyncMergeFinances.merge = realMerges.finances;
       _sb_restore(saved);
       await _sb_resetDb();
     }

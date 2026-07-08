@@ -21,6 +21,7 @@
 //   - Medication records (localStorage 'meds/{medId}')
 //   - Quick presets      (localStorage 'quick_presets')
 //   - Mood events        (localStorage 'mood_events' — Life-OS Phase 3, ADR-0008)
+//   - Finances           (localStorage 'finances' — Life-OS Phase 5, per-month LWW)
 //
 // Explicitly NOT subject to schemaVersion stamping today: multi_state,
 // pomodoro_*, flow_*, interval_state, cooking_timers, sequence_*. These

@@ -988,6 +988,17 @@
       <div id="chickens-pillar-body" class="chickens-pillar-body"></div>
     </section>
 
+    <!-- ── Life Building pillar (Life-OS Phase 5) ── The dedicated deep-dive for
+         the `life_building` domain pillar. LifeBuildingUI.render() (called by
+         TempoNav.applyRoute when active) renders the council's `life_building`
+         synthesis record — composite hero + Finances Area card + this week's moves
+         — from cache into #life-building-pillar-body, PLUS the monthly finance
+         capture form (the one write path). Mirrors PhysicalsUI/ChickensUI for
+         the verdict side; mirrors RecoveryUI for the write form. -->
+    <section class="tempo-pillar" data-pillar-id="life-building" data-active="false">
+      <div id="life-building-pillar-body" class="life-building-pillar-body"></div>
+    </section>
+
     <!-- ── Rhythm pillar ── Single placeholder surface, no sub-nav. -->
     <section class="tempo-pillar" data-pillar-id="rhythm" data-active="false">
       <div class="tempo-placeholder">
@@ -1182,6 +1193,15 @@
       </svg>
       <span>Chickens</span>
     </button>
+    <button class="tempo-tab" data-pillar-target="life-building" aria-label="Life Building">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 9 L12 3 L21 9 L21 21 L3 21 Z"/>
+        <path d="M9 21 L9 14 L15 14 L15 21"/>
+        <path d="M12 7 L12 10"/>
+      </svg>
+      <span>Life Building</span>
+    </button>
     <button class="tempo-tab" data-pillar-target="rhythm" aria-label="Rhythm">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1226,6 +1246,7 @@
   <script src="js/sync-merge-bfrb.js" defer></script>
   <script src="js/sync-merge-distractions.js" defer></script>
   <script src="js/sync-merge-mood.js" defer></script>
+  <script src="js/sync-merge-finances.js" defer></script>
   <script src="js/sync-auth.js" defer></script>
   <script src="js/audio.js" defer></script>
   <script src="js/themes.js" defer></script>
@@ -1287,6 +1308,11 @@
        getDoc → localStorage cache → SynthesisFeed.getRecord(). No write path.
        Loaded immediately after recovery-feed.js for parity. -->
   <script src="js/synthesis-feed.js" defer></script>
+  <!-- Life-OS Phase 5: Finances data module — owns the 'finances' 8th synced
+       store (per-month YYYY-MM snapshots, editable per-month-key LWW). Loaded
+       before life-building-ui.js (the hub reads Finances.getMonth on render)
+       and used at runtime by sync-engine's finances adapter. -->
+  <script src="js/finances.js" defer></script>
   <!-- Life-OS Phase 1: the Home hub. Renders the council's 'home' Balance
        record + the five domain-pillar records (bubble map + synthesis cards +
        this week's 3 moves) from the SynthesisFeed cache. Render-from-cache
@@ -1305,6 +1331,14 @@
        on the render path. TempoNav routes #/chickens to ChickensUI.render().
        Loaded after physicals-ui.js (sibling SynthesisFeed consumer). -->
   <script src="js/chickens-ui.js" defer></script>
+  <!-- Life-OS Phase 5: the Life Building hub. Renders the council's
+       `life_building` synthesis record (composite hero + Finances Area card +
+       this week's moves) from the SynthesisFeed cache, PLUS the monthly
+       finance capture form (write path → Finances.setMonth). Loaded after
+       chickens-ui.js (sibling SynthesisFeed consumer) and after finances.js
+       (reads Finances.getMonth on the render path). TempoNav routes
+       #/life-building to LifeBuildingUI.render(). -->
+  <script src="js/life-building-ui.js" defer></script>
   <!-- Rhythm pillar: read-side daily timeline aggregator (engine) + view (UI).
        Engine has no DOM deps; UI replaces the placeholder copy inside the
        #rhythm pillar section and renders on hashchange to #/rhythm. -->
