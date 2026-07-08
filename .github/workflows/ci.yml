@@ -65,6 +65,31 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # UI/integration regression suite — the Tempo Proving Ground. Loads the real
+  # index.html in headless Chromium with the service worker blocked and asserts
+  # the render/import seams the engine suite structurally can't reach. Mirrors
+  # engine-tests (installs Chromium; runs the @playwright/test suite headless).
+  ui-tests:
+    name: ui-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI/integration tests (Tempo Proving Ground)
+        run: npm run test:ui
+
   # Reconcile sw.js ASSETS (offline cache list) with index.html <script> tags.
   asset-integrity:
     name: asset-integrity

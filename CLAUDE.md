@@ -216,7 +216,7 @@ Open items only. Resolved entries (the F18 `wellness_meds` orphaned-readers fixe
 [`docs/BACKLOG.md` § Resolved tech debt](docs/BACKLOG.md#resolved-tech-debt-kept-as-migration-pattern-reference).
 
 - **iOS sign-out race — fix landed 2026-07-07, on-device verify pending:** the native `authStateChange` listener raced the Keychain-cached user back after `signOut()`; `js/platform.js` now arms `_authSignOutGuard` on native sign-out and swallows stale non-null re-emits until the SDK's null teardown emit. Native-Keychain-specific, so it shipped on `node --check` + reasoning (#169 precedent) — confirm on device via the playbook's Diagnosis recipe, then drop this entry. Playbook: [`docs/playbooks/ios-signout.md`](docs/playbooks/ios-signout.md).
-- **No UI/integration tests:** engine suites only (see § Test commands for counts, runners, and the headless flake). UI verification is manual / via the `app-verifier` agent; a UI harness ("Tempo Proving Ground") is a backlog candidate.
+- **UI/integration coverage is a thin first slice:** the Tempo Proving Ground shipped 2026-07-07 (`@playwright/test` specs in `tests/ui/` load the real `index.html` under a blocked service worker — `npm run test:ui`, CI job `ui-tests`). Slice 1 = boot smoke + attribute-XSS render (caught + fixed a live bug at `analytics-ui.js:303`) + malformed-import survival. Open: Slice 2 (R9 notification-tap, needs `serviceWorkers:'allow'`) + one spec per high-risk render seam.
 - **renderLaps does full innerHTML on lap events:** the perf path only covers the RAF tick; a new lap rebuilds the list. Low impact.
 
 ## Operations
@@ -291,6 +291,7 @@ over any number written in docs.
 
 ```bash
 npm test                      # headless: serves :8765, loads tests/index.html, polls title "PASS (n)"/"FAIL (n)"; one auto-retry
+npm run test:ui               # UI/integration suite (@playwright/test; loads real index.html headless, SW blocked; CI job ui-tests)
 python3 -m http.server 8765   # manual: open http://localhost:8765/tests/index.html (title = live verdict)
 npm run test:rules            # Firestore security-rules suite (emulator; needs Java)
 npm --prefix council test     # Life-OS council validator suite (pure node --test)

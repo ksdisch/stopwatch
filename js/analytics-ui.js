@@ -300,7 +300,7 @@ function renderMedAdherence(adh) {
           <div class="adherence-pct ${pctClass}">${m.adherencePct}%</div>
         </div>
         <div class="adherence-dots" role="img"
-             aria-label="${m.name} adherence last 30 days">${dots}</div>
+             aria-label="${escapeHtml(m.name)} adherence last 30 days">${dots}</div>
       </div>
     `;
   }).join('');
