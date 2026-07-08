@@ -9,6 +9,7 @@
     "ios:open": "npm run ios:copy && cap open ios",
     "ios:sync": "npm run sync-www && cap sync ios",
     "test": "node scripts/run-tests.mjs",
+    "test:ui": "playwright test",
     "test:serve": "python3 -m http.server 8765",
     "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project=demo-tempo 'node --test tests/rules/firestore-rules.test.mjs'",
     "check:assets": "node scripts/check-asset-integrity.mjs",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
     "@firebase/rules-unit-testing": "^4.0.1",
-    "playwright": "^1.49.0"
+    "@playwright/test": "^1.60.0",
+    "playwright": "^1.60.0"
   }
 }
