@@ -361,8 +361,10 @@ scheduled meds use the frequency rate, as-needed / forward-compat frequencies fa
 trailing 14-day average consumption (no doses in window → null, never Infinity); null when supply
 untracked. `getAdherenceStreak(now)` — forgiving consecutive-met-days streak (`{current,
 activeToday, last7[]}`): an unmet TODAY doesn't break it (counts when met, skipped otherwise —
-the rhythm-panel-bfrb-triggers idiom); twice-daily requires BOTH doses to count a day; days before
-`createdAt` end the walk (M14 clamp); null for as-needed (no expectation). **Coach**
+the rhythm-panel-bfrb-triggers idiom); twice-daily requires BOTH doses to count a day; doseless days before
+`createdAt` end the walk without breaking it (M14 clamp) while back-logged pre-creation
+doses count normally — offset logging is a core idiom (app-verifier catch); null for
+as-needed (no expectation). **Coach**
 (`js/tempo-coach.js`): `_buildDoseStatus` rows carry `runwayDays` (typeof-guarded so pre-runway
 med fakes/snapshots still build); `doseStatus.refillSoon[]` = meds with runway strictly under
 `REFILL_WARN_DAYS = 7`, tightest-first, each with a projected `refillAt`. **UI:** Today panel

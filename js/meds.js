@@ -401,10 +401,13 @@ function createMed(id) {
   // data. null for as-needed / unrecognized frequency (no daily expectation
   // to adhere to). A not-yet-complete TODAY doesn't break the streak — it
   // counts when met (activeToday) and is skipped otherwise, mirroring the
-  // forgiving clean-streak idiom in rhythm-panel-bfrb-triggers. Days before
-  // createdAt end the walk (M14 — a med can't have missed days before it
-  // existed); per-day statuses reuse getMedAdherence's missed/partial/full
-  // vocabulary, plus 'before' for pre-creation days.
+  // forgiving clean-streak idiom in rhythm-panel-bfrb-triggers. The M14
+  // createdAt clamp applies only to DOSELESS pre-creation days (a med can't
+  // have missed days before it existed) — days with back-logged doses count
+  // normally, because offset logging ("Took it ~") right after adding a med
+  // is a core idiom. Per-day statuses reuse getMedAdherence's
+  // missed/partial/full vocabulary, plus 'before' for doseless
+  // pre-creation days.
   function getAdherenceStreak(now) {
     const expected = getExpectedDosesToday();
     if (expected === null) return null;
@@ -435,9 +438,10 @@ function createMed(id) {
     let current = 0;
     const MAX_WALK = 366; // bound the walk; the F14 1000-dose cap bounds real streaks anyway
     for (let i = activeToday ? 0 : 1; i <= MAX_WALK; i++) {
-      const d = dayAt(i);
-      if (createdDayMs !== null && d.getTime() < createdDayMs) break;
-      if (takenOn(d) < expected) break;
+      // A met day always counts — including back-logged pre-creation days.
+      // An unmet day ends the walk either way (a doseless pre-creation day
+      // simply has nothing left to count; it doesn't read as "missed").
+      if (takenOn(dayAt(i)) < expected) break;
       current++;
     }
 
@@ -446,9 +450,9 @@ function createMed(id) {
       const d = dayAt(i);
       const taken = takenOn(d);
       let status;
-      if (createdDayMs !== null && d.getTime() < createdDayMs) status = 'before';
-      else if (taken >= expected) status = 'full';
+      if (taken >= expected) status = 'full';
       else if (taken > 0) status = 'partial';
+      else if (createdDayMs !== null && d.getTime() < createdDayMs) status = 'before';
       else status = 'missed';
       last7.push({ date: Utils.localDateKey(d), status: status, taken: taken, expected: expected });
     }

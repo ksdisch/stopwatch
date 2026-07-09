@@ -1614,16 +1614,34 @@ describe('Meds — adherence streak (getAdherenceStreak)', () => {
     assertEqual(s.activeToday, false); // today not yet met
   });
 
-  it('days before createdAt neither extend nor break the streak (M14 clamp)', () => {
+  it('doseless days before createdAt end the walk without breaking it (M14 clamp)', () => {
     const m = createMed('adh6');
     m.setFrequency('once-daily');
     m.setCreatedAt(atDay(-1, 0));
     m.logDose(atDay(-1));
     m.logDose(atDay(0));
     const s = m.getAdherenceStreak(NOW_ADH);
-    // D-2 is before the med existed — the walk stops there instead of
-    // reading it as a missed day, and it can't inflate the count either.
+    // D-2 is before the med existed and has no doses — nothing left to
+    // count, but the D-1..D0 streak stays intact (not read as "missed").
     assertEqual(s.current, 2);
+  });
+
+  it('back-logged doses before createdAt still extend the streak (offset-logging idiom)', () => {
+    // The verifier scenario: med added TODAY, prior days logged via
+    // "Took it ~". Those doses are real — the createdAt clamp must not
+    // discard them (it exists to stop doseless pre-creation days reading
+    // as missed, not to erase back-logged history).
+    const m = createMed('adh6b');
+    m.setFrequency('once-daily');
+    m.setCreatedAt(NOW_ADH);
+    m.logDose(atDay(-2));
+    m.logDose(atDay(-1));
+    m.logDose(atDay(0));
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 3);
+    assertEqual(s.activeToday, true);
+    // And the dots show the real statuses, not pre-creation gaps.
+    assertArrayEqual(s.last7.map(d => d.status).slice(4), ['full', 'full', 'full']);
   });
 
   it('nothing logged → current 0, activeToday false', () => {
@@ -1643,6 +1661,7 @@ describe('Meds — adherence streak (getAdherenceStreak)', () => {
     const s = m.getAdherenceStreak(NOW_ADH);
     assertEqual(s.last7.length, 7);
     const statuses = s.last7.map(d => d.status);
+    // D-6 is doseless AND pre-creation → 'before' (a gap, not a miss).
     assertArrayEqual(statuses, ['before', 'missed', 'missed', 'missed', 'partial', 'missed', 'full']);
     assertEqual(s.last7[6].taken, 2);
     assertEqual(s.last7[6].expected, 2);
