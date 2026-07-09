@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v159-life-building-finances';
+const CACHE_NAME = 'stopwatch-v160-live-activities-timer';
 const ASSETS = [
   './',
   './index.html',
