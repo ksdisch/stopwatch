@@ -46,40 +46,25 @@ if [[ -n "${NVM_NODE_BIN}" && -x "${NVM_NODE_BIN}/node" ]]; then
   export PATH="${NVM_NODE_BIN}:${PATH}"
 fi
 
-# Source secret env vars (GOOGLE_APPLICATION_CREDENTIALS, TEMPO_UID,
-# SLACK_WEBHOOK_URL, optionally TWILIO_*). File is gitignored — see
-# council/.env.secrets.example for the format.
-if [[ -f "${REPO}/council/.env.secrets" ]]; then
-  # M6: the secrets file holds TEMPO_UID + the SA-key path (and is designed to
-  # also hold a Slack webhook / Twilio token). Refuse to source it unless it is
-  # locked to owner-only (0600) — a world-readable secrets file on a
-  # multi-account machine leaks the Firebase uid + credential path. (chmod 600
-  # the file once on the host; this preflight keeps it that way.) `stat` differs
-  # between GNU (Linux, -c %a) and BSD (macOS, -f %A) — try both.
-  SECRETS_PERMS="$(stat -c '%a' "${REPO}/council/.env.secrets" 2>/dev/null \
-               || stat -f '%A' "${REPO}/council/.env.secrets" 2>/dev/null \
-               || echo '')"
-  if [[ "${SECRETS_PERMS}" != "600" ]]; then
-    perms_msg="COUNCIL FAILED: council/.env.secrets has perms ${SECRETS_PERMS:-<unknown>}, expected 600 — run: chmod 600 council/.env.secrets"
-    echo "${perms_msg}" >&2
-    # This guard runs BEFORE the dated-log header (below) and BEFORE
-    # notify_failure() is defined, so historically a perms failure wrote NO entry
-    # to council/logs/nightly/ and fired no alert — only launchd's unwatched
-    # err.log caught it, which silently took the council down 2026-06-14..07-08.
-    # Record the dated per-run log here too, so a perms failure is visible where
-    # run outcomes are actually checked. (A push alert still can't fire this
-    # early: the Slack/Twilio creds live inside this very unreadable file.)
-    echo "=== life-os council run ${DATE_TAG} ===" >> "${LOG_FILE}"
-    echo "${perms_msg}" >> "${LOG_FILE}"
-    exit 1
-  fi
-  # shellcheck disable=SC1091
-  source "${REPO}/council/.env.secrets"
+# ── Push-alert creds — loaded BEFORE the .env.secrets perms guard ─────────────
+# notify_failure()'s Slack/Twilio creds have historically lived INSIDE
+# council/.env.secrets. But the guard below refuses to source that file unless it
+# is 0600 — so on the very failure it most needs to report (a bad-perms secrets
+# file: the 2026-06-14..07-08 silent outage) the alert channel was itself
+# unreachable. Break that chicken-and-egg by loading the alert creds from a
+# SEPARATE file, sourced here (before the guard) and best-effort — never a hard
+# perms-abort, which would only push the silent failure up one level. Override
+# the path with ALERTS_ENV; format in council/alerts.env.example.
+ALERTS_ENV="${ALERTS_ENV:-${HOME}/.config/life-os/alerts.env}"
+if [[ -f "${ALERTS_ENV}" ]]; then
+  # shellcheck disable=SC1090
+  source "${ALERTS_ENV}" || true
 fi
 
 # ── notify_failure(msg) ──────────────────────────────────────────────────────
 # Best-effort push alert on failure. Kept in BASH (not Node) on purpose: it must
-# fire even when node / firebase-admin is the thing that broke. Every curl is
+# fire even when node / firebase-admin is the thing that broke — and defined HERE,
+# above the perms guard, so an early abort can still reach you. Every curl is
 # best-effort — a notification failure must never mask the original exit code.
 notify_failure() {
   local msg="$1"
@@ -106,6 +91,38 @@ notify_failure() {
       -u "${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}" >/dev/null 2>&1 || true
   fi
 }
+
+# Source secret env vars (GOOGLE_APPLICATION_CREDENTIALS, TEMPO_UID). File is
+# gitignored — see council/.env.secrets.example. (Slack/Twilio alert creds are
+# loaded from ALERTS_ENV above; keeping a copy here too is harmless — the normal
+# path re-sources and either value works.)
+if [[ -f "${REPO}/council/.env.secrets" ]]; then
+  # M6: the secrets file holds TEMPO_UID + the SA-key path (and may still hold a
+  # Slack webhook / Twilio token). Refuse to source it unless it is locked to
+  # owner-only (0600) — a world-readable secrets file on a multi-account machine
+  # leaks the Firebase uid + credential path. (chmod 600 the file once on the
+  # host; this preflight keeps it that way.) `stat` differs between GNU
+  # (Linux, -c %a) and BSD (macOS, -f %A) — try both.
+  SECRETS_PERMS="$(stat -c '%a' "${REPO}/council/.env.secrets" 2>/dev/null \
+               || stat -f '%A' "${REPO}/council/.env.secrets" 2>/dev/null \
+               || echo '')"
+  if [[ "${SECRETS_PERMS}" != "600" ]]; then
+    perms_msg="COUNCIL FAILED: council/.env.secrets has perms ${SECRETS_PERMS:-<unknown>}, expected 600 — run: chmod 600 council/.env.secrets"
+    echo "${perms_msg}" >&2
+    # This guard runs BEFORE the dated-log header (written below on the normal
+    # path), so record the dated per-run log here too — a perms failure must be
+    # visible where run outcomes are actually checked (during the
+    # 2026-06-14..07-08 silent outage only launchd's unwatched err.log caught it).
+    # The push alert CAN fire now: notify_failure and its Slack/Twilio creds are
+    # loaded from ALERTS_ENV above, so they no longer depend on this unreadable file.
+    echo "=== life-os council run ${DATE_TAG} ===" >> "${LOG_FILE}"
+    echo "${perms_msg}" >> "${LOG_FILE}"
+    notify_failure "${perms_msg}"
+    exit 1
+  fi
+  # shellcheck disable=SC1091
+  source "${REPO}/council/.env.secrets"
+fi
 
 # ── Preflight ────────────────────────────────────────────────────────────────
 # Fail fast with a literal "COUNCIL FAILED: ..." to stderr AND the dated log,
