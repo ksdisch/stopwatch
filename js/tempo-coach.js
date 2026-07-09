@@ -162,7 +162,9 @@ const TempoCoach = (() => {
   //     hasRecovery,          // bool — a usable recovery row was present
   //     focusSuggestion,      // suggestFocusDurationMs() result (ms may be null)
   //     doseStatus: {         // live MedsManager-derived dose-logged status
-  //       hasMeds, allLogged, anyUnlogged, meds:[{ name, dose, kind, takenToday, expected }]
+  //       hasMeds, allLogged, anyUnlogged,
+  //       meds:[{ name, dose, kind, takenToday, expected, runwayDays }],
+  //       refillSoon:[{ name, runwayDays, refillAt }]   // runway < REFILL_WARN_DAYS, tightest first
   //     },
   //     sleep: { logged, hours, quality, bedtime } | { logged:false },
   //     focusTodayMs,         // total flow+pomodoro session ms logged today
@@ -184,7 +186,7 @@ const TempoCoach = (() => {
     const focusSuggestion = suggestFocusDurationMs(recoveryState);
 
     // ── Live dose-logged status (MedsManager, never wellness_meds blob) ─
-    const doseStatus = _buildDoseStatus(deps);
+    const doseStatus = _buildDoseStatus(deps, now);
 
     // ── Today's sleep (rest log, keyed YYYY-MM-DD) ────────────────────
     const sleep = _buildSleepToday(deps, now);
@@ -215,9 +217,13 @@ const TempoCoach = (() => {
     };
   }
 
+  // Refill warning threshold: a runway strictly under this many days earns
+  // the one-line "refill by ~DATE" row on the Today panel.
+  const REFILL_WARN_DAYS = 7;
+
   // Live dose-logged status from MedsManager via deps.getMeds(). Reads each
   // med's getStatusToday() / getName() / getDose(). NEVER localStorage.
-  function _buildDoseStatus(deps) {
+  function _buildDoseStatus(deps, now) {
     let meds = [];
     try {
       meds = (typeof deps.getMeds === 'function' && deps.getMeds()) || [];
@@ -232,6 +238,15 @@ const TempoCoach = (() => {
       if (!status) return;
       const name = (typeof med.getName === 'function' && med.getName()) || 'Medication';
       const dose = (typeof med.getDose === 'function' && med.getDose()) || '';
+      // Supply runway (med-runway-adherence-loop). Guarded so pre-runway med
+      // fakes / snapshots without the accessor still build a valid row.
+      let runwayDays = null;
+      try {
+        if (typeof med.getRunwayDays === 'function') {
+          const r = med.getRunwayDays(now);
+          if (typeof r === 'number' && isFinite(r)) runwayDays = r;
+        }
+      } catch (_) { runwayDays = null; }
       // 'na' (as-needed) doesn't count toward "unlogged" — there's no expectation.
       if (status.kind === 'none' || status.kind === 'partial') anyUnlogged = true;
       rows.push({
@@ -240,14 +255,28 @@ const TempoCoach = (() => {
         kind: status.kind,
         takenToday: status.takenToday || 0,
         expected: status.expected,
+        runwayDays: runwayDays,
       });
     });
+
+    // Meds whose tracked supply runs under the warning threshold, tightest
+    // first. refillAt is the projected run-out day (ms) — the "~DATE" in the
+    // Today panel's copy.
+    const refillSoon = rows
+      .filter(r => r.runwayDays !== null && r.runwayDays < REFILL_WARN_DAYS)
+      .sort((a, b) => a.runwayDays - b.runwayDays)
+      .map(r => ({
+        name: r.name,
+        runwayDays: r.runwayDays,
+        refillAt: now + r.runwayDays * 86400000,
+      }));
 
     return {
       hasMeds: rows.length > 0,
       allLogged: rows.length > 0 && !anyUnlogged,
       anyUnlogged: anyUnlogged,
       meds: rows,
+      refillSoon: refillSoon,
     };
   }
 
@@ -401,6 +430,7 @@ const TempoCoach = (() => {
     // Exposed for tests / panel reuse; not part of the broad app surface.
     _internals: {
       FOCUS_90, FOCUS_120, MIN_PAIRS, MIN_X_SPREAD_HOURS, NOT_ENOUGH,
+      REFILL_WARN_DAYS,
       _hhmmToHour, _buildDoseSleep, _focusTodayMs,
     },
   };

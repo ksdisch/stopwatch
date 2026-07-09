@@ -20,7 +20,7 @@ backlog #15. The remaining ranked candidates are the live menu for the next auto
 |------|-----------|---------|--------------|
 | — | **BFRB Closed Loop — Slice B** | Deferred from #16 | Real-time relapse-risk meter + post-countdown debrief; the framing-risky, opt-in half intentionally cut from the shipped Slice A. |
 | 8.5 | **Personal Health Hub — Weekly Review + portable doctor-ready report** | Strong, ship-soon | Cleanest autonomy (pure string-producing functions, no native/Firebase-write path); novel doctor-prep export. Docked for being a 3-feature bundle and reflective rather than forward-looking. |
-| 8.45 | **Med Runway & Adherence Loop** | Strong, split-ship | Highest concrete stakes (controlled-substance refill/dose); pure runway/streak half is a clean win, nudge half is the least self-verifiable piece. |
+| 8.45 | **Med Runway & Adherence Loop** | **Pure half built 2026-07-09** | Runway/streak half shipped per the split-ship verdict (backlog #23): `getRunwayDays` + `getAdherenceStreak` on `createMed`, `refillSoon` through `buildTodayModel`, Today-panel refill line + med-card adherence strip. Nudge half (recurring re-arm, suspended-fire) still deliberately not taken. |
 | 8.45 | **Personal Health Intelligence Engine** | Right idea, overscoped | Correct long-term consolidation but bundles 5–7 deliverables incl. a 7th synced store + cross-cutting refactor; descope to the pure `insight-engine.js` core. |
 | 6.9 | **Tempo Presence — Live Activities / widgets / Siri** | Defer / split | Overlaps backlog #4 (iOS Live Activities). Four products in a trenchcoat + long Apple-paperwork tail; ship only the web-only depleting-wedge slice standalone. |
 | 6.65 | **Tempo Proving Ground — UI test harness + kit** | **Slice 1 shipped 2026-07-07** | `@playwright/test` harness (`tests/ui/`, `npm run test:ui`, CI `ui-tests`) loads the real app under a blocked SW; caught + fixed a live attribute-XSS (`analytics-ui.js:303`) and locked the import boundary. Slice 2 (R9 notification-persistence) shipped 2026-07-08 (#197) — durable `tempo_notify_db` + SW rearm-on-wake. |
@@ -65,7 +65,8 @@ feature table.
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 | 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
-| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Spec merged 2026-06-30 (PR #183 → `docs/lifeos/`); **build pending — next major milestone** |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 shipped 2026-07-08 (PR #198) — `finances` 8th synced store + council `life_building` synthesizer + Life Building hub. First prod council run pending |
+| 23 | Med Runway & Adherence Loop — pure runway/streak half | High | Medium | #23 | Built 2026-07-09 — see § below; nudge half deliberately not taken (split-ship verdict) |
 
 ---
 
@@ -347,6 +348,31 @@ a 14d trigger leaderboard + untagged bucket, and an urge mix. Reuses `.analytics
 (+17, new), sw.js cache bump (`→ v112-bfrb-closed-loop`). **Tests:** suite **918/918 green** after
 merging main. Live-verified at 390px: all commit paths (chips+Done, click-outside, new-catch flush),
 populated/empty panel states, no console errors.
+
+### #23 — Med Runway & Adherence Loop — pure runway/streak half (High / Medium)
+
+**Status: built 2026-07-09 (branch `claude/backlog-work-qggvkk`).** The split-ship "clean win"
+half of the 8.45-scored brainstorm candidate — two pure derivations compounding on the shipped
+supply-tracking + dose-log engine; the nudge half (recurring re-arm, afternoon med channel,
+suspended-fire) is **deliberately not taken** (its core promise is the one thing a browser can't
+verify — see the brainstorm's #4 verdict). **Engine** (`js/meds.js`, per-med accessors, zero new
+persisted fields): `getRunwayDays(now)` — supply remaining ÷ daily rate, floored (0 = out today);
+scheduled meds use the frequency rate, as-needed / forward-compat frequencies fall back to the
+trailing 14-day average consumption (no doses in window → null, never Infinity); null when supply
+untracked. `getAdherenceStreak(now)` — forgiving consecutive-met-days streak (`{current,
+activeToday, last7[]}`): an unmet TODAY doesn't break it (counts when met, skipped otherwise —
+the rhythm-panel-bfrb-triggers idiom); twice-daily requires BOTH doses to count a day; days before
+`createdAt` end the walk (M14 clamp); null for as-needed (no expectation). **Coach**
+(`js/tempo-coach.js`): `_buildDoseStatus` rows carry `runwayDays` (typeof-guarded so pre-runway
+med fakes/snapshots still build); `doseStatus.refillSoon[]` = meds with runway strictly under
+`REFILL_WARN_DAYS = 7`, tightest-first, each with a projected `refillAt`. **UI:** Today panel
+(`js/rhythm-panel-today.js`) adds ONE terse line — "Adderall: about 3 days of supply left — refill
+by ~Jul 12." (tightest med + a count of any others) per the "keep Today terse" note; med cards
+(`js/meds-ui.js`) append "≈N days · refill by ~DATE" to the supply-badge meta and render a 7-day
+adherence dot strip (full ● / partial ◐ / missed ○ / pre-creation gap) + streak label for
+scheduled meds. **Tests:** +26 (meds runway 7, adherence streak 8, coach refillSoon 5, panel
+render 6 incl. hostile-name escaping); suite 1338/1338 green headless. sw.js cache bump
+(`→ v160-med-runway-adherence`).
 
 ---
 

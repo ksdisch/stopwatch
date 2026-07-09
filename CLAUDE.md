@@ -212,7 +212,8 @@ preserves the original chronological numbering.
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 | 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
-| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 **built** 2026-07-08 (branch `feat/p5-life-building-finances`) — `finances` 8th synced store + council `life_building` synthesizer + Life Building hub (`#/life-building`) w/ monthly capture form. PR + merge + first prod council run pending. |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 **shipped** 2026-07-08 (PR #198 merged) — `finances` 8th synced store + council `life_building` synthesizer + Life Building hub (`#/life-building`) w/ monthly capture form. First prod council run pending. |
+| 23 | Med Runway & Adherence Loop — pure runway/streak half | High | Medium | #23 | Built 2026-07-09 — `getRunwayDays` (supply ÷ daily rate; trailing-14d average for as-needed) + `getAdherenceStreak` (forgiving streak + last-7 dots) on `createMed`; routed through `buildTodayModel` (`refillSoon`, <7d threshold); Today-panel one-line refill warning + med-card adherence strip. Nudge half deliberately not taken (brainstorm split-ship). |
 
 ## Remaining Tech Debt
 

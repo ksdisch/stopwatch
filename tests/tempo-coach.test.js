@@ -27,14 +27,18 @@
   }
 
   // Live-MedsManager-shaped stub. Mirrors the accessor surface buildTodayModel
-  // reads: getStatusToday / getName / getDose / getDoseLog.
+  // reads: getStatusToday / getName / getDose / getDoseLog (+ optional
+  // getRunwayDays — omitted unless opts.runway is set, so the pre-runway
+  // accessor-missing path stays covered by the older cases).
   function stubMed(opts) {
-    return {
+    const stub = {
       getName: () => opts.name,
       getDose: () => opts.dose || '',
       getStatusToday: () => opts.status, // { kind, takenToday, expected }
       getDoseLog: () => opts.doseLog || [],
     };
+    if (opts.runway !== undefined) stub.getRunwayDays = () => opts.runway;
+    return stub;
   }
 
   // Returns true iff no field of `obj` (recursively) is NaN.
@@ -457,6 +461,68 @@
       assertEqual(m.doseStatus.hasMeds, false);
       assertEqual(m.focusTodayMs, 0);
       assert(noNaN(m), 'no NaN even when every accessor throws');
+    });
+  });
+
+  // ── doseStatus supply runway (med-runway-adherence-loop) ────────────
+  describe('TempoCoach.buildTodayModel — doseStatus runway / refillSoon', () => {
+    const DAY = 86400000;
+    function modelFor(meds) {
+      return TempoCoach.buildTodayModel({
+        now: () => NOW,
+        getRecoveryLatest: () => null,
+        getMeds: () => meds,
+        getRestLog: () => ({}),
+        getSessionsSync: () => [],
+      });
+    }
+
+    it('a med without getRunwayDays (pre-runway shape) → runwayDays null, refillSoon empty', () => {
+      const m = modelFor([stubMed({ name: 'A', status: { kind: 'done', takenToday: 1, expected: 1 } })]);
+      assertEqual(m.doseStatus.meds[0].runwayDays, null);
+      assertArrayEqual(m.doseStatus.refillSoon, []);
+    });
+
+    it('runway under the 7-day threshold lands in refillSoon with a projected refillAt', () => {
+      const m = modelFor([stubMed({ name: 'Adderall', status: { kind: 'done', takenToday: 1, expected: 1 }, runway: 3 })]);
+      assertEqual(m.doseStatus.meds[0].runwayDays, 3);
+      assertEqual(m.doseStatus.refillSoon.length, 1);
+      assertEqual(m.doseStatus.refillSoon[0].name, 'Adderall');
+      assertEqual(m.doseStatus.refillSoon[0].runwayDays, 3);
+      assertEqual(m.doseStatus.refillSoon[0].refillAt, NOW + 3 * DAY);
+    });
+
+    it('the threshold is strict: 7 days is NOT a warning, 6 is', () => {
+      const m = modelFor([
+        stubMed({ name: 'Seven', status: { kind: 'done', takenToday: 1, expected: 1 }, runway: 7 }),
+        stubMed({ name: 'Six', status: { kind: 'done', takenToday: 1, expected: 1 }, runway: 6 }),
+      ]);
+      assertEqual(m.doseStatus.refillSoon.length, 1);
+      assertEqual(m.doseStatus.refillSoon[0].name, 'Six');
+      assertEqual(TempoCoach._internals.REFILL_WARN_DAYS, 7);
+    });
+
+    it('refillSoon sorts tightest-first across meds', () => {
+      const m = modelFor([
+        stubMed({ name: 'Loose', status: { kind: 'done', takenToday: 1, expected: 1 }, runway: 5 }),
+        stubMed({ name: 'Tight', status: { kind: 'none', takenToday: 0, expected: 1 }, runway: 0 }),
+      ]);
+      assertArrayEqual(m.doseStatus.refillSoon.map(r => r.name), ['Tight', 'Loose']);
+      assertEqual(m.doseStatus.refillSoon[0].refillAt, NOW);
+    });
+
+    it('a null / throwing getRunwayDays never breaks the row', () => {
+      const throwing = stubMed({ name: 'Boom', status: { kind: 'done', takenToday: 1, expected: 1 } });
+      throwing.getRunwayDays = () => { throw new Error('runway down'); };
+      const m = modelFor([
+        throwing,
+        stubMed({ name: 'PRN', status: { kind: 'na', takenToday: 0, expected: null }, runway: null }),
+      ]);
+      assertEqual(m.doseStatus.meds.length, 2);
+      assertEqual(m.doseStatus.meds[0].runwayDays, null);
+      assertEqual(m.doseStatus.meds[1].runwayDays, null);
+      assertArrayEqual(m.doseStatus.refillSoon, []);
+      assert(noNaN(m), 'no NaN with a throwing runway accessor');
     });
   });
 })();

@@ -83,6 +83,13 @@
         rows.push(_doseRow(model.doseStatus));
       }
 
+      // (2b) Supply runway — one terse line, only when a tracked supply runs
+      // under the coach's warning threshold. Detail lives on the med cards.
+      if (model.doseStatus && Array.isArray(model.doseStatus.refillSoon)
+          && model.doseStatus.refillSoon.length > 0) {
+        rows.push(_refillRow(model.doseStatus.refillSoon));
+      }
+
       // (3) Last night's sleep.
       if (model.sleep && model.sleep.logged) {
         rows.push(_sleepRow(model.sleep));
@@ -156,6 +163,35 @@
       return _li(pending.length + ' meds have no dose logged yet today.');
     }
     return _li('Doses are up to date for today.');
+  }
+
+  // One line for the tightest tracked supply (refillSoon arrives sorted
+  // tightest-first). Descriptive: reports what the supply math shows.
+  function _refillRow(refillSoon) {
+    const tightest = refillSoon[0];
+    const others = refillSoon.length - 1;
+    let text;
+    if (tightest.runwayDays <= 0) {
+      text = tightest.name + ': tracked supply runs out today.';
+    } else {
+      const d = tightest.runwayDays;
+      text = tightest.name + ': about ' + d + (d === 1 ? ' day' : ' days')
+        + ' of supply left — refill by ~' + _fmtDay(tightest.refillAt) + '.';
+    }
+    if (others > 0) {
+      text += ' (' + others + ' more med' + (others === 1 ? '' : 's')
+        + ' under a week of supply.)';
+    }
+    return _li(text);
+  }
+
+  // ms timestamp → short local day label, e.g. "Jul 12".
+  function _fmtDay(ts) {
+    try {
+      return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch (_) {
+      return new Date(ts).toDateString().slice(4, 10);
+    }
   }
 
   function _sleepRow(sleep) {

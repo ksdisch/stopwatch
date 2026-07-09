@@ -2715,3 +2715,27 @@ Engine **PASS (1250)** (1238 + 12 new). UI **9 passed** (`npm run test:ui`: prio
 ```
 #197  fix(proving-ground): Slice 2 — R9 notification persistence (durable tempo_notify_db + SW rearm)   [open — awaiting Kyle's merge go-ahead]
 ```
+
+---
+
+## 2026-07-09 — Med Runway & Adherence Loop, pure half (backlog #23, branch `claude/backlog-work-qggvkk`)
+
+### What We Built
+
+The split-ship "clean win" half of the 8.45-scored brainstorm candidate (`med-runway-adherence-loop`): two pure derivations compounding on the shipped supply-tracking + dose-log engine, with the nudge half (recurring re-arm / afternoon med channel / suspended-fire) deliberately not taken per the brainstorm's verdict — its critical-path payoff is the one thing a browser can't verify.
+
+**Engine (`js/meds.js`)** — two new per-med accessors, zero new persisted fields (everything derived): `getRunwayDays(now)` = supply remaining ÷ daily rate, floored (0 = out today; null when supply untracked). Scheduled meds use the frequency rate (once=1, twice=2); as-needed and forward-compat frequencies fall back to the trailing 14-day average consumption, and with no dose in that window there is no observed rate → null, never Infinity. `getAdherenceStreak(now)` = forgiving consecutive-met-days streak `{current, activeToday, last7[]}`: an unmet TODAY doesn't break the streak (counts when met, skipped otherwise — the rhythm-panel-bfrb-triggers forgiving idiom); twice-daily needs BOTH doses for a day to count; days before `createdAt` end the walk (M14 clamp); null for as-needed (no daily expectation). `last7` reuses getMedAdherence's missed/partial/full vocabulary plus 'before' for pre-creation days.
+
+**Coach (`js/tempo-coach.js`)** — `_buildDoseStatus` rows now carry `runwayDays` (typeof-guarded so pre-runway med fakes/snapshots still build a valid row), and `doseStatus` gains `refillSoon[]`: meds with runway strictly under `REFILL_WARN_DAYS = 7`, tightest first, each with a projected `refillAt`. Exposed via `_internals` for tests + UI reuse.
+
+**UI** — Today panel (`js/rhythm-panel-today.js`) adds ONE terse line per the "keep Today terse" spec note: "Adderall: about 3 days of supply left — refill by ~Jul 12." (tightest med leads; any others collapse to a count; runway 0 → "runs out today"). Med cards (`js/meds-ui.js`) append "≈N days" (+ "refill by ~DATE" under the threshold, "out today" at 0) to the supply-badge meta, and render a 7-day adherence dot strip + streak label ("3-day streak ✓" / "no streak yet") for scheduled meds — hidden for as-needed. New `.med-adherence` / `.med-adh-*` styles in `css/tempo-shell.css` (full ● / half-fill ◐ / outline ○ / pre-creation gap).
+
+### Verification result
+
++26 tests: `tests/meds.test.js` (+15: runway 7 — untracked/once/twice/zero/as-needed-average/no-rate/forward-compat-frequency; streak 8 — as-needed-null, activeToday, forgiving-today, broken-day, twice-daily 1-of-2 unmet, createdAt clamp, empty, last7 shape), `tests/tempo-coach.test.js` (+5: pre-runway shape back-compat, threshold strict-<7, refillAt projection, tightest-first sort, throwing accessor), `tests/rhythm-panel-today.test.js` (+6: refill line copy, out-today copy, one-line multi-med collapse, empty/legacy-model suppression, hostile med-name escaping). Suite **1338/1338 green** headless (two consecutive clean runs). `sw.js` CACHE_NAME `v159-life-building-finances` → `v160-med-runway-adherence`. Live app verified via the app-verifier fresh-context recipe (see PR).
+
+### Suggested Next Steps
+
+- **Weekly Review + doctor-ready report (brainstorm 8.5/#3)** — the order-15 digest now has adherence % AND streak/runway signals to summarize; confirm the RhythmInsights `_deps` layer exposes a meds accessor to panels first.
+- **Smart Daily Notification (brainstorm #4)** — the deferred nudge half; the afternoon med channel can now draw on `refillSoon` + streak. Budget the on-device suspended-fire confirmation as an explicit human gate.
+- **First prod council run for Life Building (backlog #22 residue)** — still pending.

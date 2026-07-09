@@ -370,6 +370,92 @@ function createMed(id) {
     return                             { kind: 'none',    takenToday, expected };
   }
 
+  // ── Runway & adherence (Med Runway & Adherence Loop — pure half) ────
+
+  // Projected days of supply left at the med's daily consumption rate,
+  // floored to whole days (0 = runs out today). null when supply isn't
+  // tracked, or when no rate is knowable. Scheduled meds use the
+  // frequency's expected doses/day; as-needed (and unrecognized-frequency)
+  // meds fall back to the trailing 14-day average consumption so a tracked
+  // PRN supply still forecasts — with no dose in that window there is no
+  // observed rate, so no forecast (null, not Infinity).
+  function getRunwayDays(now) {
+    const remaining = getSupplyRemaining();
+    if (remaining === null) return null;
+    const ref = (typeof now === 'number' && isFinite(now)) ? now : Date.now();
+    let perDay = getExpectedDosesToday();
+    if (perDay === null) {
+      const windowStart = ref - 14 * 86400000;
+      let inWindow = 0;
+      for (let i = doseLog.length - 1; i >= 0; i--) {
+        if (doseLog[i].takenAt < windowStart) break;
+        if (doseLog[i].takenAt <= ref) inWindow++;
+      }
+      if (inWindow === 0) return null;
+      perDay = inWindow / 14;
+    }
+    return Math.floor(remaining / perDay);
+  }
+
+  // Forgiving consecutive-days adherence streak plus the last-7-day dot
+  // data. null for as-needed / unrecognized frequency (no daily expectation
+  // to adhere to). A not-yet-complete TODAY doesn't break the streak — it
+  // counts when met (activeToday) and is skipped otherwise, mirroring the
+  // forgiving clean-streak idiom in rhythm-panel-bfrb-triggers. Days before
+  // createdAt end the walk (M14 — a med can't have missed days before it
+  // existed); per-day statuses reuse getMedAdherence's missed/partial/full
+  // vocabulary, plus 'before' for pre-creation days.
+  function getAdherenceStreak(now) {
+    const expected = getExpectedDosesToday();
+    if (expected === null) return null;
+    const ref = (typeof now === 'number' && isFinite(now)) ? now : Date.now();
+
+    const byDay = {};
+    for (const e of doseLog) {
+      const k = Utils.localDateKey(new Date(e.takenAt));
+      byDay[k] = (byDay[k] || 0) + 1;
+    }
+
+    const today = new Date(ref);
+    today.setHours(0, 0, 0, 0);
+    let createdDayMs = null;
+    if (createdAt !== null) {
+      const cd = new Date(createdAt);
+      cd.setHours(0, 0, 0, 0);
+      createdDayMs = cd.getTime();
+    }
+
+    // Date-constructor arithmetic (not fixed 86400000 steps) so DST
+    // transitions can't shift a day boundary — same idiom as getMedAdherence.
+    const dayAt = (back) =>
+      new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+    const takenOn = (d) => byDay[Utils.localDateKey(d)] || 0;
+
+    const activeToday = takenOn(today) >= expected;
+    let current = 0;
+    const MAX_WALK = 366; // bound the walk; the F14 1000-dose cap bounds real streaks anyway
+    for (let i = activeToday ? 0 : 1; i <= MAX_WALK; i++) {
+      const d = dayAt(i);
+      if (createdDayMs !== null && d.getTime() < createdDayMs) break;
+      if (takenOn(d) < expected) break;
+      current++;
+    }
+
+    const last7 = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = dayAt(i);
+      const taken = takenOn(d);
+      let status;
+      if (createdDayMs !== null && d.getTime() < createdDayMs) status = 'before';
+      else if (taken >= expected) status = 'full';
+      else if (taken > 0) status = 'partial';
+      else status = 'missed';
+      last7.push({ date: Utils.localDateKey(d), status: status, taken: taken, expected: expected });
+    }
+
+    return { current: current, activeToday: activeToday, last7: last7 };
+  }
+
   // ── Serialization ───────────────────────────────────────────────────
 
   function getState() {
@@ -522,6 +608,7 @@ function createMed(id) {
     recomputeLastTakenAt, applyMergedDoseLog,
     getTimeSinceLastDoseMs,
     getDosesToday, getExpectedDosesToday, getStatusToday,
+    getRunwayDays, getAdherenceStreak,
     getState, loadState,
   };
 }

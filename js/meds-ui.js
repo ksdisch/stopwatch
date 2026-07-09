@@ -15,6 +15,12 @@ const MedsUI = (() => {
     { value: 'as-needed',   label: 'As-needed' },
   ];
   const FREQ_LABEL = Object.fromEntries(FREQ_OPTIONS.map(o => [o.value, o.label]));
+  // Refill warning threshold — the coach's constant (tempo-coach loads
+  // earlier per the script chain), guarded for engine-only test contexts.
+  const REFILL_WARN_DAYS = (typeof TempoCoach !== 'undefined'
+    && TempoCoach._internals && typeof TempoCoach._internals.REFILL_WARN_DAYS === 'number')
+    ? TempoCoach._internals.REFILL_WARN_DAYS
+    : 7;
 
   let surfaceEl, addBtn, formEl, listEl, emptyEl;
   let editingId = null;
@@ -112,6 +118,7 @@ const MedsUI = (() => {
             <button class="med-icon-btn" data-action="delete" aria-label="Delete ${name}" title="Delete">×</button>
           </div>
         </header>${supplyBadge}
+        <div class="med-adherence" data-adherence hidden></div>
         <div class="med-card-status" data-status>—</div>
         <div class="med-card-last" data-last></div>
         <div class="med-card-buttons">
@@ -181,6 +188,36 @@ const MedsUI = (() => {
     }
 
     refreshCardSupply(med, card);
+    refreshCardAdherence(med, card);
+  }
+
+  // 7-day adherence strip + forgiving streak label (med-runway-adherence-loop).
+  // Scheduled meds only — getAdherenceStreak returns null for as-needed (no
+  // daily expectation), which keeps the strip hidden. Dot vocabulary mirrors
+  // Analytics.getMedAdherence: full ● / partial ◐ / missed ○; pre-creation
+  // days render as gaps.
+  function refreshCardAdherence(med, card) {
+    const wrap = card.querySelector('[data-adherence]');
+    if (!wrap) return;
+    const streak = med.getAdherenceStreak();
+    if (!streak) {
+      wrap.hidden = true;
+      wrap.innerHTML = '';
+      return;
+    }
+    const dots = streak.last7.map(d => {
+      const label = `${d.date}: ${d.status === 'before' ? 'before this med was added' : `${d.taken} of ${d.expected} doses`}`;
+      return `<span class="med-adh-dot med-adh-${d.status}" title="${escapeHtml(label)}"></span>`;
+    }).join('');
+    // A met today always counts toward `current`, so current===0 implies
+    // no streak at all (not even today).
+    const label = streak.current === 0
+      ? 'no streak yet'
+      : `${streak.current}-day streak${streak.activeToday ? ' ✓' : ''}`;
+    wrap.hidden = false;
+    wrap.setAttribute('aria-label', `Last 7 days of adherence — ${label}`);
+    wrap.innerHTML =
+      `<span class="med-adh-dots">${dots}</span><span class="med-adh-streak">${escapeHtml(label)}</span>`;
   }
 
   // Prominent "doses remaining" badge. Hidden until the user starts tracking
@@ -202,6 +239,17 @@ const MedsUI = (() => {
       `<strong>${remaining}</strong> left`;
     const meta = [`of ${total}`];
     if (resetAt) meta.push(`since ${formatSupplyDate(resetAt)}`);
+    // Runway forecast (med-runway-adherence-loop): "≈N days" at the med's
+    // daily rate, plus the projected refill-by day when it runs under the
+    // coach's warning threshold. null (as-needed with no recent doses) →
+    // count-only meta, the pre-runway rendering.
+    const runway = med.getRunwayDays();
+    if (runway !== null) {
+      meta.push(`≈${runway} day${runway === 1 ? '' : 's'}`);
+      if (runway < REFILL_WARN_DAYS) {
+        meta.push(runway <= 0 ? 'out today' : `refill by ~${formatSupplyDate(Date.now() + runway * 86400000)}`);
+      }
+    }
     card.querySelector('[data-supply-meta]').textContent = meta.join(' · ');
     wrap.classList.toggle('med-supply-low', remaining > 0 && remaining <= 5);
     wrap.classList.toggle('med-supply-empty', remaining === 0);

@@ -166,6 +166,60 @@
     });
   });
 
+  describe('Today panel render() — supply refill line (med-runway-adherence-loop)', () => {
+    function modelWithRefill(refillSoon) {
+      return {
+        band: null, hasRecovery: false,
+        focusSuggestion: { ms: null, band: null, reason: null },
+        doseStatus: {
+          hasMeds: true, allLogged: true, anyUnlogged: false,
+          meds: [{ name: 'Adderall', dose: '20 mg', kind: 'done', takenToday: 1, expected: 1, runwayDays: 3 }],
+          refillSoon: refillSoon,
+        },
+        sleep: { logged: false }, focusTodayMs: 0,
+        doseSleep: { usable: false }, empty: false,
+      };
+    }
+
+    it('renders one refill line with the day count and a "refill by ~" date', () => {
+      const html = panel().render(modelWithRefill([{ name: 'Adderall', runwayDays: 3, refillAt: NOW + 3 * 86400000 }]));
+      assert(html.indexOf('about 3 days of supply left') !== -1, 'day count rendered');
+      assert(html.indexOf('refill by ~') !== -1, 'refill-by date rendered');
+    });
+
+    it('runway 0 renders the runs-out-today copy', () => {
+      const html = panel().render(modelWithRefill([{ name: 'Adderall', runwayDays: 0, refillAt: NOW }]));
+      assert(html.indexOf('runs out today') !== -1, 'out-today copy rendered');
+    });
+
+    it('multiple low meds stay ONE line: tightest med + a count of the others', () => {
+      const html = panel().render(modelWithRefill([
+        { name: 'Tight', runwayDays: 1, refillAt: NOW + 86400000 },
+        { name: 'Loose', runwayDays: 5, refillAt: NOW + 5 * 86400000 },
+      ]));
+      assert(html.indexOf('Tight: about 1 day of supply left') !== -1, 'tightest med leads');
+      assert(html.indexOf('1 more med under a week of supply') !== -1, 'others summarized');
+      assert(html.indexOf('Loose') === -1, 'non-tightest med not itemized');
+    });
+
+    it('empty refillSoon (and models without the field) render no refill line', () => {
+      const a = panel().render(modelWithRefill([]));
+      const legacy = modelWithRefill([]);
+      delete legacy.doseStatus.refillSoon;
+      const b = panel().render(legacy);
+      assert(a.indexOf('refill') === -1, 'no refill line for empty refillSoon');
+      assert(b.indexOf('refill') === -1, 'no refill line for a pre-runway model shape');
+    });
+
+    it('escapes a hostile med name in the refill line', () => {
+      const html = panel().render(modelWithRefill([
+        { name: '<img src=x onerror=alert(1)>', runwayDays: 2, refillAt: NOW + 2 * 86400000 },
+      ]));
+      assert(html.indexOf('<img') === -1, 'raw tag not present');
+      assert(html.indexOf('&lt;img') !== -1, 'escaped form present');
+    });
+  });
+
   describe('Today panel — purity (no DOM)', () => {
     it('neither build nor render references `document` (no DOM access)', () => {
       const p = panel();

@@ -1485,3 +1485,167 @@ describe('Meds — prescription supply tracking', () => {
     assertEqual(m.getSupplyRemaining(), 1000);
   });
 });
+
+describe('Meds — supply runway (getRunwayDays)', () => {
+  it('null when supply is not tracked', () => {
+    const m = createMed('run1');
+    m.setFrequency('once-daily');
+    assertEqual(m.getRunwayDays(), null);
+  });
+
+  it('once-daily: remaining ÷ 1 dose/day, floored', () => {
+    const m = createMed('run2');
+    m.setFrequency('once-daily');
+    m.setSupply(30);
+    m.logDose();
+    m.logDose();
+    // remaining 28 at 1/day → 28 days
+    assertEqual(m.getRunwayDays(), 28);
+  });
+
+  it('twice-daily: remaining ÷ 2 doses/day, floored', () => {
+    const m = createMed('run3');
+    m.setFrequency('twice-daily');
+    m.setSupply(30);
+    assertEqual(m.getRunwayDays(), 15);
+    m.logDose();
+    // remaining 29 at 2/day → floor(14.5) = 14
+    assertEqual(m.getRunwayDays(), 14);
+  });
+
+  it('0 remaining → 0 days (out today, not null)', () => {
+    const m = createMed('run4');
+    m.setFrequency('once-daily');
+    m.setSupply(1);
+    m.logDose();
+    assertEqual(m.getSupplyRemaining(), 0);
+    assertEqual(m.getRunwayDays(), 0);
+  });
+
+  it('as-needed: rate from the trailing 14-day average consumption', () => {
+    const m = createMed('run5');
+    m.setFrequency('as-needed');
+    m.setSupply(28);
+    const now = Date.now();
+    // 7 doses over the trailing week — all BEFORE the refill, so remaining
+    // stays 28 while the observed rate is 7/14 = 0.5/day → 56 days.
+    for (let i = 1; i <= 7; i++) m.logDose(now - i * 86400000);
+    assertEqual(m.getSupplyRemaining(), 28);
+    assertEqual(m.getRunwayDays(now), 56);
+  });
+
+  it('as-needed with no dose in the trailing window → null (no observed rate)', () => {
+    const m = createMed('run6');
+    m.setFrequency('as-needed');
+    m.setSupply(30);
+    assertEqual(m.getRunwayDays(), null);
+    // A dose OLDER than 14 days doesn't establish a rate either.
+    const now = Date.now();
+    m.logDose(now - 20 * 86400000);
+    assertEqual(m.getRunwayDays(now), null);
+  });
+
+  it('unrecognized (forward-compat) frequency behaves like as-needed for the rate', () => {
+    const m = createMed('run7');
+    m.setFrequency('three-times-daily'); // preserved verbatim per F20
+    m.setSupply(30);
+    const now = Date.now();
+    assertEqual(m.getRunwayDays(now), null); // no doses → no rate
+    for (let i = 1; i <= 14; i++) m.logDose(now - i * 86400000 + 3600000);
+    // 14 doses in 14 days → 1/day; remaining is 30 minus the doses that
+    // landed after the refill (only the one ~1h "ago"… all are before reset
+    // except none — setSupply stamped now, every dose is earlier) → 30.
+    assertEqual(m.getRunwayDays(now), 30);
+  });
+});
+
+describe('Meds — adherence streak (getAdherenceStreak)', () => {
+  const NOW_ADH = new Date(2026, 0, 20, 12, 0, 0).getTime(); // 2026-01-20 noon local
+  function atDay(offset, hour) {
+    const b = new Date(NOW_ADH);
+    return new Date(b.getFullYear(), b.getMonth(), b.getDate() + offset, hour == null ? 9 : hour, 0, 0, 0).getTime();
+  }
+
+  it('null for as-needed (no daily expectation)', () => {
+    const m = createMed('adh1');
+    m.setFrequency('as-needed');
+    m.logDose(atDay(0));
+    assertEqual(m.getAdherenceStreak(NOW_ADH), null);
+  });
+
+  it('once-daily: consecutive met days ending today (activeToday)', () => {
+    const m = createMed('adh2');
+    m.setFrequency('once-daily');
+    m.logDose(atDay(-2));
+    m.logDose(atDay(-1));
+    m.logDose(atDay(0));
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 3);
+    assertEqual(s.activeToday, true);
+  });
+
+  it('forgiving: an unmet TODAY does not break the streak', () => {
+    const m = createMed('adh3');
+    m.setFrequency('once-daily');
+    m.logDose(atDay(-2));
+    m.logDose(atDay(-1));
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 2);
+    assertEqual(s.activeToday, false);
+  });
+
+  it('a missed day before yesterday breaks the streak', () => {
+    const m = createMed('adh4');
+    m.setFrequency('once-daily');
+    m.logDose(atDay(-3));
+    m.logDose(atDay(-1)); // gap at D-2
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 1);
+  });
+
+  it('twice-daily: a 1-of-2 day counts as unmet for the streak', () => {
+    const m = createMed('adh5');
+    m.setFrequency('twice-daily');
+    m.logDose(atDay(-2, 8));                       // 1 of 2 — unmet
+    m.logDose(atDay(-1, 8)); m.logDose(atDay(-1, 20)); // 2 of 2 — met
+    m.logDose(atDay(0, 8));                        // 1 of 2 so far today — pending
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 1);        // yesterday only
+    assertEqual(s.activeToday, false); // today not yet met
+  });
+
+  it('days before createdAt neither extend nor break the streak (M14 clamp)', () => {
+    const m = createMed('adh6');
+    m.setFrequency('once-daily');
+    m.setCreatedAt(atDay(-1, 0));
+    m.logDose(atDay(-1));
+    m.logDose(atDay(0));
+    const s = m.getAdherenceStreak(NOW_ADH);
+    // D-2 is before the med existed — the walk stops there instead of
+    // reading it as a missed day, and it can't inflate the count either.
+    assertEqual(s.current, 2);
+  });
+
+  it('nothing logged → current 0, activeToday false', () => {
+    const m = createMed('adh7');
+    m.setFrequency('once-daily');
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.current, 0);
+    assertEqual(s.activeToday, false);
+  });
+
+  it('last7 is 7 entries oldest→newest with full/partial/missed/before statuses', () => {
+    const m = createMed('adh8');
+    m.setFrequency('twice-daily');
+    m.setCreatedAt(atDay(-5, 0));
+    m.logDose(atDay(-2, 8));                       // partial
+    m.logDose(atDay(0, 8)); m.logDose(atDay(0, 20)); // full
+    const s = m.getAdherenceStreak(NOW_ADH);
+    assertEqual(s.last7.length, 7);
+    const statuses = s.last7.map(d => d.status);
+    assertArrayEqual(statuses, ['before', 'missed', 'missed', 'missed', 'partial', 'missed', 'full']);
+    assertEqual(s.last7[6].taken, 2);
+    assertEqual(s.last7[6].expected, 2);
+    assertEqual(s.last7[0].date < s.last7[6].date, true);
+  });
+});

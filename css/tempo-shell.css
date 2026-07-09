@@ -934,6 +934,41 @@
 }
 .med-supply-empty .med-supply-count { color: #ff453a; }
 
+/* 7-day adherence strip — dot per day (oldest → newest) + forgiving streak
+   label. Scheduled meds only; hidden for as-needed (no daily expectation). */
+.med-adherence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.med-adherence[hidden] { display: none; }
+.med-adh-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.med-adh-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--active-accent);
+  flex-shrink: 0;
+}
+.med-adh-partial {
+  background: linear-gradient(90deg, var(--active-accent) 50%, var(--separator) 50%);
+}
+.med-adh-missed {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--separator);
+}
+.med-adh-before { visibility: hidden; }
+.med-adh-streak {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* "New prescription" trigger — subtle dashed button below the log actions. */
 .med-supply-reset {
   font-family: inherit;
