@@ -696,6 +696,117 @@ const Platform = (() => {
     }
   }
 
+  // ── Live Activities (iOS 16.1+ via custom Capacitor plugin) ─────────────
+  //
+  // Bridge to the in-tree LiveActivityPlugin (ios/App/App/Plugins/LiveActivity).
+  // Mirrors the Platform.auth / Platform.network module-pattern verbatim:
+  // lazy plugin lookup, one-time-warn flag, normalized return shape, total
+  // no-op on web.
+  //
+  // - Web build: every method resolves to { supported: false } or
+  //   { ok: false, reason: 'web' } — no throws, no console noise.
+  // - Native build (Capacitor iOS): delegates to
+  //   window.Capacitor.Plugins.LiveActivity (registered by
+  //   LiveActivityPlugin.m's CAP_PLUGIN macro). When the plugin handle is
+  //   undefined — most likely because `npx cap sync ios` hasn't been re-run
+  //   since the plugin was added — surface ONCE via console.warn and return
+  //   { ok: false, reason: 'plugin-missing' } / { supported: false }.
+  //
+  // The engine touches in js/timer.js call these methods fire-and-forget
+  // (`.catch(() => {})`) — engine state mutation MUST NOT block on the
+  // bridge. Methods are wrapped in try/catch so any plugin throw (e.g.
+  // iOS rejected the activity request) degrades to the canonical "off"
+  // shape rather than propagating.
+
+  let _liveActivityNativeUnavailableLogged = false;
+
+  function _liveActivityPlugin() {
+    const la = plugins && plugins.LiveActivity;
+    if (!la) {
+      if (!_liveActivityNativeUnavailableLogged) {
+        try { console.warn('[Platform.liveActivity] Live Activity plugin unavailable — rebuild iOS app via `npx cap sync ios`.'); } catch (_e) {}
+        _liveActivityNativeUnavailableLogged = true;
+      }
+      return null;
+    }
+    return la;
+  }
+
+  async function liveActivityIsSupported() {
+    if (!isNative) return { supported: false };
+    const la = _liveActivityPlugin();
+    if (!la) return { supported: false };
+    try {
+      const result = await la.isSupported();
+      const supported = !!(result && result.supported === true);
+      return { supported };
+    } catch (_e) {
+      return { supported: false };
+    }
+  }
+
+  async function liveActivityStartTimer(args) {
+    if (!isNative) return { ok: false, reason: 'web' };
+    const la = _liveActivityPlugin();
+    if (!la) return { ok: false, reason: 'plugin-missing' };
+    try {
+      const result = await la.startTimer(args || {});
+      // Plugin's success shape is { ok: true } — but we don't trust the
+      // shape and normalize defensively.
+      const ok = !!(result && result.ok === true);
+      return ok ? { ok: true } : { ok: false, reason: 'plugin-error' };
+    } catch (_e) {
+      return { ok: false, reason: 'plugin-error' };
+    }
+  }
+
+  async function liveActivityUpdateTimer(args) {
+    if (!isNative) return { ok: false, reason: 'web' };
+    const la = _liveActivityPlugin();
+    if (!la) return { ok: false, reason: 'plugin-missing' };
+    try {
+      const result = await la.updateTimer(args || {});
+      const ok = !!(result && result.ok === true);
+      return ok ? { ok: true } : { ok: false, reason: 'plugin-error' };
+    } catch (_e) {
+      return { ok: false, reason: 'plugin-error' };
+    }
+  }
+
+  async function liveActivityEndTimer(args) {
+    if (!isNative) return { ok: false, reason: 'web' };
+    const la = _liveActivityPlugin();
+    if (!la) return { ok: false, reason: 'plugin-missing' };
+    try {
+      const result = await la.endTimer(args || {});
+      const ok = !!(result && result.ok === true);
+      return ok ? { ok: true } : { ok: false, reason: 'plugin-error' };
+    } catch (_e) {
+      return { ok: false, reason: 'plugin-error' };
+    }
+  }
+
+  async function liveActivityEndAll() {
+    if (!isNative) return { ok: false, reason: 'web' };
+    const la = _liveActivityPlugin();
+    if (!la) return { ok: false, reason: 'plugin-missing' };
+    try {
+      const result = await la.endAll();
+      const ok = !!(result && result.ok === true);
+      return ok ? { ok: true } : { ok: false, reason: 'plugin-error' };
+    } catch (_e) {
+      return { ok: false, reason: 'plugin-error' };
+    }
+  }
+
+  const liveActivity = {
+    isSupported: liveActivityIsSupported,
+    startTimer:  liveActivityStartTimer,
+    updateTimer: liveActivityUpdateTimer,
+    endTimer:    liveActivityEndTimer,
+    endAll:      liveActivityEndAll,
+  };
+
   return {
     isNative,
     haptic,
@@ -706,5 +817,6 @@ const Platform = (() => {
     auth,
     network,
     keepAwake,
+    liveActivity,
   };
 })();

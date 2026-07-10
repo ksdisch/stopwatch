@@ -72,3 +72,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
 }
+
+/// Capacitor bridge view controller for the app. Registers the app-local
+/// custom LiveActivity plugin at bridge-load time.
+///
+/// Capacitor 6's `registerPlugins()` only auto-loads the four core plugins plus
+/// the classes listed in the bundled `capacitor.config.json` `packageClassList`
+/// — a list the Capacitor CLI generates from installed *pods*. LiveActivityPlugin
+/// is an in-tree plugin (not a pod), so it is absent from that list and is never
+/// registered by the default flow (the reason `window.Capacitor.Plugins.LiveActivity`
+/// came back undefined). `registerPluginInstance(_:)` enrolls it explicitly; this
+/// `capacitorDidLoad()` override is the documented Capacitor 6 hook for app-local
+/// plugins. Wired in via Main.storyboard (customClass = MainViewController).
+class MainViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(LiveActivityPlugin())
+    }
+}

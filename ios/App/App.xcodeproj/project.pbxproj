@@ -7,20 +7,54 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		17F3A4DE7DA0DDF16D6A1493 /* TempoTimerAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2577E131B364818CEBA1C5 /* TempoTimerAttributes.swift */; };
+		29345F2F8CA24E9F5E57664E /* TempoTimerLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B45FB8563C4BC68F72C085 /* TempoTimerLiveActivity.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		360CCE0CAE4866433098B28C /* TempoTimerAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2577E131B364818CEBA1C5 /* TempoTimerAttributes.swift */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		6FA73A769810358EA12C0B2E /* TempoLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B94BC3593B4203795820154 /* TempoLiveActivityWidget.swift */; };
 		948CE2DA2FB75CCA007E4EBC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 948CE2D92FB75CCA007E4EBC /* GoogleService-Info.plist */; };
+		AE27CFAB17D9C980D3BD683E /* TempoLiveActivityWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7920FEDBE821ED25051C1C7D /* TempoLiveActivityWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BEDCC3EF842B42D0E2735178 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EBDC1908B571941EE11BE38F /* Pods_App.framework */; };
+		C08680B9AA22E41CF918EBC7 /* LiveActivityPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D9DED0B2E7972CB409C448E /* LiveActivityPlugin.m */; };
+		E60EA02905F7792FCE0796E8 /* LiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12EECA81C6BC4952AFF9B8DB /* LiveActivityPlugin.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		CE12B97F6ED477F3B1489A20 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 433B8B1C4552483CE0B364EB;
+			remoteInfo = TempoLiveActivityWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3F0DBA9180D3BAC1F1CB7133 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AE27CFAB17D9C980D3BD683E /* TempoLiveActivityWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		12EECA81C6BC4952AFF9B8DB /* LiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveActivityPlugin.swift; sourceTree = "<group>"; };
 		1383C1645DEEE4E92600734A /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		3A2577E131B364818CEBA1C5 /* TempoTimerAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TempoTimerAttributes.swift; sourceTree = "<group>"; };
+		4D9DED0B2E7972CB409C448E /* LiveActivityPlugin.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = LiveActivityPlugin.m; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -29,6 +63,10 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		5A52A0FBAE7A36E2ABE2A4DE /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		63B45FB8563C4BC68F72C085 /* TempoTimerLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TempoTimerLiveActivity.swift; sourceTree = "<group>"; };
+		6B94BC3593B4203795820154 /* TempoLiveActivityWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TempoLiveActivityWidget.swift; sourceTree = "<group>"; };
+		7920FEDBE821ED25051C1C7D /* TempoLiveActivityWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TempoLiveActivityWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		948CE2D92FB75CCA007E4EBC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "App/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		C09BB234760BA001507ABEAC /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		EBDC1908B571941EE11BE38F /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -43,9 +81,38 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C176531E5181A07F2BF21DC0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		07BAB21ED603DA798E4DB22C /* TempoLiveActivityWidget */ = {
+			isa = PBXGroup;
+			children = (
+				6B94BC3593B4203795820154 /* TempoLiveActivityWidget.swift */,
+				63B45FB8563C4BC68F72C085 /* TempoTimerLiveActivity.swift */,
+				5A52A0FBAE7A36E2ABE2A4DE /* Info.plist */,
+			);
+			name = TempoLiveActivityWidget;
+			path = TempoLiveActivityWidget;
+			sourceTree = "<group>";
+		};
+		1FD41214A1F6434884AED78A /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				12EECA81C6BC4952AFF9B8DB /* LiveActivityPlugin.swift */,
+				4D9DED0B2E7972CB409C448E /* LiveActivityPlugin.m */,
+				3A2577E131B364818CEBA1C5 /* TempoTimerAttributes.swift */,
+			);
+			name = LiveActivity;
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
@@ -54,6 +121,7 @@
 				504EC3051FED79650016851F /* Products */,
 				D9682901CF7422D8E1E17E65 /* Pods */,
 				6AB91DD23B446EFDE7CCEFAF /* Frameworks */,
+				07BAB21ED603DA798E4DB22C /* TempoLiveActivityWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				7920FEDBE821ED25051C1C7D /* TempoLiveActivityWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,6 +145,7 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				B7D1163E1C242C8B35984BE9 /* Plugins */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -86,6 +156,15 @@
 				EBDC1908B571941EE11BE38F /* Pods_App.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B7D1163E1C242C8B35984BE9 /* Plugins */ = {
+			isa = PBXGroup;
+			children = (
+				1FD41214A1F6434884AED78A /* LiveActivity */,
+			);
+			name = Plugins;
+			path = Plugins;
 			sourceTree = "<group>";
 		};
 		D9682901CF7422D8E1E17E65 /* Pods */ = {
@@ -101,6 +180,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		433B8B1C4552483CE0B364EB /* TempoLiveActivityWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 299B15622127E0D4CB13D295 /* Build configuration list for PBXNativeTarget "TempoLiveActivityWidget" */;
+			buildPhases = (
+				0A12226E604088234AFB921C /* Sources */,
+				C176531E5181A07F2BF21DC0 /* Frameworks */,
+				F0EEFF3A2B0094E16B603B1D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TempoLiveActivityWidget;
+			productName = TempoLiveActivityWidget;
+			productReference = 7920FEDBE821ED25051C1C7D /* TempoLiveActivityWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
@@ -110,10 +206,12 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				52836E1B9C135AEB13C23520 /* [CP] Embed Pods Frameworks */,
+				3F0DBA9180D3BAC1F1CB7133 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F6477AB95496698C7ED4B004 /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
@@ -150,6 +248,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				433B8B1C4552483CE0B364EB /* TempoLiveActivityWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -166,6 +265,13 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0EEFF3A2B0094E16B603B1D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -212,15 +318,36 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0A12226E604088234AFB921C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6FA73A769810358EA12C0B2E /* TempoLiveActivityWidget.swift in Sources */,
+				29345F2F8CA24E9F5E57664E /* TempoTimerLiveActivity.swift in Sources */,
+				17F3A4DE7DA0DDF16D6A1493 /* TempoTimerAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				E60EA02905F7792FCE0796E8 /* LiveActivityPlugin.swift in Sources */,
+				C08680B9AA22E41CF918EBC7 /* LiveActivityPlugin.m in Sources */,
+				360CCE0CAE4866433098B28C /* TempoTimerAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F6477AB95496698C7ED4B004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 433B8B1C4552483CE0B364EB /* TempoLiveActivityWidget */;
+			targetProxy = CE12B97F6ED477F3B1489A20 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -390,9 +517,74 @@
 			};
 			name = Release;
 		};
+		924CA1654AC9C8CC167DC23E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 7G7JC5TWVF;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TempoLiveActivityWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tempo Live Activity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ksdisch.tempo.TempoLiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		DC7ECDF33AF4DE9D0874B086 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 7G7JC5TWVF;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TempoLiveActivityWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tempo Live Activity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ksdisch.tempo.TempoLiveActivityWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		299B15622127E0D4CB13D295 /* Build configuration list for PBXNativeTarget "TempoLiveActivityWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				924CA1654AC9C8CC167DC23E /* Release */,
+				DC7ECDF33AF4DE9D0874B086 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

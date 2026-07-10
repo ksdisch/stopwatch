@@ -73,6 +73,21 @@ function createTimer(id, opts) {
     if (durationMs === 0) return;
     startedAt = Date.now();
     status = 'running';
+    // Fire-and-forget Live Activity emit (iOS only). Gated on the user's
+    // `live_activities_enabled` flag (default ON when key absent).
+    // Native side detects existing activity for this id and routes to
+    // .update(...) instead of .request(...) — so resume-from-pause does
+    // NOT create a duplicate.
+    if (localStorage.getItem('live_activities_enabled') !== '0'
+        && typeof Platform !== 'undefined' && Platform.liveActivity) {
+      Platform.liveActivity.startTimer({
+        id,
+        name,
+        startedAt: Date.now(),
+        endsAt: Date.now() + getRemainingMs(),
+        isPaused: false,
+      }).catch(() => {});
+    }
   }
 
   function pause() {
@@ -80,6 +95,10 @@ function createTimer(id, opts) {
     accumulatedMs += Date.now() - startedAt;
     startedAt = null;
     status = 'paused';
+    if (localStorage.getItem('live_activities_enabled') !== '0'
+        && typeof Platform !== 'undefined' && Platform.liveActivity) {
+      Platform.liveActivity.updateTimer({ id, isPaused: true }).catch(() => {});
+    }
   }
 
   function reset() {
@@ -89,6 +108,10 @@ function createTimer(id, opts) {
     accumulatedMs = 0;
     alarmFired = false;
     zeroCrossedAt = null;
+    if (localStorage.getItem('live_activities_enabled') !== '0'
+        && typeof Platform !== 'undefined' && Platform.liveActivity) {
+      Platform.liveActivity.endTimer({ id }).catch(() => {});
+    }
   }
 
   function checkFinished() {
@@ -112,6 +135,10 @@ function createTimer(id, opts) {
       if (!alarmFired) {
         alarmFired = true;
         if (alarmCallback) alarmCallback();
+        if (localStorage.getItem('live_activities_enabled') !== '0'
+            && typeof Platform !== 'undefined' && Platform.liveActivity) {
+          Platform.liveActivity.endTimer({ id }).catch(() => {});
+        }
       }
       return true;
     }

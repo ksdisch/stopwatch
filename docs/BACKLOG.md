@@ -48,7 +48,7 @@ feature table.
 | 1 | Native iOS app via Capacitor — App Store distribution | High | Medium | #8 | Shipped to personal device; App Store paperwork remaining |
 | 2 | Todoist integration — two-way Todoist ↔ Flow/Pomodoro task lists | High | Medium | #10 | Pomo V1 shipped (#bl-2-todoist); Flow + rename in follow-ups #9/#10 below |
 | 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
-| 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Unshipped** — unlocked by #1 |
+| 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Timer MVP built + simulator-validated 2026-07-09** (`feat/live-activities-timer`); PR + on-device confirm pending — see #4 detail below |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
 | 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
 | 7 | Voice control | Low | Medium | #3 | **Unshipped** |
@@ -101,6 +101,8 @@ Drift-free engines make this cheap — the activity stores `endsAt` (timer) or
 locally, no per-tick push needed. **Out of scope first pass:** APNs Push-to-Update (local
 ActivityKit updates suffice for drift-free engines), Android "ongoing notification"
 equivalent (separate effort). **Unlocked by:** item #1 (Capacitor wrapper already shipped).
+
+**Status (2026-07-09) — Timer MVP built + simulator-validated** (branch `feat/live-activities-timer`). Revived the never-merged 2026-05-22 `feat/live-activities-timer-mvp` draft onto current `main`: custom in-tree `LiveActivityPlugin` + `TempoLiveActivityWidget` Extension + `Platform.liveActivity` bridge + 4 `timer.js` emit points + iOS settings toggle + `tempo://` deep-link (Timer engine only; other engines are the follow-ups). Web verified equivalent; engine suite PASS (1313); `xcodebuild` green; `cap sync` leaves the widget target intact. Runtime validation on an iPhone 17 Pro simulator **caught + fixed a real bug the draft carried** — the plugin registered only via the legacy Obj-C `CAP_PLUGIN` macro, which Capacitor 6.2.1 does not enumerate (see `iOS-BUILD.md` → "Custom (in-tree) Capacitor plugins"); fixed via `CAPBridgedPlugin` conformance + `registerPluginInstance()` in a `CAPBridgeViewController` subclass. Lock-screen activity renders (name + live countdown + progress bar). **Remaining:** PR + Kyle's on-device confirm (incl. the activity-tap deep-link); then reuse the same bridge + Widget target for Stopwatch/Pomodoro/Flow/Interval/Cooking.
 
 ### #6 — Split-screen timer comparison (Medium / High)
 

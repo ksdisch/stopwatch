@@ -3192,6 +3192,43 @@ body.focus-mode .mood-capture { display: none; }
   min-width: 0;
 }
 
+/* ── Live Activities (iOS) — settings drawer section ──
+   Mirrors the Cloud Sync section styles above. Reuses the
+   .tempo-cloud-sync-toggle* classes for the iOS-style switch so the two
+   sections render identically. */
+.tempo-live-activities-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--separator);
+  margin-top: 4px;
+}
+
+.tempo-live-activities-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.tempo-live-activities-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tempo-live-activities-row .tempo-settings-item-label {
+  flex: 1 1 auto;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
 .tempo-cloud-sync-photo {
   width: 28px;
   height: 28px;
