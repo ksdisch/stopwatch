@@ -1265,6 +1265,18 @@ const TempoNav = (() => {
       localStorage.setItem('live_activities_enabled', next ? '1' : '0');
       if (!next && Platform.liveActivity) {
         Platform.liveActivity.endAll().catch(() => {});
+      } else if (next && Platform.liveActivity
+                 && typeof Timer !== 'undefined' && Timer.getStatus() === 'running') {
+        // Re-arm the primary timer's activity immediately — without this, a
+        // countdown already running when the toggle flips ON stays
+        // activity-less until its next start().
+        Platform.liveActivity.startTimer({
+          id: Timer.getId(),
+          name: Timer.getName(),
+          startedAt: Date.now(),
+          endsAt: Date.now() + Timer.getRemainingMs(),
+          isPaused: false,
+        }).catch(() => {});
       }
     });
   }

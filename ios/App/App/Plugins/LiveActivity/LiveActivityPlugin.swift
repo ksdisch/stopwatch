@@ -48,18 +48,34 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // availability — the per-method casts handle that.
     private var activities: [String: Any] = [:]
 
+    // Only .active/.stale activities are adoptable. A just-ended or user-
+    // dismissed activity lingers in the dict and briefly in the registry;
+    // adopting one makes startTimer "update" a corpse (a silent no-op)
+    // instead of requesting a fresh activity — on device: toggle OFF
+    // (endAll) → toggle ON → start rendered nothing. Stale stays adoptable
+    // on purpose: the finished-while-locked "Done" activity must be findable
+    // so endTimer can dismiss it on the next app resume.
+    @available(iOS 16.1, *)
+    private func isLive(_ activity: Activity<TempoTimerAttributes>) -> Bool {
+        if activity.activityState == .active { return true }
+        if #available(iOS 16.2, *), activity.activityState == .stale { return true }
+        return false
+    }
+
     // Dict lookup with a system-registry fallback. After a process relaunch
     // (force-quit, jetsam) the dict is empty but ActivityKit may still be
     // tracking activities from the previous launch — without the fallback,
     // startTimer would request a DUPLICATE and updateTimer/endTimer would
-    // no-op against the orphan. Matches are re-adopted into the dict.
+    // no-op against the orphan. Live matches are re-adopted into the dict;
+    // dead dict entries are purged on sight.
     @available(iOS 16.1, *)
     private func findActivity(_ timerId: String) -> Activity<TempoTimerAttributes>? {
         if let existing = activities[timerId] as? Activity<TempoTimerAttributes> {
-            return existing
+            if isLive(existing) { return existing }
+            activities.removeValue(forKey: timerId)
         }
         if let orphan = Activity<TempoTimerAttributes>.activities
-            .first(where: { $0.attributes.timerId == timerId }) {
+            .first(where: { $0.attributes.timerId == timerId && isLive($0) }) {
             activities[timerId] = orphan
             return orphan
         }
