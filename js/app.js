@@ -326,16 +326,26 @@ function applyAppMode() {
   // to any other mode, clear that state so Start/Pause isn't stuck.
   if (!isFlow) document.getElementById('btn-right').disabled = false;
 
+  // switchAppMode stops EVERY render loop before the fade; each branch below
+  // must re-arm its own loop when its engine is mid-run, or the display
+  // freezes at this one structural paint (stopwatch gets this via
+  // UI.syncUI → startRenderLoop; flow/cooking always had it).
   if (isTimer) {
     updateTimerUI();
+    if (!sequenceMode) {
+      const st = Timer.getStatus();
+      if (st === 'running' || st === 'overflowing') startTimerRenderLoop();
+    }
   } else if (isPomodoro) {
     updatePomodoroUI();
+    if (Pomodoro.getStatus() === 'running') startPomodoroRenderLoop();
   } else if (isFlow) {
     updateFlowUI();
     const st = Flow.getStatus();
     if (st === 'running' || st === 'recovery') startFlowRenderLoop();
   } else if (isInterval) {
     updateIntervalUI();
+    if (Interval.getStatus() === 'running') startIntervalRenderLoop();
   } else if (isCooking) {
     renderCookingTimers();
     const anyRunning = cookingTimers.some(ct => ct.timer.getStatus() === 'running');

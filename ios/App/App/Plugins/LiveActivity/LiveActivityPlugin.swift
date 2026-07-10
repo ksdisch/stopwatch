@@ -48,6 +48,24 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
     // availability — the per-method casts handle that.
     private var activities: [String: Any] = [:]
 
+    // Dict lookup with a system-registry fallback. After a process relaunch
+    // (force-quit, jetsam) the dict is empty but ActivityKit may still be
+    // tracking activities from the previous launch — without the fallback,
+    // startTimer would request a DUPLICATE and updateTimer/endTimer would
+    // no-op against the orphan. Matches are re-adopted into the dict.
+    @available(iOS 16.1, *)
+    private func findActivity(_ timerId: String) -> Activity<TempoTimerAttributes>? {
+        if let existing = activities[timerId] as? Activity<TempoTimerAttributes> {
+            return existing
+        }
+        if let orphan = Activity<TempoTimerAttributes>.activities
+            .first(where: { $0.attributes.timerId == timerId }) {
+            activities[timerId] = orphan
+            return orphan
+        }
+        return nil
+    }
+
     // MARK: - isSupported
 
     @objc func isSupported(_ call: CAPPluginCall) {
@@ -86,12 +104,20 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 isPaused: isPaused
             )
 
-            // Resume-from-pause: if we already track an activity for this
-            // timerId, update it in place rather than creating a duplicate.
-            if let existing = activities[timerId] as? Activity<TempoTimerAttributes> {
+            // staleDate = endsAt (16.2+): the app is suspended when a locked-
+            // phone countdown hits zero, so no JS can end the activity at that
+            // moment. Going stale at endsAt re-renders the widget, whose
+            // isStale branch shows the "Done" state instead of a dead 0:00.
+            // nil while paused — a long pause must not fake a "Done".
+            let staleDate: Date? = isPaused ? nil : endsAt
+
+            // Resume-from-pause: if an activity already exists for this
+            // timerId (dict or system registry), update it in place rather
+            // than creating a duplicate.
+            if let existing = findActivity(timerId) {
                 Task {
                     if #available(iOS 16.2, *) {
-                        await existing.update(ActivityContent(state: contentState, staleDate: nil))
+                        await existing.update(ActivityContent(state: contentState, staleDate: staleDate))
                     } else {
                         await existing.update(using: contentState)
                     }
@@ -107,7 +133,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 if #available(iOS 16.2, *) {
                     activity = try Activity.request(
                         attributes: attributes,
-                        content: ActivityContent(state: contentState, staleDate: nil),
+                        content: ActivityContent(state: contentState, staleDate: staleDate),
                         pushType: nil
                     )
                 } else {
@@ -136,7 +162,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         if #available(iOS 16.1, *) {
-            guard let existing = activities[timerId] as? Activity<TempoTimerAttributes> else {
+            guard let existing = findActivity(timerId) else {
                 // Nothing to update — treat as a no-op success so JS callers
                 // don't need to differentiate "no activity" from "update failed."
                 call.resolve(["ok": true, "noop": true])
@@ -172,7 +198,10 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
 
             Task {
                 if #available(iOS 16.2, *) {
-                    await existing.update(ActivityContent(state: nextState, staleDate: nil))
+                    // Same stale contract as startTimer: stale at endsAt while
+                    // counting (drives the widget's "Done" state), never while
+                    // paused.
+                    await existing.update(ActivityContent(state: nextState, staleDate: nextIsPaused ? nil : nextEndsAt))
                 } else {
                     await existing.update(using: nextState)
                 }
@@ -192,7 +221,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         if #available(iOS 16.1, *) {
-            guard let existing = activities[timerId] as? Activity<TempoTimerAttributes> else {
+            guard let existing = findActivity(timerId) else {
                 call.resolve(["ok": true, "noop": true])
                 return
             }

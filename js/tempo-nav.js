@@ -38,6 +38,11 @@ const TempoNav = (() => {
   const TIMERS_MODES = {
     'stopwatch': { sub: '',          appMode: 'stopwatch' },
     'countdown': { sub: 'countdown', appMode: 'timer'     },
+    // Alias for 'countdown'. The Live Activity widgetURL shipped to devices
+    // as tempo://timers/timer; without this key that deep-link fell through
+    // the `|| TIMERS_MODES['stopwatch']` fallback and landed on Stopwatch.
+    // sub stays 'countdown' so the sub-nav highlights the canonical button.
+    'timer':     { sub: 'countdown', appMode: 'timer'     },
     'pomodoro':  { sub: 'pomodoro',  appMode: 'pomodoro'  },
     'flow':      { sub: 'flow',      appMode: 'flow'      },
     'interval':  { sub: 'interval',  appMode: 'interval'  },
@@ -1277,16 +1282,28 @@ const TempoNav = (() => {
     const cap = (typeof window !== 'undefined') ? window.Capacitor : null;
     const App = (cap && cap.Plugins) ? cap.Plugins.App : null;
     if (!App || typeof App.addListener !== 'function') return;
-    App.addListener('appUrlOpen', (event) => {
+    const applyUrl = (rawUrl) => {
       try {
-        if (!event || !event.url) return;
-        const url = new URL(event.url);
+        const url = new URL(rawUrl);
         const path = (url.host || '') + (url.pathname || '');
         if (path) {
           window.location.hash = '#/' + path.replace(/^\/+/, '');
         }
       } catch (_e) { /* malformed URL — ignore */ }
+    };
+    App.addListener('appUrlOpen', (event) => {
+      if (event && event.url) applyUrl(event.url);
     });
+    // Cold start: the launch URL is delivered natively before any JS listener
+    // exists, so appUrlOpen alone misses it. getLaunchUrl() hands it back
+    // after the fact. Only applied when the boot URL carried no hash — a
+    // WebView reload preserves its hash and must not be yanked back to the
+    // (process-lifetime-stale) launch URL.
+    if (!window.location.hash && typeof App.getLaunchUrl === 'function') {
+      App.getLaunchUrl().then((res) => {
+        if (res && res.url) applyUrl(res.url);
+      }).catch(() => {});
+    }
   }
 
   function wireWellnessPlaceholderCTA() {

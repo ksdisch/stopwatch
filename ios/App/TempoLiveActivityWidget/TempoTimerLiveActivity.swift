@@ -4,9 +4,11 @@
 //   1. Lock-screen view — large countdown text + thin progress bar at the
 //      bottom (Q1 → Option B). Name + PAUSED badge in top row.
 //   2. Dynamic Island (iPhone 14 Pro+) compact / expanded / minimal layouts.
-//   3. The expanded view carries `.widgetURL(URL(string: "tempo://timers/timer"))`
+//   3. The expanded view carries `.widgetURL(URL(string: "tempo://timers/countdown"))`
 //      so tapping it routes through the registered URL scheme to the JS-side
 //      appUrlOpen listener (in js/tempo-nav.js — wired in Phase 4).
+//      'countdown' is the canonical Timers sub-route in TIMERS_MODES; the JS
+//      also aliases 'timer' for activities started by older builds.
 //
 // Apple's Text(timerInterval:countsDown:) and ProgressView(timerInterval:)
 // re-render at OS cadence (~1 Hz on lock screen) without any per-tick
@@ -18,13 +20,24 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 
+// True once the content's staleDate (== endsAt while counting) has passed.
+// The app is usually suspended at that moment — no JS can run — so the stale
+// transition is what re-renders the views into the "Done" state until the
+// app's next resume ends the activity. isStale needs iOS 16.2; on 16.1 the
+// countdown simply clamps at 0:00 as before.
+@available(iOS 16.1, *)
+private func isDone(_ context: ActivityViewContext<TempoTimerAttributes>) -> Bool {
+    if #available(iOS 16.2, *) { return context.isStale }
+    return false
+}
+
 @available(iOS 16.1, *)
 struct TempoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TempoTimerAttributes.self) { context in
             // Lock-screen / banner view.
             TempoTimerLockScreenView(context: context)
-                .widgetURL(URL(string: "tempo://timers/timer"))
+                .widgetURL(URL(string: "tempo://timers/countdown"))
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded — pulls down when long-pressed (or when the
@@ -35,7 +48,12 @@ struct TempoTimerLiveActivity: Widget {
                         .imageScale(.medium)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if context.state.isPaused {
+                    if isDone(context) {
+                        Text("DONE")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    } else if context.state.isPaused {
                         Text("PAUSED")
                             .font(.caption2)
                             .fontWeight(.bold)
@@ -62,7 +80,12 @@ struct TempoTimerLiveActivity: Widget {
                     .foregroundColor(.green)
                     .imageScale(.small)
             } compactTrailing: {
-                if context.state.isPaused {
+                if isDone(context) {
+                    Text("DONE")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.green)
+                } else if context.state.isPaused {
                     Text("PAUSED")
                         .font(.caption2)
                         .fontWeight(.bold)
@@ -76,7 +99,10 @@ struct TempoTimerLiveActivity: Widget {
             } minimal: {
                 // Minimal — shown when multiple activities are active and
                 // the system collapses to a tiny indicator. Countdown only.
-                if context.state.isPaused {
+                if isDone(context) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                } else if context.state.isPaused {
                     Image(systemName: "pause.fill")
                         .foregroundColor(.orange)
                 } else {
@@ -86,7 +112,7 @@ struct TempoTimerLiveActivity: Widget {
                         .foregroundColor(.green)
                 }
             }
-            .widgetURL(URL(string: "tempo://timers/timer"))
+            .widgetURL(URL(string: "tempo://timers/countdown"))
             .keylineTint(.green)
         }
     }
@@ -122,10 +148,20 @@ struct TempoTimerLockScreenView: View {
                 }
             }
 
-            // Center: large countdown. Static when paused, live otherwise.
+            // Center: large countdown. "Done" once stale, static when
+            // paused, live otherwise.
             HStack {
                 Spacer()
-                if context.state.isPaused {
+                if isDone(context) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .imageScale(.large)
+                        Text("Done")
+                            .font(.system(size: 42, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                } else if context.state.isPaused {
                     Text(staticRemainingString(state: context.state))
                         .font(.system(size: 42, weight: .semibold, design: .monospaced))
                         .foregroundColor(.primary)
