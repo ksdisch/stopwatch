@@ -1265,18 +1265,30 @@ const TempoNav = (() => {
       localStorage.setItem('live_activities_enabled', next ? '1' : '0');
       if (!next && Platform.liveActivity) {
         Platform.liveActivity.endAll().catch(() => {});
-      } else if (next && Platform.liveActivity
-                 && typeof Timer !== 'undefined' && Timer.getStatus() === 'running') {
+      } else if (next && Platform.liveActivity) {
         // Re-arm the primary timer's activity immediately — without this, a
         // countdown already running when the toggle flips ON stays
         // activity-less until its next start().
-        Platform.liveActivity.startTimer({
-          id: Timer.getId(),
-          name: Timer.getName(),
-          startedAt: Date.now(),
-          endsAt: Date.now() + Timer.getRemainingMs(),
-          isPaused: false,
-        }).catch(() => {});
+        //
+        // TEMP DIAGNOSTIC (check-8 on-device debugging — remove after): the
+        // sim passes this flow but Kyle's device shows no activity, so every
+        // branch surfaces a Toast telling us exactly what it did.
+        const st = (typeof Timer !== 'undefined') ? Timer.getStatus() : 'no-Timer-global';
+        if (st === 'running') {
+          Platform.liveActivity.startTimer({
+            id: Timer.getId(),
+            name: Timer.getName(),
+            startedAt: Date.now(),
+            endsAt: Date.now() + Timer.getRemainingMs(),
+            isPaused: false,
+          }).then((res) => {
+            if (typeof Toast !== 'undefined') Toast.notice('LA re-arm: ' + JSON.stringify(res));
+          }).catch((err) => {
+            if (typeof Toast !== 'undefined') Toast.notice('LA re-arm ERR: ' + ((err && err.message) || String(err)));
+          });
+        } else if (typeof Toast !== 'undefined') {
+          Toast.notice('LA re-arm skipped: status=' + st);
+        }
       }
     });
   }
