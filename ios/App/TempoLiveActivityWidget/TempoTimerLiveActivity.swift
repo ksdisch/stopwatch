@@ -20,15 +20,19 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 
-// True once the content's staleDate (== endsAt while counting) has passed.
-// The app is usually suspended at that moment — no JS can run — so the stale
-// transition is what re-renders the views into the "Done" state until the
-// app's next resume ends the activity. isStale needs iOS 16.2; on 16.1 the
-// countdown simply clamps at 0:00 as before.
+// True once the countdown has run out. The app is usually suspended at that
+// moment — no JS can run — so the widget itself must flip to the "Done"
+// state until the app's next resume ends the activity. Two triggers, because
+// the system coalesces stale re-renders (on device the 0:00 render arrived
+// with isStale still false): the staleDate transition when it comes, and any
+// other re-render (update, lock/unlock) that happens after endsAt. A paused
+// activity is never "done" — its endsAt stops meaning anything the moment
+// isPaused flips true.
 @available(iOS 16.1, *)
 private func isDone(_ context: ActivityViewContext<TempoTimerAttributes>) -> Bool {
-    if #available(iOS 16.2, *) { return context.isStale }
-    return false
+    if context.state.isPaused { return false }
+    if #available(iOS 16.2, *), context.isStale { return true }
+    return context.state.endsAt <= Date()
 }
 
 @available(iOS 16.1, *)
@@ -217,9 +221,14 @@ struct TempoTimerProgressBar: View {
                 .tint(.green)
         } else {
             // Live bar — Apple drives the fill at OS cadence based on the
-            // interval, no JS push needed.
+            // interval, no JS push needed. Both labels are suppressed: the
+            // default currentValueLabel counts elapsed-in-window, and every
+            // resume re-emits a window of just the remaining time, so it
+            // clamps at a misleading number (0:33 / 0:46 on device).
             ProgressView(timerInterval: state.startedAt...state.endsAt,
-                         countsDown: false)
+                         countsDown: false,
+                         label: { EmptyView() },
+                         currentValueLabel: { EmptyView() })
                 .progressViewStyle(.linear)
                 .tint(.green)
         }

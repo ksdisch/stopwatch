@@ -11,12 +11,6 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  # Install with default (Lite) subspec — the only configuration that produces
-  # a native build target with source_files compiled on this CocoaPods version.
-  # Google sign-in support is layered on in the post_install hook below:
-  # GoogleSignIn pod is added explicitly (target 'App' block), then the plugin
-  # target is patched with -DRGCFA_INCLUDE_GOOGLE and FRAMEWORK_SEARCH_PATHS
-  # pointing at GoogleSignIn's framework so `import GoogleSignIn` resolves.
   pod 'CapacitorFirebaseAuthentication', :path => '../../node_modules/@capacitor-firebase/authentication'
   pod 'CapacitorFirebaseFirestore', :path => '../../node_modules/@capacitor-firebase/firestore'
   pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
