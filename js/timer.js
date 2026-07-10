@@ -31,6 +31,20 @@ function createTimer(id, opts) {
       if (remaining + deltaMs < 1000) return false;
     }
     durationMs = Math.max(1000, durationMs + deltaMs);
+    // Keep the lock-screen activity's endsAt in step (running only): the OS
+    // renders the countdown from endsAt alone, so without this emit the
+    // activity keeps counting to the pre-adjust end. Paused activities are
+    // frozen by design and pick the new remaining up from resume's re-emit.
+    if (status === 'running'
+        && localStorage.getItem('live_activities_enabled') !== '0'
+        && typeof Platform !== 'undefined' && Platform.liveActivity) {
+      Platform.liveActivity.updateTimer({
+        id,
+        startedAt: Date.now(),
+        endsAt: Date.now() + getRemainingMs(),
+        isPaused: false,
+      }).catch(() => {});
+    }
     return true;
   }
 

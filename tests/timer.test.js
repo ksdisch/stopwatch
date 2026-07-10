@@ -397,20 +397,25 @@ describe('Timer — overshoot (allowOvershoot=true)', () => {
   });
 });
 
-describe('Timer — Live Activity endTimer on finished-while-away restore', () => {
+describe('Timer — Live Activity emits (restore cleanup + adjust)', () => {
   // tests/index.html does not load js/platform.js, so `Platform` is undefined
   // here by default — each case installs a spy global and restores after.
+  // Every liveActivity call is recorded as { method, args }.
   function withLiveActivitySpy(fn) {
     const calls = [];
     const hadPlatform = typeof window.Platform !== 'undefined';
     const prevPlatform = hadPlatform ? window.Platform : undefined;
     const prevFlag = localStorage.getItem('live_activities_enabled');
     localStorage.removeItem('live_activities_enabled'); // absent = enabled
+    const record = (method) => (args) => {
+      calls.push({ method, args });
+      return Promise.resolve({ ok: true });
+    };
     window.Platform = {
       liveActivity: {
-        endTimer: (args) => { calls.push(args); return Promise.resolve({ ok: true }); },
-        startTimer: () => Promise.resolve({ ok: true }),
-        updateTimer: () => Promise.resolve({ ok: true }),
+        startTimer: record('startTimer'),
+        updateTimer: record('updateTimer'),
+        endTimer: record('endTimer'),
       },
     };
     try {
@@ -422,13 +427,20 @@ describe('Timer — Live Activity endTimer on finished-while-away restore', () =
     }
   }
 
+  function endCalls(calls) {
+    return calls.filter((c) => c.method === 'endTimer');
+  }
+  function endsAtUpdates(calls) {
+    return calls.filter((c) => c.method === 'updateTimer' && c.args.endsAt !== undefined);
+  }
+
   it('emits endTimer when a plain timer finished while no page was alive', () => {
     withLiveActivitySpy((calls) => {
       const t = createTimer('tm-la-1');
       t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
       assertEqual(t.getStatus(), 'finished');
-      assertEqual(calls.length, 1);
-      assertEqual(calls[0].id, 'tm-la-1');
+      assertEqual(endCalls(calls).length, 1);
+      assertEqual(endCalls(calls)[0].args.id, 'tm-la-1');
     });
   });
 
@@ -437,8 +449,8 @@ describe('Timer — Live Activity endTimer on finished-while-away restore', () =
       const t = createTimer('tm-la-2', { allowOvershoot: true });
       t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
       assertEqual(t.getStatus(), 'overflowing');
-      assertEqual(calls.length, 1);
-      assertEqual(calls[0].id, 'tm-la-2');
+      assertEqual(endCalls(calls).length, 1);
+      assertEqual(endCalls(calls)[0].args.id, 'tm-la-2');
     });
   });
 
@@ -458,6 +470,44 @@ describe('Timer — Live Activity endTimer on finished-while-away restore', () =
       t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
       assertEqual(t.getStatus(), 'finished');
       assertEqual(calls.length, 0);
+    });
+  });
+
+  it('adjust while running emits updateTimer with the new endsAt', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-5');
+      t.setDuration(60000);
+      t.start();
+      assert(t.adjustRemainingMs(3 * 60 * 1000), 'adjust accepted');
+      const updates = endsAtUpdates(calls);
+      assertEqual(updates.length, 1);
+      assertEqual(updates[0].args.id, 'tm-la-5');
+      assertEqual(updates[0].args.isPaused, false);
+      // ~4 min remain (60s original + 180s adjust, minus test-run ms).
+      assertClose(updates[0].args.endsAt - Date.now(), 240000, 1500);
+    });
+  });
+
+  it('adjust while paused does not emit an endsAt update (resume re-emits)', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-6');
+      t.setDuration(60000);
+      t.start();
+      t.pause();
+      const before = endsAtUpdates(calls).length;
+      assert(t.adjustRemainingMs(60000), 'adjust accepted');
+      assertEqual(endsAtUpdates(calls).length, before);
+    });
+  });
+
+  it('a rejected adjust (below the 1s floor) emits nothing', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-7');
+      t.setDuration(30000);
+      t.start();
+      const countBefore = calls.length;
+      assertEqual(t.adjustRemainingMs(-29500), false);
+      assertEqual(calls.length, countBefore);
     });
   });
 });
