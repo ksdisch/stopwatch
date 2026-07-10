@@ -86,7 +86,48 @@ npm run ios:copy        # or npm run ios:open
 
 Neither of those regenerates the Podfile. `npm run ios:sync` does — only use it when you've added/removed a Capacitor plugin via `npm install`.
 
-## The 7-day signing cert (free Apple ID limitation)
+## Custom (in-tree) Capacitor plugins — registration (Capacitor 6)
+
+A plugin defined **inside the app** (not an installed npm package/pod) — e.g. the
+in-tree `LiveActivityPlugin` under `ios/App/App/Plugins/` — is **not** auto-registered by
+Capacitor 6. `CapacitorBridge.registerPlugins()` loads only the four core plugins plus the
+classes in the CLI-generated `capacitor.config.json` `packageClassList`, which is built from
+installed **pods**. An in-tree class is in neither list, so `window.Capacitor.Plugins.<Name>`
+comes back `undefined` at runtime — with **no build error** (the code compiles). The legacy
+Obj-C `CAP_PLUGIN` macro does NOT fix this on 6.x: the modern bridge no longer enumerates
+macro-only registrations.
+
+The working pattern (mirrors how the pod plugins register), used by `LiveActivityPlugin`:
+
+1. **Swift class conforms to `CAPBridgedPlugin`** and self-describes —
+   `@objc(FooPlugin) public class FooPlugin: CAPPlugin, CAPBridgedPlugin` with
+   `public let identifier`, `public let jsName` (MUST match the JS `Capacitor.Plugins.<jsName>`
+   lookup), and `public let pluginMethods: [CAPPluginMethod]`.
+2. **Register the instance explicitly** in a `CAPBridgeViewController` subclass:
+   ```swift
+   class MainViewController: CAPBridgeViewController {
+       override func capacitorDidLoad() {
+           bridge?.registerPluginInstance(FooPlugin())
+       }
+   }
+   ```
+   (`registerPluginInstance` ignores `autoRegisterPlugins`; `registerPluginType` returns early
+   when it's on — which is the default.)
+3. **Point `Main.storyboard`** at the subclass (`customClass="MainViewController" customModule="App"`).
+
+Symptom to recognize: the JS shim logs "plugin unavailable" / returns
+`{ ok: false, reason: 'plugin-missing' }` on device, and a runtime probe shows the pod plugins
+present (`Capacitor.Plugins.Haptics` truthy) but yours absent. Don't chase the `.m` macro —
+go straight to `CAPBridgedPlugin` + `registerPluginInstance`.
+
+## The signing cert
+
+**Kyle is enrolled in the paid Apple Developer Program** ($99/yr) — so builds get **1-year**
+signing certs (renew annually via `npm run ios:open` → ▶ Run), plus TestFlight and an App Store
+path if wanted. The free-Apple-ID limitations below apply only if the account ever reverts to
+free signing.
+
+### Free Apple ID (7-day cert) — reference only
 
 Free Apple ID signing issues a **7-day** development cert. After 7 days, the Tempo app on your iPhone won't launch — tapping the icon just bounces you back to the home screen.
 
@@ -131,7 +172,7 @@ If you ever notice web behavior drift (e.g., haptics stop working on Android Chr
 
 ## Out of scope for the current build
 
-- $99/yr Apple Developer Program enrollment (free signing is fine for personal use)
+- ~~$99/yr Apple Developer Program enrollment~~ — **enrolled** (paid program active: 1-year signing certs + TestFlight available; see "The signing cert" above)
 - App Store Connect record
 - TestFlight or App Store submission
 - Privacy nutrition labels (meds + BFRB tracking are health data and would need disclosure for App Store distribution)

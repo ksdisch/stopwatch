@@ -166,7 +166,7 @@ utils → dom-utils → platform → schema → stopwatch → timer → instance
 - Cloud-sync offline buffer → a **separate** IndexedDB `tempo_sync_db v1`, store `pending_ops`. Three distinct IDB DBs by design (canonical history vs transient sync infra vs SW notification queue).
 - **Web notification queue (R9)** → a **separate** IndexedDB `tempo_notify_db v1`, store `pending_notifications` (`{ id, fireAt, title, body }`). Persists web scheduled notifications so they survive SW eviction; `js/bg-notify-store.js` owns it, `sw.js` fires-overdue + re-arms on every SW wake. Web-only (native schedules at the OS level), never synced/exported.
 - **The 8 synced stores:** `meds`, `history`, `rest_log`, `presets`, `bfrb_events`, `distractions`, `mood_events` (ADR-0008 — timestamp field is `at`, not `takenAt`), `finances` (Life-OS Phase 5 — per-month `YYYY-MM` **editable** LWW; doc id = the month string). ALL writes to these stamp `deviceId`+`updatedAt`+`schemaVersion` via `js/schema.js`.
-- **Device-local, NEVER synced/exported:** `todoist_api_token` + other `todoist_*` (credentials); `flow_user_tasks`, `pomodoro_saved_tasks` (Todoist itself is cross-device truth); `flow_readiness_suggest`, `tempo_coach_nudge_enabled` (#15).
+- **Device-local, NEVER synced/exported:** `todoist_api_token` + other `todoist_*` (credentials); `flow_user_tasks`, `pomodoro_saved_tasks` (Todoist itself is cross-device truth); `flow_readiness_suggest`, `tempo_coach_nudge_enabled` (#15); `live_activities_enabled` (#4 iOS Live Activities toggle, default ON when absent — per-device preference).
 - Full enumeration of every localStorage/IndexedDB/Firestore key + the sync envelope + derived-vs-stored notes: [`docs/reference/data-dictionary.md`](docs/reference/data-dictionary.md).
 
 ## What Has Been Built
@@ -195,7 +195,7 @@ preserves the original chronological numbering.
 | 1 | Native iOS app via Capacitor — App Store distribution | High | Medium | #8 | Shipped to personal device; App Store paperwork remaining |
 | 2 | Todoist integration — two-way Todoist ↔ Flow/Pomodoro task lists | High | Medium | #10 | Pomo V1 shipped; Flow + rename done (rows #9/#10) |
 | 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
-| 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Unshipped** — unlocked by #1 |
+| 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Timer MVP built + simulator-validated 2026-07-09** (`feat/live-activities-timer`) — revived the stale 2026-05 draft: custom in-tree Capacitor plugin + Widget Extension + `Platform.liveActivity` bridge + settings toggle + `tempo://` deep-link. Runtime validation caught+fixed a Capacitor-6 plugin-registration bug (`CAPBridgedPlugin` + `registerPluginInstance`). PR + on-device confirm pending; Stopwatch/Pomodoro/Flow/Interval/Cooking deferred to follow-ups. |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
 | 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
 | 7 | Voice control (Web Speech API) | Low | Medium | #3 | **Unshipped** |

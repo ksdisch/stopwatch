@@ -2715,3 +2715,23 @@ Engine **PASS (1250)** (1238 + 12 new). UI **9 passed** (`npm run test:ui`: prio
 ```
 #197  fix(proving-ground): Slice 2 — R9 notification persistence (durable tempo_notify_db + SW rearm)   [open — awaiting Kyle's merge go-ahead]
 ```
+
+## 2026-07-09 — Revive iOS Live Activities (backlog #4): Timer MVP ported + simulator-validated
+
+### What We Built
+
+Revived the never-merged 2026-05-22 `feat/live-activities-timer-mvp` (122 commits stale, branched pre-Life-OS) onto current `main` as a fresh branch `feat/live-activities-timer`. Backlog #4 — a running Timer on the iOS lock screen + Dynamic Island (ActivityKit, iOS 16.1+).
+
+- **Ported, not rebased.** The native tree (custom in-tree `LiveActivityPlugin` .swift/.m + shared `TempoTimerAttributes` + `TempoLiveActivityWidget` Extension target + `Info.plist` `NSSupportsLiveActivities`/`tempo://`) applied cleanly via patch — `project.pbxproj` had **zero drift** from the merge-base. The shared JS/HTML/CSS deltas (`platform.js` `liveActivity` namespace, 4 `timer.js` emit points, `tempo-nav.js` settings toggle + `appUrlOpen` deep-link, `index.html`, `css`) were **re-applied by hand** onto today's structure — a rebase would have conflicted on `platform.js`'s grown export block and `tempo-nav`'s Life-OS drift. Cache `v159→v160`.
+- **Web verified equivalent** (fresh-context Playwright via the Dockerized stack — the default MCP browser was profile-locked): `Platform.liveActivity` returns the canonical no-op, the settings section stays hidden on web, the timer engine is unaffected, `tempo://timers/timer`→`#/timers/timer` maps correctly. The BRIEF's `tests/platform.test.js` was intentionally **not** added — loading `platform.js` into the harness collides with the 3 sync tests that stub `window.Platform`; the 4 emits are `typeof Platform`-guarded so the existing 21 timer tests stay green without it.
+- **iOS validation caught a real registration bug the draft carried.** `xcodebuild` **BUILD SUCCEEDED** and the app installed, yet no activity appeared. On-simulator diagnostics (osascript menu-drive + `simctl` screenshots — computer-use Screen-Recording needed a relaunch and was skipped) showed `window.Capacitor.Plugins.LiveActivity` was **undefined**. Root cause: the draft registered only via the legacy Obj-C `CAP_PLUGIN` macro, which **Capacitor 6.2.1's bridge does not enumerate** — it discovers plugins via `CAPBridgedPlugin` conformance + the pod-generated `packageClassList`, neither of which covers an in-tree plugin. Fix (matches the Cap 6 pod pattern, verified against Capacitor's own `CapacitorBridge.swift`): (1) `CAPBridgedPlugin` conformance on `LiveActivityPlugin`; (2) a `MainViewController: CAPBridgeViewController` subclass that registers it via `bridge.registerPluginInstance()` in `capacitorDidLoad()` — the documented hook for app-local plugins; (3) `Main.storyboard` `customClass`. Legacy `.m` macro neutralized (it would collide on the Swift selectors).
+
+### Verification
+
+Web smoke green. Engine suite **PASS (1313)**. `xcodebuild` **BUILD SUCCEEDED** (App + Widget Extension). `cap sync ios` leaves the widget target untouched (audit's #1 risk retired). Simulator (iPhone 17 Pro): plugin registers, `isSupported={supported:true}`, `startTimer` `ok:true`, and the **lock-screen Live Activity renders** ("Tea steep · 0:55" + green progress bar, Option-B layout — screenshot evidence). **On physical iPhone: pending Kyle's confirm** (final device check + the activity-tap deep-link, which the simulator can't exercise without computer-use).
+
+### PRs
+
+```
+feat/live-activities-timer — 4 commits (native port / web bridge+toggle+cache / Cap-6 registration fix / docs). PR pending.
+```
