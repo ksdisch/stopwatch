@@ -23,7 +23,23 @@ import ActivityKit
 #endif
 
 @objc(LiveActivityPlugin)
-public class LiveActivityPlugin: CAPPlugin {
+public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
+
+    // Capacitor 6 discovers plugins by CAPBridgedPlugin conformance
+    // (identifier / jsName / pluginMethods) scanned at bridge init — the
+    // legacy Obj-C CAP_PLUGIN macro is NOT enumerated by the 6.x bridge, so a
+    // macro-only plugin never lands on window.Capacitor.Plugins. `jsName` MUST
+    // match the JS lookup in js/platform.js (Platform.liveActivity →
+    // window.Capacitor.Plugins.LiveActivity).
+    public let identifier = "LiveActivityPlugin"
+    public let jsName = "LiveActivity"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startTimer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateTimer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endTimer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endAll", returnType: CAPPluginReturnPromise)
+    ]
 
     // Keyed by `timerId`. On startTimer the plugin checks this dict and
     // either issues `.update(...)` on the existing handle (resume-from-pause)

@@ -1,19 +1,12 @@
-// LiveActivityPlugin Obj-C bridge — Capacitor plugin registration.
+// LiveActivityPlugin registration lives in Swift (Capacitor 6).
 //
-// The CAP_PLUGIN macro tells Capacitor's runtime which @objc-exposed Swift
-// methods to wire to JS. The SECOND string ("LiveActivity") is what makes
-// window.Capacitor.Plugins.LiveActivity populate at runtime — it MUST match
-// the JS-side lookup in js/platform.js verbatim. A typo here silently
-// leaves the plugin handle undefined on the JS side, with no Xcode warning
-// and no runtime error.
+// Capacitor 6.x discovers plugins via the Swift CAPBridgedPlugin protocol
+// (see LiveActivityPlugin.swift: identifier / jsName / pluginMethods), scanned
+// at bridge init. The legacy Obj-C CAP_PLUGIN macro is intentionally omitted:
+// the 6.x bridge does not enumerate macro-only registrations (so it would do
+// nothing), and it would collide with the Swift class's identifier/jsName/
+// pluginMethods on the same Obj-C selectors. This file is retained only so the
+// existing Xcode build reference stays valid; it registers nothing.
 
 #import <Foundation/Foundation.h>
 #import <Capacitor/Capacitor.h>
-
-CAP_PLUGIN(LiveActivityPlugin, "LiveActivity",
-    CAP_PLUGIN_METHOD(isSupported,  CAPPluginReturnPromise);
-    CAP_PLUGIN_METHOD(startTimer,   CAPPluginReturnPromise);
-    CAP_PLUGIN_METHOD(updateTimer,  CAPPluginReturnPromise);
-    CAP_PLUGIN_METHOD(endTimer,     CAPPluginReturnPromise);
-    CAP_PLUGIN_METHOD(endAll,       CAPPluginReturnPromise);
-)
