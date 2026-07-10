@@ -31,7 +31,7 @@ const UI = (() => {
         startRenderLoop();
       } else if (mode === 'pomodoro' && typeof Pomodoro !== 'undefined' && Pomodoro.getStatus() === 'running' && typeof startPomodoroRenderLoop === 'function') {
         startPomodoroRenderLoop();
-      } else if (mode === 'timer' && typeof Timer !== 'undefined' && Timer.getStatus() === 'running' && typeof startTimerRenderLoop === 'function') {
+      } else if (mode === 'timer' && typeof Timer !== 'undefined' && (Timer.getStatus() === 'running' || Timer.getStatus() === 'overflowing') && typeof startTimerRenderLoop === 'function') {
         startTimerRenderLoop();
       } else if (mode === 'flow' && typeof Flow !== 'undefined' && (Flow.getStatus() === 'running' || Flow.getStatus() === 'recovery') && typeof startFlowRenderLoop === 'function') {
         startFlowRenderLoop();

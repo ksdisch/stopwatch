@@ -195,6 +195,14 @@ function createTimer(id, opts) {
         startedAt = null;
         alarmFired = true;
       }
+      // The countdown crossed zero while no page was alive to run
+      // checkFinished(), so its endTimer emit never happened — end the
+      // orphaned lock-screen activity now. alarmFired is already true, so
+      // the checkFinished path can never issue this emit for this crossing.
+      if (localStorage.getItem('live_activities_enabled') !== '0'
+          && typeof Platform !== 'undefined' && Platform.liveActivity) {
+        Platform.liveActivity.endTimer({ id }).catch(() => {});
+      }
     }
     // 24h overshoot guard — pathological "left it for a week" sessions
     // shouldn't pollute analytics. Cap accumulatedMs so getOvershootMs maxes

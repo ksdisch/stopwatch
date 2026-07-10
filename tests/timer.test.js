@@ -396,3 +396,68 @@ describe('Timer — overshoot (allowOvershoot=true)', () => {
     assert(tA.getOvershootMs() >= 25000, 'overshoot >= 25s');
   });
 });
+
+describe('Timer — Live Activity endTimer on finished-while-away restore', () => {
+  // tests/index.html does not load js/platform.js, so `Platform` is undefined
+  // here by default — each case installs a spy global and restores after.
+  function withLiveActivitySpy(fn) {
+    const calls = [];
+    const hadPlatform = typeof window.Platform !== 'undefined';
+    const prevPlatform = hadPlatform ? window.Platform : undefined;
+    const prevFlag = localStorage.getItem('live_activities_enabled');
+    localStorage.removeItem('live_activities_enabled'); // absent = enabled
+    window.Platform = {
+      liveActivity: {
+        endTimer: (args) => { calls.push(args); return Promise.resolve({ ok: true }); },
+        startTimer: () => Promise.resolve({ ok: true }),
+        updateTimer: () => Promise.resolve({ ok: true }),
+      },
+    };
+    try {
+      fn(calls);
+    } finally {
+      if (hadPlatform) window.Platform = prevPlatform; else delete window.Platform;
+      if (prevFlag === null) localStorage.removeItem('live_activities_enabled');
+      else localStorage.setItem('live_activities_enabled', prevFlag);
+    }
+  }
+
+  it('emits endTimer when a plain timer finished while no page was alive', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-1');
+      t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
+      assertEqual(t.getStatus(), 'finished');
+      assertEqual(calls.length, 1);
+      assertEqual(calls[0].id, 'tm-la-1');
+    });
+  });
+
+  it('emits endTimer when an overshoot timer crossed zero while away', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-2', { allowOvershoot: true });
+      t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
+      assertEqual(t.getStatus(), 'overflowing');
+      assertEqual(calls.length, 1);
+      assertEqual(calls[0].id, 'tm-la-2');
+    });
+  });
+
+  it('does NOT emit endTimer when the restored timer is still running', () => {
+    withLiveActivitySpy((calls) => {
+      const t = createTimer('tm-la-3');
+      t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 10000, accumulatedMs: 0 });
+      assertEqual(t.getStatus(), 'running');
+      assertEqual(calls.length, 0);
+    });
+  });
+
+  it('suppresses the emit when live_activities_enabled is "0"', () => {
+    withLiveActivitySpy((calls) => {
+      localStorage.setItem('live_activities_enabled', '0');
+      const t = createTimer('tm-la-4');
+      t.loadState({ status: 'running', durationMs: 60000, startedAt: Date.now() - 90000, accumulatedMs: 0 });
+      assertEqual(t.getStatus(), 'finished');
+      assertEqual(calls.length, 0);
+    });
+  });
+});
