@@ -1266,28 +1266,46 @@ const TempoNav = (() => {
       if (!next && Platform.liveActivity) {
         Platform.liveActivity.endAll().catch(() => {});
       } else if (next && Platform.liveActivity) {
-        // Re-arm the primary timer's activity immediately — without this, a
-        // countdown already running when the toggle flips ON stays
-        // activity-less until its next start().
+        // Re-arm every running countdown's activity immediately — endAll on
+        // toggle-OFF ends activities for ALL instances (primary, instance
+        // cards, cook timers), so flip-to-ON must restore them all, not just
+        // the primary. Mirrors each engine's own start() emit.
         //
         // TEMP DIAGNOSTIC (check-8 on-device debugging — remove after): the
         // sim passes this flow but Kyle's device shows no activity, so every
         // branch surfaces a Toast telling us exactly what it did.
-        const st = (typeof Timer !== 'undefined') ? Timer.getStatus() : 'no-Timer-global';
-        if (st === 'running') {
-          Platform.liveActivity.startTimer({
-            id: Timer.getId(),
-            name: Timer.getName(),
-            startedAt: Date.now(),
-            endsAt: Date.now() + Timer.getRemainingMs(),
-            isPaused: false,
-          }).then((res) => {
-            if (typeof Toast !== 'undefined') Toast.notice('LA re-arm: ' + JSON.stringify(res));
-          }).catch((err) => {
-            if (typeof Toast !== 'undefined') Toast.notice('LA re-arm ERR: ' + ((err && err.message) || String(err)));
+        const running = [];
+        if (typeof InstanceManager !== 'undefined') {
+          InstanceManager.getTimers().forEach((t) => {
+            if (t.getStatus() === 'running') running.push(t);
           });
-        } else if (typeof Toast !== 'undefined') {
-          Toast.notice('LA re-arm skipped: status=' + st);
+        } else if (typeof Timer !== 'undefined' && Timer.getStatus() === 'running') {
+          running.push(Timer);
+        }
+        if (typeof cookingTimers !== 'undefined' && Array.isArray(cookingTimers)) {
+          cookingTimers.forEach((ct) => {
+            if (ct && ct.timer && ct.timer.getStatus() === 'running') running.push(ct.timer);
+          });
+        }
+        if (running.length === 0) {
+          if (typeof Toast !== 'undefined') {
+            const st = (typeof Timer !== 'undefined') ? Timer.getStatus() : 'no-Timer-global';
+            Toast.notice('LA re-arm skipped: no running timers (primary=' + st + ')');
+          }
+        } else {
+          running.forEach((t) => {
+            Platform.liveActivity.startTimer({
+              id: t.getId(),
+              name: t.getName(),
+              startedAt: Date.now(),
+              endsAt: Date.now() + t.getRemainingMs(),
+              isPaused: false,
+            }).then((res) => {
+              if (typeof Toast !== 'undefined') Toast.notice('LA re-arm ' + t.getId() + ': ' + JSON.stringify(res));
+            }).catch((err) => {
+              if (typeof Toast !== 'undefined') Toast.notice('LA re-arm ERR ' + t.getId() + ': ' + ((err && err.message) || String(err)));
+            });
+          });
         }
       }
     });

@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v164-live-activities-rearm-diagnostic';
+const CACHE_NAME = 'stopwatch-v165-live-activities-rearm-all-instances';
 const ASSETS = [
   './',
   './index.html',
