@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v165-live-activities-closeout';
+const CACHE_NAME = 'stopwatch-v166-n1-native-listener-parity';
 const ASSETS = [
   './',
   './index.html',
