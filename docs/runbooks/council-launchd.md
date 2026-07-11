@@ -18,6 +18,8 @@ The whole thing is tethered to the Mac: **the council only fires while the Mac i
 on**, and a launchd / CLI-auth drift fails *silently*. `producedAt` on the record
 is the device-side staleness tell, and the wrapper's Slack/Twilio alert
 (`run-synthesis.sh` → `notify_failure`) is the producer-side one. Both matter.
+See **§ Failure alerts** below for how the alert is wired (and the outage that
+hardened it).
 
 ## The daily-glance vs weekly-recap split (Phase 1)
 
@@ -112,6 +114,43 @@ The daily plist writes wrapper stdout/stderr to
 `council/logs/launchd/{out,err}.log`; the weekly plist writes to
 `council/logs/launchd/weekly-{out,err}.log`. Both jobs' own per-run output goes
 to `council/logs/nightly/<UTC-date>.log`.
+
+## Failure alerts (Slack/Twilio) — and why the creds live outside `.env.secrets`
+
+A silent failure is the council's #1 risk (ADR-0001): the jobs fire unattended, so
+a dead run is only noticed when the phone's `home` card goes stale days later. The
+producer-side guard against that is the wrapper's push alert (`run-synthesis.sh` →
+`notify_failure`: a Slack webhook + optional Twilio SMS).
+
+**The alert creds load from a SEPARATE file, sourced *before* the `.env.secrets`
+perms guard.** One-time setup per machine:
+
+```bash
+mkdir -p ~/.config/life-os
+cp council/alerts.env.example ~/.config/life-os/alerts.env
+# paste your Slack webhook (and/or the four Twilio values) into it, then:
+chmod 600 ~/.config/life-os/alerts.env
+```
+
+Default path is `~/.config/life-os/alerts.env` (override with the `ALERTS_ENV` env
+var); the format lives in `council/alerts.env.example`. Everything is optional and
+best-effort — an empty/missing value just no-ops that channel and the run still
+exits with the correct code.
+
+**Why not just keep them in `.env.secrets`?** Because `run-synthesis.sh` refuses to
+source `.env.secrets` unless it is `0600` (the M6 guard — that file holds the
+SA-key path + `TEMPO_UID`). When the guard trips, the file is never sourced — so if
+the alert creds lived *inside* it, the one failure that most needs an alert could
+not send one. That is exactly the **2026-06-14 → 2026-07-08 outage**: `.env.secrets`
+silently reverted to `0644`, the guard aborted every scheduled run for ~3.5 weeks,
+and no alert fired because the Slack webhook was trapped behind the same guard.
+Loading the alert creds from `alerts.env` *before* the guard closes that gap; PR
+#199 additionally makes the perms-guard abort write the dated
+`council/logs/nightly/<UTC-date>.log` so the failure is at least visible there.
+
+> To actually receive alerts you must put a real webhook in `alerts.env`. If you
+> never configured Slack/Twilio, that's a second (independent) reason a failure
+> would be silent — set it up here.
 
 ## Known gotcha — node under launchd (carried from Phase 0)
 
