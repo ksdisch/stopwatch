@@ -43,7 +43,7 @@ js/interval.js                  — Interval engine. Phase-based rounds (Tabata 
 js/persistence.js               — Persistence.save()/load() → InstanceManager.saveAll()/loadAll(). F13 write-gate (SyncState).
 js/sync-firebase-config.js      — Committed public Firebase web config (project tempo-sync-6f7b2). Not a secret — access is enforced by firestore.rules.
 js/sync-flag.js                 — SyncFlag: master cloud-sync feature flag (`tempo_sync_enabled`), off by default.
-js/sync-firestore.js            — Firestore SDK seam (getDoc/setDoc/getCollection/runTransaction/subscribe). Web lazy-imports CDN; native routes to Capacitor plugin (runTransaction+subscribe web-only → backlog #3). Normalized errors.
+js/sync-firestore.js            — Firestore SDK seam (getDoc/setDoc/getCollection/runTransaction/subscribe). Web lazy-imports CDN; native routes to Capacitor plugin. subscribe real-time on BOTH platforms (N-1); runTransaction web-only forever (plugin has no transaction API). Normalized errors.
 js/sync-buffer.js               — Offline write buffer. Separate IndexedDB `tempo_sync_db v1`, store `pending_ops` (≤1000 ops). Drained FIFO when network online.
 js/sync-engine.js               — SyncEngine orchestrator (~2600 lines). SYNCED_STORES = the EIGHT stores. init → auth-change → hydrateFromCloud → startSteadyState (300s poll / web onSnapshot) → per-store merge → CAS writeback. LIVE by default (E-1e).
 js/sync-toast.js                — Toast: non-blocking sync notifications (e.g. F15 meds arrival toast) + Toast.action(text, btnLabel, onTap) tappable variant (stress nudge).
