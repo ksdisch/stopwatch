@@ -11,7 +11,7 @@
 //   SyncFirestore.setDoc(path, data)    : Promise<void>
 //   SyncFirestore.getCollection(path)   : Promise<{ docs: [{id,data}], count }>
 //   SyncFirestore.runTransaction(fn)    : Promise<any>   — CAS wrapper (E-1b; web-only)
-//   SyncFirestore.subscribe(path, cb)   : () => void    — onSnapshot wrapper (E-3; web-only)
+//   SyncFirestore.subscribe(path, cb)   : () => void    — snapshot-listener wrapper (E-3 web; N-1 native)
 //   SyncFirestore.setBatch(writes)      : Promise<void>  — STUB (throws in B-3)
 //
 // Error normalization:
@@ -43,9 +43,21 @@ const SyncFirestore = (() => {
   const FIREBASE_APP_URL       = 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
   const FIREBASE_FIRESTORE_URL = 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
-  const cap = (typeof window !== 'undefined' && window.Capacitor) || null;
-  const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
-  const plugins = (cap && cap.Plugins) || {};
+  // N-1: lazy native detection — read `window.Capacitor` at CALL time,
+  // never at IIFE-eval time (mirrors js/platform.js). On web,
+  // `window.Capacitor` never exists, so every call returns false —
+  // branch selection identical to the old module-scope const. On native,
+  // Capacitor injects `window.Capacitor` before any script executes, so
+  // the value can't flip mid-session in any production environment. The
+  // laziness exists so the browser test suite can reach the native
+  // branches by stubbing `window.Capacitor` (the sync-auth.test.js
+  // save/restore pattern). The old module-scope `cap`/`isNative`/
+  // `plugins` consts are deliberately DELETED (not aliased) so a missed
+  // call-site conversion is a loud ReferenceError, not a stale boolean.
+  function _isNative() {
+    const c = (typeof window !== 'undefined' && window.Capacitor) || null;
+    return !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform());
+  }
 
   // Module-scoped caches so subsequent calls don't re-import or rebuild.
   let _sdk = null;             // web: { initializeApp, getApps, getFirestore, doc, getDoc, setDoc, collection, getDocs }
@@ -185,7 +197,12 @@ const SyncFirestore = (() => {
   // ── Native plugin handle ─────────────────────────────────────────────
 
   function _nativePlugin() {
-    const fs = plugins && plugins.FirebaseFirestore;
+    // N-1: lazy read (matches _isNative) — resolves the plugin handle at
+    // call time so test stubs of `window.Capacitor.Plugins` are honored.
+    const fs = (typeof window !== 'undefined' &&
+                window.Capacitor &&
+                window.Capacitor.Plugins &&
+                window.Capacitor.Plugins.FirebaseFirestore) || null;
     if (!fs) {
       if (!_nativeUnavailableLogged) {
         try { console.warn('[SyncFirestore] FirebaseFirestore plugin unavailable — rebuild iOS app via `npx cap sync ios`.'); } catch (_e) {}
@@ -212,7 +229,7 @@ const SyncFirestore = (() => {
     if (!_flagOn()) throw _wrap('unknown', 'SYNC_DISABLED', false, null);
     const norm = _normPath(path);
 
-    if (isNative) {
+    if (_isNative()) {
       const fs = _nativePlugin();
       if (!fs) throw _wrap('unknown', 'FirebaseFirestore plugin unavailable', false, null);
       try {
@@ -241,7 +258,7 @@ const SyncFirestore = (() => {
     if (!_flagOn()) throw _wrap('unknown', 'SYNC_DISABLED', false, null);
     const norm = _normPath(path);
 
-    if (isNative) {
+    if (_isNative()) {
       const fs = _nativePlugin();
       if (!fs) throw _wrap('unknown', 'FirebaseFirestore plugin unavailable', false, null);
       try {
@@ -265,7 +282,7 @@ const SyncFirestore = (() => {
     if (!_flagOn()) throw _wrap('unknown', 'SYNC_DISABLED', false, null);
     const norm = _normPath(path);
 
-    if (isNative) {
+    if (_isNative()) {
       const fs = _nativePlugin();
       if (!fs) throw _wrap('unknown', 'FirebaseFirestore plugin unavailable', false, null);
       try {
@@ -328,7 +345,7 @@ const SyncFirestore = (() => {
       throw _wrap('unknown', 'runTransaction requires a callback function', false, null);
     }
 
-    if (isNative) {
+    if (_isNative()) {
       // E-1b sub-decision 5b: native CAS parity is a documented
       // follow-up. The plugin's `runTransaction` shape (if any) hasn't
       // been verified — until it is, native iOS clients can't use the
@@ -414,13 +431,27 @@ const SyncFirestore = (() => {
   // `firebase-firestore.js` CDN module (the cached `_sdk` object now
   // carries `onSnapshot` after E-3's `_loadWebSdk` extension above).
   //
-  // Native branch: throws `kind: 'unknown'` with "subscribe native parity
-  // pending" mirroring the existing `runTransaction` native branch
-  // (carry-forward filed alongside the long-deferred native CAS parity).
-  // The engine's `_subscribeAllStores` outer try/catch catches this
-  // throw so listener wire-up fails silently on native — iOS users fall
-  // back to the 5-min defensive poll until a separate native-parity
-  // follow-up bundles `addSnapshotListener` + `runTransaction`.
+  // Native branch (N-1, backlog #3): real listener parity via the
+  // plugin's `addCollectionSnapshotListener({ reference }, cb)`. The
+  // plugin registration resolves ASYNC to a string CallbackId, but the
+  // engine stashes the unsubscribe fn the same tick, so the native
+  // branch mirrors the web branch's deferred-unsubscribe pattern: the
+  // synchronously-returned closure either calls
+  // `removeSnapshotListener({ callbackId })` (id already resolved) or
+  // sets a cancelled flag so the registration resolution tears the
+  // listener down immediately — no leak either way, and events arriving
+  // after cancellation are never forwarded. Callback shapes are
+  // byte-identical to web: `{ docs: [{id, data}], count }` on events,
+  // `{ ok: false, error: <normalized> }` on plugin errors AND on setup
+  // failure (plugin missing / registration rejection) — the engine
+  // turns the latter into `listener-disconnected` and the 300s poll
+  // remains the floor. M2 local-echo guard, adapted: the plugin exposes
+  // per-DOC metadata only (web has the query-level flag), so the event
+  // is dropped when ANY snapshot has `metadata.hasPendingWrites` —
+  // semantically equivalent (query-level true ⇔ some doc pending). The
+  // `s.metadata &&` guard is deliberate fail-open: metadata-absent
+  // snapshots are NOT dropped (a wrongly-dropped legitimate event would
+  // silently degrade to the 5-min poll).
   //
   // SYNC_DISABLED fast-path matches the other public methods: throw
   // synchronously when the master flag is off.
@@ -431,17 +462,79 @@ const SyncFirestore = (() => {
     }
     const norm = _normPath(path);
 
-    if (isNative) {
-      // E-3 sub-decision per Pick A on TODO #7 (RESOLUTIONS in
-      // docs/sync-impl/prompts/E-3-PROMPT.md): native subscribe parity
-      // is a documented follow-up. Filed as a tracked carry-forward
-      // alongside the long-deferred native CAS parity from E-1b.
-      throw _wrap(
-        'unknown',
-        'subscribe native parity pending — web-only in E-3; see follow-up issue',
-        false,
-        null
-      );
+    if (_isNative()) {
+      let _nativeCallbackId = null;   // string CallbackId once registration resolves
+      let _nativeCancelled = false;
+
+      (async () => {
+        try {
+          // Force async before any failure path can fire the callback: the
+          // engine stashes the returned unsubscribe in _listenerUnsubs on the
+          // same tick as subscribe() (sync-engine.js M3 re-arm contract); a
+          // synchronous {ok:false} emit would run its error branch BEFORE the
+          // stash and leave a dead entry that blocks re-arm for the session.
+          // The web branch gets this for free from `await _getWebDb()`.
+          await Promise.resolve();
+          const fs = _nativePlugin();
+          if (!fs) throw _wrap('unknown', 'FirebaseFirestore plugin unavailable', false, null);
+          const id = await fs.addCollectionSnapshotListener(
+            { reference: norm },
+            function _onNativeEvent(event, error) {
+              // Post-cancel events must never reach the caller — the
+              // engine may already have re-armed a fresh listener.
+              if (_nativeCancelled) return;
+              if (error) {
+                try {
+                  callback({ ok: false, error: _normalizeError(error) });
+                } catch (_e) {
+                  // Caller's callback threw — must not break the listener.
+                }
+                return;
+              }
+              try {
+                const snaps = (event && event.snapshots) || [];
+                // M2 (per-doc adaptation): drop local-echo events. See
+                // the header comment above for the fail-open rationale.
+                if (snaps.some(s => s.metadata && s.metadata.hasPendingWrites)) return;
+                const docs = snaps.map(s => ({ id: s.id, data: s.data }));
+                callback({ docs, count: docs.length });
+              } catch (_e) {
+                // Caller's callback threw — must not break the listener.
+              }
+            }
+          );
+          if (_nativeCancelled) {
+            // Caller unsubscribed before the CallbackId resolved; tear
+            // down immediately to avoid leaking a listener.
+            try { await fs.removeSnapshotListener({ callbackId: id }); } catch (_) {}
+            return;
+          }
+          _nativeCallbackId = id;
+        } catch (err) {
+          // Setup failed (plugin missing or registration rejected) —
+          // surface the normalized error via the callback so the engine
+          // can emit `'listener-disconnected'`, mirroring the web
+          // setup-failure path. No unhandled rejection escapes.
+          try {
+            callback({ ok: false, error: _normalizeError(err) });
+          } catch (_e) {}
+        }
+      })();
+
+      return function unsubscribe() {
+        _nativeCancelled = true;
+        if (_nativeCallbackId != null) {
+          const id = _nativeCallbackId;
+          _nativeCallbackId = null;
+          const fs = _nativePlugin();
+          if (fs) {
+            try {
+              const p = fs.removeSnapshotListener({ callbackId: id });
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+          }
+        }
+      };
     }
 
     // Web branch — lazy-load the SDK + db handle, resolve the path as a

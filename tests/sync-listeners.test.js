@@ -6,8 +6,11 @@
 //   SyncFirestore.subscribe — wrapper
 //     1. SYNC_DISABLED fast-path throws synchronously.
 //     2. invalid callback throws synchronously.
-//     3. Native branch throws { kind: 'unknown', message: starts-with 'subscribe native parity pending' }.
-//     4. Returns a function (the deferred-unsubscribe closure).
+//     3. Returns a function (the deferred-unsubscribe closure).
+//     (N-1 replaced the old "native branch throws parity pending" stub with
+//     a real native implementation — native coverage lives in the dedicated
+//     "SyncFirestore.subscribe — native branch (N-1)" block at the end of
+//     this file, cases 23–34.)
 //
 //   SyncEngine listener lifecycle
 //     5. _subscribeAllStores registers 8 unsubscribes + emits 'listener-connected' per store.
@@ -947,6 +950,471 @@ describe('E-3 constants', () => {
       '_subscribeAllStores exposed (E-3 helper present)');
     assertEqual(typeof SyncEngine._unsubscribeAllStores, 'function',
       '_unsubscribeAllStores exposed (E-3 helper present)');
+  });
+
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// SyncFirestore.subscribe — native branch (N-1, backlog #3)
+//
+// Coverage (per N-1-AUDIT § "Test scope"):
+//   23. Native routing: addCollectionSnapshotListener({ reference }) with
+//       leading-slash-normalized path + synchronous unsubscribe return.
+//   24. Event mapping: plugin snapshots → { docs: [{id, data}], count }.
+//   25. M2 per-doc echo drop: ANY snapshot hasPendingWrites → event dropped.
+//   26. Metadata-absent snapshots NOT dropped (fail-open `s.metadata &&`).
+//   27. Plugin error → callback({ ok: false, error: <normalized> }).
+//   28. Unsubscribe after CallbackId resolves → removeSnapshotListener,
+//       idempotent on repeat calls.
+//   29. Unsubscribe before CallbackId resolves → teardown fires on
+//       resolution (no leak) + no post-cancel event forwarding.
+//   30. Setup failure (plugin missing) → { ok: false, error } via callback;
+//       unsubscribe safe.
+//   31. Setup failure (registration rejects) → { ok: false, error }
+//       normalized; unsubscribe safe; no unhandled rejection.
+//   32. SYNC_DISABLED fast-path throws synchronously on native; plugin
+//       never touched.
+//   33. Caller-callback exception swallowed — a second plugin event is
+//       still delivered.
+//   34. M3 ordering pin: setup-failure { ok: false } is delivered async —
+//       never on the subscribe() tick, so the engine's _listenerUnsubs
+//       stash always beats the error branch (sync-engine.js re-arm
+//       contract).
+//
+// Stub discipline: every case installs
+// `window.Capacitor = { isNativePlatform: () => true, Plugins: {...} }`
+// and restores the original in `finally` (the sync-auth.test.js #8a
+// pattern). CRITICAL with the lazy `_isNative()`: a leaked stub would flip
+// native routing for every later test in the suite.
+// ────────────────────────────────────────────────────────────────────────
+
+// Install a native-looking window.Capacitor with a per-case
+// FirebaseFirestore plugin stub (pass null to simulate the plugin being
+// absent — Plugins: {}). Returns a restore fn the caller MUST invoke in
+// `finally`.
+function _n1_installCapacitor(fsPlugin) {
+  const prevCap = window.Capacitor;
+  window.Capacitor = {
+    isNativePlatform: () => true,
+    Plugins: fsPlugin ? { FirebaseFirestore: fsPlugin } : {},
+  };
+  return function restoreCapacitor() {
+    if (prevCap === undefined) delete window.Capacitor;
+    else window.Capacitor = prevCap;
+  };
+}
+
+describe('SyncFirestore.subscribe — native branch (N-1)', () => {
+
+  it('23. native routing — addCollectionSnapshotListener gets { reference: <normalized> }; unsubscribe returned synchronously', async () => {
+    const saved = _e3_saveEnv();
+    const addCalls = [];
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        addCalls.push({ opts, cb });
+        return Promise.resolve('cb-id-23');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+
+      const unsub = SyncFirestore.subscribe('/users/u1/meds', () => {});
+      assertEqual(typeof unsub, 'function',
+        'subscribe returns a function synchronously (engine stashes it same tick)');
+
+      await _e3_sleep(0);
+      assertEqual(addCalls.length, 1, 'addCollectionSnapshotListener called once');
+      assertEqual(addCalls[0].opts.reference, 'users/u1/meds',
+        'leading slash normalized off the reference');
+      assertEqual(typeof addCalls[0].cb, 'function', 'plugin event callback registered');
+
+      unsub(); // hygiene: tear down before restore
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('24. event mapping — plugin snapshots → { docs: [{id, data}], count } (web-identical shape)', async () => {
+    const saved = _e3_saveEnv();
+    let pluginCb = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return Promise.resolve('cb-id-24');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured');
+
+      pluginCb({
+        snapshots: [{
+          id: 'm1',
+          path: 'users/u1/meds/m1',
+          data: { name: 'A', updatedAt: 1000 },
+          metadata: { fromCache: false, hasPendingWrites: false },
+        }],
+      }, null);
+
+      assertEqual(received.length, 1, 'caller callback invoked once');
+      assertEqual(received[0].count, 1, 'count: 1');
+      assertArrayEqual(received[0].docs,
+        [{ id: 'm1', data: { name: 'A', updatedAt: 1000 } }],
+        'docs mapped to {id, data} — path/metadata stripped');
+
+      unsub();
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('25. M2 per-doc echo drop — event with ANY hasPendingWrites snapshot is NOT forwarded', async () => {
+    const saved = _e3_saveEnv();
+    let pluginCb = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return Promise.resolve('cb-id-25');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured');
+
+      // One clean doc + one local-echo doc → whole event dropped
+      // (per-doc some() ⇔ web's query-level hasPendingWrites flag).
+      pluginCb({
+        snapshots: [
+          { id: 'm1', data: { a: 1 }, metadata: { fromCache: false, hasPendingWrites: false } },
+          { id: 'm2', data: { b: 2 }, metadata: { fromCache: false, hasPendingWrites: true } },
+        ],
+      }, null);
+      assertEqual(received.length, 0, 'local-echo event dropped — callback not invoked');
+
+      // The drop is per-EVENT, not a dead listener: a later clean event flows.
+      pluginCb({
+        snapshots: [
+          { id: 'm1', data: { a: 1 }, metadata: { fromCache: false, hasPendingWrites: false } },
+        ],
+      }, null);
+      assertEqual(received.length, 1, 'subsequent server-ack event still delivered');
+
+      unsub();
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('26. metadata-absent snapshots are NOT dropped (fail-open `s.metadata &&` guard)', async () => {
+    const saved = _e3_saveEnv();
+    let pluginCb = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return Promise.resolve('cb-id-26');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured');
+
+      // No metadata field at all (plugin <6.2.0 shape) — must fail open.
+      pluginCb({
+        snapshots: [
+          { id: 'm1', data: { a: 1 } },
+          { id: 'm2', data: { b: 2 }, metadata: { fromCache: true, hasPendingWrites: false } },
+        ],
+      }, null);
+
+      assertEqual(received.length, 1, 'metadata-absent event forwarded (not dropped)');
+      assertEqual(received[0].count, 2, 'both docs present');
+
+      unsub();
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('27. plugin error → callback({ ok: false, error }) with normalized kind + isRetryable', async () => {
+    const saved = _e3_saveEnv();
+    let pluginCb = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return Promise.resolve('cb-id-27');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured');
+
+      pluginCb(null, { code: 'FIRESTORE/unavailable', message: 'listener transport down' });
+
+      assertEqual(received.length, 1, 'error surfaced via callback');
+      assertEqual(received[0].ok, false, 'ok: false envelope');
+      assertEqual(received[0].error.kind, 'network',
+        'FIRESTORE/unavailable normalized to kind: network');
+      assertEqual(received[0].error.isRetryable, true, 'network errors are retryable');
+
+      unsub();
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('28. unsubscribe after CallbackId resolves → removeSnapshotListener({ callbackId }) with the resolved id; idempotent', async () => {
+    const saved = _e3_saveEnv();
+    const removeCalls = [];
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: () => Promise.resolve('cb-id-28'),
+      removeSnapshotListener: (opts) => {
+        removeCalls.push(opts);
+        return Promise.resolve();
+      },
+    });
+    try {
+      _e3_install({});
+      const unsub = SyncFirestore.subscribe('users/u1/meds', () => {});
+      await _e3_sleep(0); // let the CallbackId resolution land
+
+      unsub();
+      assertEqual(removeCalls.length, 1, 'removeSnapshotListener called once');
+      assertEqual(removeCalls[0].callbackId, 'cb-id-28',
+        'called with the resolved CallbackId');
+
+      unsub();
+      assertEqual(removeCalls.length, 1,
+        'second unsubscribe is a no-op (id already cleared)');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('29. unsubscribe before CallbackId resolves → teardown on resolution (no leak) + no post-cancel forwarding', async () => {
+    const saved = _e3_saveEnv();
+    const removeCalls = [];
+    let pluginCb = null;
+    let resolveId = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return new Promise((r) => { resolveId = r; });
+      },
+      removeSnapshotListener: (opts) => {
+        removeCalls.push(opts);
+        return Promise.resolve();
+      },
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      // Registration is ALWAYS async (M3 contract — the native IIFE opens
+      // with `await Promise.resolve()`), so flush one tick before capture.
+      // The registration promise itself is still pending (resolveId unfired),
+      // keeping this squarely in the cancel-before-resolve window.
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured after registration microtask');
+
+      // Cancel while the registration promise is still pending.
+      unsub();
+      assertEqual(removeCalls.length, 0,
+        'no remove call yet — the CallbackId does not exist');
+
+      // Events landing in the cancel window must never reach the caller.
+      pluginCb({ snapshots: [{ id: 'x', data: { a: 1 } }] }, null);
+      assertEqual(received.length, 0, 'post-cancel event not forwarded');
+
+      // Registration resolves late → cancelled branch tears down immediately.
+      resolveId('cb-id-29');
+      await _e3_sleep(0);
+      assertEqual(removeCalls.length, 1,
+        'removeSnapshotListener fired on late resolution — no listener leak');
+      assertEqual(removeCalls[0].callbackId, 'cb-id-29', 'torn down with the late id');
+
+      // Still dead after teardown.
+      pluginCb({ snapshots: [{ id: 'y', data: { b: 2 } }] }, null);
+      assertEqual(received.length, 0, 'events after teardown never forwarded');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('30. setup failure (plugin missing) → callback({ ok: false, error }); unsubscribe safe', async () => {
+    const saved = _e3_saveEnv();
+    const restoreCap = _n1_installCapacitor(null); // Plugins: {} — no FirebaseFirestore
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+      assertEqual(typeof unsub, 'function',
+        'deferred-unsubscribe closure still returned on setup failure');
+
+      await _e3_sleep(0);
+      assertEqual(received.length, 1, 'setup failure surfaced via callback');
+      assertEqual(received[0].ok, false, 'ok: false envelope');
+      assertEqual(typeof received[0].error.kind, 'string', 'normalized kind present');
+      assertEqual(typeof received[0].error.isRetryable, 'boolean',
+        'normalized isRetryable present');
+
+      let threw = false;
+      try { unsub(); } catch (_) { threw = true; }
+      assertEqual(threw, false, 'unsubscribe safe to call after setup failure');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('31. setup failure (registration rejects) → callback({ ok: false, error }) normalized; unsubscribe safe', async () => {
+    const saved = _e3_saveEnv();
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: () =>
+        Promise.reject({ code: 'FIRESTORE/permission-denied', message: 'rules said no' }),
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+
+      await _e3_sleep(0);
+      assertEqual(received.length, 1,
+        'rejection routed to the callback (no unhandled rejection escape)');
+      assertEqual(received[0].ok, false, 'ok: false envelope');
+      assertEqual(received[0].error.kind, 'permission-denied',
+        'FIRESTORE/permission-denied normalized');
+      assertEqual(received[0].error.isRetryable, false,
+        'permission errors are not retryable');
+
+      let threw = false;
+      try { unsub(); } catch (_) { threw = true; }
+      assertEqual(threw, false, 'unsubscribe safe to call after rejected registration');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('32. SYNC_DISABLED fast-path throws synchronously on native — plugin never touched', async () => {
+    const saved = _e3_saveEnv();
+    const addCalls = [];
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        addCalls.push(opts);
+        return Promise.resolve('cb-id-32');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      SyncFlag.isEnabled = () => false;
+      localStorage.setItem('tempo_sync_enabled', '0');
+
+      let threw = null;
+      try {
+        SyncFirestore.subscribe('users/u1/meds', () => {});
+      } catch (e) { threw = e; }
+      assert(threw !== null, 'subscribe must throw when flag off — even on native');
+      assertEqual(threw.kind, 'unknown', 'kind: unknown');
+      assertEqual(threw.message, 'SYNC_DISABLED', 'message: SYNC_DISABLED');
+
+      await _e3_sleep(0);
+      assertEqual(addCalls.length, 0, 'plugin never touched');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('33. caller-callback exception swallowed — a second plugin event is still delivered', async () => {
+    const saved = _e3_saveEnv();
+    let pluginCb = null;
+    const restoreCap = _n1_installCapacitor({
+      addCollectionSnapshotListener: (opts, cb) => {
+        pluginCb = cb;
+        return Promise.resolve('cb-id-33');
+      },
+      removeSnapshotListener: () => Promise.resolve(),
+    });
+    try {
+      _e3_install({});
+      let calls = 0;
+      const unsub = SyncFirestore.subscribe('users/u1/meds', () => {
+        calls++;
+        if (calls === 1) throw new Error('caller blew up');
+      });
+      await _e3_sleep(0);
+      assert(pluginCb, 'plugin callback captured');
+
+      // First event — caller throws; the listener must swallow it (a
+      // propagated throw here would fail this test at the call site).
+      pluginCb({ snapshots: [{ id: 'a', data: { n: 1 } }] }, null);
+      assertEqual(calls, 1, 'first event delivered (and threw inside the caller)');
+
+      // Listener survives — second event still delivered.
+      pluginCb({ snapshots: [{ id: 'b', data: { n: 2 } }] }, null);
+      assertEqual(calls, 2, 'second event delivered after caller exception');
+
+      unsub();
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
+  });
+
+  it('34. M3 ordering pin — setup-failure { ok: false } is delivered async, never on the subscribe() tick', async () => {
+    const saved = _e3_saveEnv();
+    const restoreCap = _n1_installCapacitor(null); // Plugins: {} — plugin missing
+    try {
+      _e3_install({});
+      const received = [];
+      const unsub = SyncFirestore.subscribe('users/u1/meds', (p) => { received.push(p); });
+
+      // (a) The unsubscribe closure is returned synchronously — the engine
+      //     stashes it in _listenerUnsubs on this same tick (M3 contract,
+      //     sync-engine.js).
+      assertEqual(typeof unsub, 'function', 'unsubscribe returned synchronously');
+      // (b) NOTHING is delivered on the subscribe tick — a synchronous
+      //     { ok: false } would run the engine's error branch BEFORE the
+      //     stash and leave a dead registry entry that blocks re-arm.
+      assertEqual(received.length, 0,
+        'no callback delivery on the subscribe tick (error deferred past return)');
+
+      // (c) Exactly one normalized setup-failure envelope one tick later.
+      await _e3_sleep(0);
+      assertEqual(received.length, 1, 'setup failure delivered exactly once, async');
+      assertEqual(received[0].ok, false, 'ok: false envelope');
+      assertEqual(typeof received[0].error.kind, 'string', 'normalized kind present');
+      assertEqual(typeof received[0].error.isRetryable, 'boolean',
+        'normalized isRetryable present');
+    } finally {
+      restoreCap();
+      _e3_restore(saved);
+    }
   });
 
 });

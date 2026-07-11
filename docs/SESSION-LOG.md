@@ -2735,3 +2735,27 @@ Web smoke green. Engine suite **PASS (1313)**. `xcodebuild` **BUILD SUCCEEDED** 
 ```
 feat/live-activities-timer — 4 commits (native port / web bridge+toggle+cache / Cap-6 registration fix / docs). PR pending.
 ```
+
+---
+
+## 2026-07-10 — N-1: native real-time listener parity for `SyncFirestore.subscribe` (backlog #3, sync pipeline)
+
+### What We Built
+
+Merged **PR #200** first (council alert-preload — load the push-alert creds before the `.env.secrets` perms guard; squash `81b329c`), then closed the real-time half of backlog #3. Discovery reset the scope: NO published version of `@capacitor-firebase/firestore` (installed 6.3.1 through upstream 8.3.0) exposes a transaction API — `writeBatch` is write-only atomicity — so Kyle scoped N-1 to **listener parity ONLY** and native CAS is permanently out (not deferred); merge modules keep defensively skipping the CAS writeback on native. The full 5-phase sync-PR pipeline ran: audit (medium tier, accepted at checkpoint 1) → engine-implementer (2 rounds: native `subscribe()` branch via `addCollectionSnapshotListener` — deferred-unsubscribe closure, web-identical `{docs,count}`/`{ok:false,error}` callback shapes, per-doc M2 echo guard with fail-open, post-cancel suppression + no-leak teardown on late CallbackId resolution — plus the lazy `_isNative()` refactor deleting the 3 module-scope consts across 6 call sites with `runTransaction` byte-preserved; round 2 added `await Promise.resolve()` as the native IIFE's first statement so setup-failure callbacks are always async, the M3 registry-ordering fix mirroring web's `await _getWebDb()`) → engine-tester (2 rounds: 12 new native cases in `tests/sync-listeners.test.js` incl. the M3 ordering pin; one adjudicated assert update — case 29's incidental sync-capture assert now flushes a microtask, because the audited contract requires the synchronous unsubscribe RETURN, never same-tick plugin registration) → ship. Two hard-won findings: (1) `tests/sync-uploader.test.js` asserts `runTransaction.toString()` matches `/isNative/`, so the lazy helper HAD to keep `isNative` as a name substring (`_isNative()` satisfies it); (2) the M3 always-async contract — a listener's setup-failure callback must never fire in the same tick `subscribe()` returns, or the engine's `_listenerUnsubs` registry ordering breaks. Engine suite 1320 → **1332**. Cache v165 → v166. Docs truth-up: CLAUDE.md backlog row #3 + `docs/BACKLOG.md` #3 detail (CAS-impossible finding recorded).
+
+### Suggested Next Steps
+
+- Merge N-1 + post-merge device verification per the audit's Manual setup section (cold-launch after >10 min, `#cloud-sync-status` flips to `Listeners: connected`, sub-second cross-device arrival).
+- Phase 5 Finances close-out — Kyle's July numbers → first prod council run.
+- Live Activities follow-up engines (Stopwatch/Pomodoro/Flow/Interval/Cooking) + the toggle OFF→ON re-arm device check (BACKLOG #4 runbook).
+- App Store paperwork (developer account, privacy nutrition labels for meds + BFRB, screenshots).
+
+### Commits
+
+```
+81b329c        fix(council): load push-alert creds before the .env.secrets perms guard (#200)  [merged pre-pipeline]
+2a9fafb        docs(sync-impl): N-1 audit + brief — native real-time listener parity (backlog #3)
+<this commit>  feat(sync): native real-time listener parity — subscribe via addCollectionSnapshotListener (N-1, backlog #3)
+<follow-up>    docs(sync-impl): move N-1 to shipped in PLAN.md (after the PR number exists)
+```

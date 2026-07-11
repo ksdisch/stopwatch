@@ -47,7 +47,7 @@ feature table.
 |----------|---------|--------|--------|-------|--------|
 | 1 | Native iOS app via Capacitor — App Store distribution | High | Medium | #8 | Shipped to personal device; App Store paperwork remaining |
 | 2 | Todoist integration — two-way Todoist ↔ Flow/Pomodoro task lists | High | Medium | #10 | Pomo V1 shipped (#bl-2-todoist); Flow + rename in follow-ups #9/#10 below |
-| 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Unshipped** — last cloud-sync piece |
+| 3 | Cloud sync — native CAS + listener parity (`@capacitor-firebase/firestore`) | Medium | Medium | #7 | **Listener parity SHIPPED 2026-07-10** (PR N-1, merge pending, cache v166) — native `subscribe()` is real-time via `addCollectionSnapshotListener` (sub-second cross-device sync on iOS instead of the 5-min poll). **Native CAS is IMPOSSIBLE via `@capacitor-firebase/firestore`** — no transaction API in any version through 8.3.0 (verified 2026-07-10; `writeBatch` is write-only atomicity) — permanently out, not deferred: CAS writeback stays defensively skipped on native (web devices converge the cloud; buffer/push setDoc paths unaffected). |
 | 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Timer MVP SHIPPED + device-validated 2026-07-10** (8/9 smoke checks, PRs #201/#203/#204/#205); toggle OFF→ON re-arm backlogged — see #4 detail below |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
 | 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
@@ -73,14 +73,20 @@ feature table.
 
 ### #3 — Cloud sync: native CAS + listener parity for `@capacitor-firebase/firestore` (Medium / Medium)
 
-**Last unshipped piece of the cloud-sync initiative.** `SyncFirestore.runTransaction`
-(queued from E-1b) and `SyncFirestore.subscribe` (queued from E-3) are both web-only —
-the native branches throw an explicit "native parity pending" normalized error. Single
-follow-up PR should pair `addSnapshotListener` + `runTransaction` for
-`@capacitor-firebase/firestore` so iOS sync uses real-time listeners + atomic CAS like
-the web build does. Currently on native, sync still works through the 5-min defensive
-polling path + per-record `setDoc` fallback — fully functional but degraded. Requires
-Xcode + device for verification.
+**Listener parity SHIPPED 2026-07-10 (PR N-1); native CAS permanently OUT — not
+deferred.** `SyncFirestore.subscribe`'s native branch is now a real
+`addCollectionSnapshotListener` listener (deferred-unsubscribe closure, web-identical
+`{docs,count}` / `{ok:false,error}` callback shapes, per-doc `hasPendingWrites` M2 echo
+guard with fail-open on absent metadata, always-async setup-failure callbacks per the
+M3 registry-ordering contract), closing the real-time gap: iOS gets sub-second
+cross-device propagation instead of the 5-minute defensive poll. Native CAS is
+impossible via this plugin — verified 2026-07-10 at installed 6.3.1 AND upstream 8.3.0:
+no published version exposes a transaction API (`writeBatch` is write-only atomicity,
+not read-then-write CAS) — so `runTransaction`'s native `nativeUnsupported` throw stays
+and merge modules keep defensively skipping the CAS writeback on native (web devices
+converge the cloud; buffer/push `setDoc` paths unaffected). Post-merge device
+verification steps live in the audit's Manual setup section
+(`docs/sync-impl/audits/N-1-AUDIT.md`).
 
 ### #4 — iOS Live Activities: running timers on the lock screen + Dynamic Island (High / High)
 
