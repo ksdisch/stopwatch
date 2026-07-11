@@ -1268,11 +1268,11 @@ const TempoNav = (() => {
       } else if (next && Platform.liveActivity) {
         // Re-arm every running countdown's activity immediately — endAll on
         // toggle-OFF ends activities for ALL instances (primary, instance
-        // cards, cook timers), so flip-to-ON restores them all, mirroring
-        // each engine's own start() emit. Verified on the simulator;
-        // UNCONFIRMED on hardware — backlog "#4 follow-up: toggle re-arm"
-        // in docs/BACKLOG.md has the diagnosis runbook before trusting this
-        // path on device.
+        // cards, cook timers) plus the Pomodoro/Flow singletons, so
+        // flip-to-ON restores them all, mirroring each engine's own start()
+        // emit. Verified on the simulator; UNCONFIRMED on hardware —
+        // backlog "#4 follow-up: toggle re-arm" in docs/BACKLOG.md has the
+        // diagnosis runbook before trusting this path on device.
         const running = [];
         if (typeof InstanceManager !== 'undefined') {
           InstanceManager.getTimers().forEach((t) => {
@@ -1295,6 +1295,28 @@ const TempoNav = (() => {
             isPaused: false,
           }).catch(() => {});
         });
+        // Pomodoro + Flow singletons — same payloads their engines emit.
+        // Ticking states only: paused sessions re-arm on resume, and stale
+        // "Done ✓" boundary states are deliberately not re-created here.
+        if (typeof Pomodoro !== 'undefined' && Pomodoro.getStatus() === 'running') {
+          Platform.liveActivity.startTimer({
+            id: 'pomodoro', name: 'Pomodoro', mode: 'pomodoro',
+            label: Pomodoro.getPhaseLabel(),
+            startedAt: Date.now() - Pomodoro.getElapsedMs(),
+            endsAt: Date.now() + Pomodoro.getRemainingMs(),
+            isPaused: false,
+          }).catch(() => {});
+        }
+        if (typeof Flow !== 'undefined'
+            && (Flow.getStatus() === 'running' || Flow.getStatus() === 'recovery')) {
+          Platform.liveActivity.startTimer({
+            id: 'flow', name: 'Flow Block', mode: 'flow',
+            label: Flow.getPhaseLabel(),
+            startedAt: Date.now() - Flow.getElapsedMs(),
+            endsAt: Date.now() + Flow.getRemainingMs(),
+            isPaused: false,
+          }).catch(() => {});
+        }
       }
     });
   }
