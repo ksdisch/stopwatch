@@ -710,3 +710,228 @@ describe('Pomodoro — overshoot', () => {
     assertEqual(count, 0);
   });
 });
+
+describe('Pomodoro — Live Activity emits', () => {
+  // tests/index.html does not load js/platform.js, so `Platform` is
+  // undefined here by default — each case installs a spy global and
+  // restores after. Pomodoro is a SINGLETON: reset() runs BEFORE the spy
+  // installs (so the hygiene reset's own endTimer emit isn't recorded) and
+  // again in finally AFTER the spy restores; configure() is restored too,
+  // since reset() deliberately leaves config alone.
+  function withLiveActivitySpy(fn) {
+    Pomodoro.reset();
+    const calls = [];
+    const hadPlatform = typeof window.Platform !== 'undefined';
+    const prevPlatform = hadPlatform ? window.Platform : undefined;
+    const prevFlag = localStorage.getItem('live_activities_enabled');
+    localStorage.removeItem('live_activities_enabled'); // absent = enabled
+    const record = (method) => (args) => {
+      calls.push({ method, args });
+      return Promise.resolve({ ok: true });
+    };
+    window.Platform = {
+      liveActivity: {
+        startTimer: record('startTimer'),
+        updateTimer: record('updateTimer'),
+        endTimer: record('endTimer'),
+      },
+    };
+    try {
+      fn(calls);
+    } finally {
+      if (hadPlatform) window.Platform = prevPlatform; else delete window.Platform;
+      if (prevFlag === null) localStorage.removeItem('live_activities_enabled');
+      else localStorage.setItem('live_activities_enabled', prevFlag);
+      Pomodoro.reset();
+      Pomodoro.configure({
+        workMs: 25 * 60000, shortBreakMs: 5 * 60000,
+        longBreakMs: 15 * 60000, totalCycles: 4,
+      });
+    }
+  }
+
+  function ofMethod(calls, m) {
+    return calls.filter((c) => c.method === m);
+  }
+  function endsAtUpdates(calls) {
+    return ofMethod(calls, 'updateTimer').filter((c) => c.args.endsAt !== undefined);
+  }
+
+  // Restores a work phase that crossed zero while no page was alive —
+  // loadState lands it in 'overflowing' without waiting a real 60s.
+  function loadOverflowed(phase, cycleIndex) {
+    Pomodoro.loadState({
+      status: 'running', phase, cycleIndex, totalCycles: 4,
+      workMs: 60000, shortBreakMs: 60000, longBreakMs: 60000,
+      startedAt: Date.now() - 90000, accumulatedMs: 0,
+      sessionStartedAt: Date.now() - 90000,
+      phaseStartedAt: Date.now() - 90000,
+    });
+  }
+
+  it('start emits a full startTimer payload with mode + phase label', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.configure({ workMs: 60000 });
+      Pomodoro.start();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      const a = starts[0].args;
+      assertEqual(a.id, 'pomodoro');
+      assertEqual(a.name, 'Pomodoro');
+      assertEqual(a.mode, 'pomodoro');
+      assertEqual(a.label, 'Work 1/4');
+      assertEqual(a.isPaused, false);
+      assertClose(a.endsAt - Date.now(), 60000, 1500);
+      assertClose(Date.now() - a.startedAt, 0, 1500);
+    });
+  });
+
+  it('pause emits an isPaused update', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.configure({ workMs: 60000 });
+      Pomodoro.start();
+      Pomodoro.pause();
+      const ups = ofMethod(calls, 'updateTimer');
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.id, 'pomodoro');
+      assertEqual(ups[0].args.isPaused, true);
+    });
+  });
+
+  it('resume re-emits startTimer (native side update-routes, no duplicate)', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.configure({ workMs: 60000 });
+      Pomodoro.start();
+      Pomodoro.pause();
+      calls.length = 0;
+      Pomodoro.start();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      assertEqual(starts[0].args.isPaused, false);
+      assertEqual(starts[0].args.label, 'Work 1/4');
+    });
+  });
+
+  it('reset emits endTimer', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.start();
+      calls.length = 0;
+      Pomodoro.reset();
+      const ends = ofMethod(calls, 'endTimer');
+      assertEqual(ends.length, 1);
+      assertEqual(ends[0].args.id, 'pomodoro');
+    });
+  });
+
+  it('restartPhase emits endTimer (abandoned window; next start re-requests)', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.start();
+      calls.length = 0;
+      Pomodoro.restartPhase();
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+    });
+  });
+
+  it('adjust while running emits updateTimer with the new endsAt', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.configure({ workMs: 60000 });
+      Pomodoro.start();
+      calls.length = 0;
+      assert(Pomodoro.adjustRemainingMs(3 * 60 * 1000), 'adjust accepted');
+      const ups = endsAtUpdates(calls);
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.isPaused, false);
+      assertClose(ups[0].args.endsAt - Date.now(), 240000, 1500);
+    });
+  });
+
+  it('adjust while paused does not emit an endsAt update (resume re-emits)', () => {
+    withLiveActivitySpy((calls) => {
+      Pomodoro.configure({ workMs: 60000 });
+      Pomodoro.start();
+      Pomodoro.pause();
+      calls.length = 0;
+      assert(Pomodoro.adjustRemainingMs(60000), 'adjust accepted');
+      assertEqual(endsAtUpdates(calls).length, 0);
+    });
+  });
+
+  it('suppresses all emits when live_activities_enabled is "0"', () => {
+    withLiveActivitySpy((calls) => {
+      localStorage.setItem('live_activities_enabled', '0');
+      Pomodoro.start();
+      Pomodoro.pause();
+      Pomodoro.reset();
+      assertEqual(calls.length, 0);
+    });
+  });
+
+  it('loadState finished-while-away is SILENT (phase-done is not session-done)', () => {
+    withLiveActivitySpy((calls) => {
+      loadOverflowed('work', 0);
+      assertEqual(Pomodoro.getStatus(), 'overflowing');
+      assertEqual(calls.length, 0);
+    });
+  });
+
+  it('mid-session nextPhase emits nothing; the next start carries the new label', () => {
+    withLiveActivitySpy((calls) => {
+      loadOverflowed('work', 0);
+      calls.length = 0;
+      Pomodoro.nextPhase();
+      assertEqual(Pomodoro.getStatus(), 'idle');
+      assertEqual(Pomodoro.getPhase(), 'shortBreak');
+      assertEqual(calls.length, 0);
+      Pomodoro.start();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      assertEqual(starts[0].args.label, 'Break');
+    });
+  });
+
+  it('nextPhase out of the long break (session complete) emits endTimer', () => {
+    withLiveActivitySpy((calls) => {
+      loadOverflowed('longBreak', 0);
+      calls.length = 0;
+      Pomodoro.nextPhase();
+      assertEqual(Pomodoro.getStatus(), 'done');
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+    });
+  });
+
+  it('revertPhase emits an update with the restored label + paused flag', () => {
+    withLiveActivitySpy((calls) => {
+      loadOverflowed('work', 0);
+      Pomodoro.nextPhase(); // → shortBreak idle, snapshot captured
+      calls.length = 0;
+      Pomodoro.revertPhase(); // → work, paused
+      const ups = ofMethod(calls, 'updateTimer');
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.label, 'Work 1/4');
+      assertEqual(ups[0].args.isPaused, true);
+      assertEqual(Pomodoro.getStatus(), 'paused');
+    });
+  });
+
+  it('loadState past the 24h overshoot cap ends the orphaned activity', () => {
+    withLiveActivitySpy((calls) => {
+      const dayPlus = 25 * 60 * 60 * 1000;
+      Pomodoro.loadState({
+        status: 'overflowing', phase: 'work', cycleIndex: 0, totalCycles: 4,
+        workMs: 60000, shortBreakMs: 60000, longBreakMs: 60000,
+        startedAt: Date.now() - dayPlus, accumulatedMs: 60000,
+        alarmFired: true, zeroCrossedAt: Date.now() - dayPlus,
+      });
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+    });
+  });
+
+  it('getPhaseLabel tracks phase and cycle', () => {
+    withLiveActivitySpy(() => {
+      loadOverflowed('work', 2);
+      assertEqual(Pomodoro.getPhaseLabel(), 'Work 3/4');
+      Pomodoro.nextPhase();
+      assertEqual(Pomodoro.getPhaseLabel(), 'Break');
+    });
+  });
+});

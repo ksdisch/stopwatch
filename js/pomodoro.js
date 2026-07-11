@@ -83,6 +83,34 @@ const Pomodoro = (() => {
     return Math.min(1, getElapsedMs() / dur);
   }
 
+  // ── Live Activity bridge (iOS lock screen / Dynamic Island) ──────────
+  // Same gate as js/timer.js: user flag (default ON when key absent) +
+  // Platform presence. Fire-and-forget — engine state mutation MUST NOT
+  // block on the bridge. One continuous activity (id 'pomodoro') spans the
+  // whole session: phase transitions update it in place (the native side
+  // update-routes startTimer when the activity already exists), and phase
+  // zero-crossings emit nothing (the widget's staleDate contract renders
+  // "Done ✓" until the user acts).
+  function _laEnabled() {
+    return localStorage.getItem('live_activities_enabled') !== '0'
+      && typeof Platform !== 'undefined' && !!Platform.liveActivity;
+  }
+
+  // Truthful progress window: startedAt is back-dated by the elapsed already
+  // on the phase clock, so the OS-rendered progress bar survives resumes.
+  // The widget suppresses ProgressView labels, so the window is only ever
+  // read as fill fraction + countdown target.
+  function _laWindow() {
+    const now = Date.now();
+    return { startedAt: now - getElapsedMs(), endsAt: now + getRemainingMs() };
+  }
+
+  function getPhaseLabel() {
+    if (phase === 'work') return `Work ${cycleIndex + 1}/${totalCycles}`;
+    if (phase === 'shortBreak') return 'Break';
+    return 'Long break';
+  }
+
   function start() {
     if (status === 'running' || status === 'done') return;
     if (status === 'overflowing') return;
@@ -91,6 +119,16 @@ const Pomodoro = (() => {
     if (!sessionStartedAt) sessionStartedAt = now;
     if (!phaseStartedAt) phaseStartedAt = now;
     status = 'running';
+    // Fresh start AND resume-from-pause both land here — no duplicate
+    // activity on resume (see the update-routing note above).
+    if (_laEnabled()) {
+      const w = _laWindow();
+      Platform.liveActivity.startTimer({
+        id: 'pomodoro', name: 'Pomodoro', mode: 'pomodoro',
+        label: getPhaseLabel(),
+        startedAt: w.startedAt, endsAt: w.endsAt, isPaused: false,
+      }).catch(() => {});
+    }
   }
 
   function pause() {
@@ -98,6 +136,9 @@ const Pomodoro = (() => {
     accumulatedMs += Date.now() - startedAt;
     startedAt = null;
     status = 'paused';
+    if (_laEnabled()) {
+      Platform.liveActivity.updateTimer({ id: 'pomodoro', isPaused: true }).catch(() => {});
+    }
   }
 
   function reset() {
@@ -113,6 +154,9 @@ const Pomodoro = (() => {
     phaseStartedAt = null;
     phaseLog = [];
     previousPhaseSnapshot = null;
+    if (_laEnabled()) {
+      Platform.liveActivity.endTimer({ id: 'pomodoro' }).catch(() => {});
+    }
   }
 
   function adjustRemainingMs(deltaMs) {
@@ -125,6 +169,15 @@ const Pomodoro = (() => {
     // Floor: keep effective phase duration above 1s no matter how much we subtract.
     const minAdjustment = 1000 - getBasePhaseDurationMs();
     if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    // Keep the lock-screen countdown in step (running only — a paused
+    // activity is frozen by design and picks the new remaining up from the
+    // resume re-emit).
+    if (status === 'running' && _laEnabled()) {
+      const w = _laWindow();
+      Platform.liveActivity.updateTimer({
+        id: 'pomodoro', startedAt: w.startedAt, endsAt: w.endsAt, isPaused: false,
+      }).catch(() => {});
+    }
     return true;
   }
 
@@ -139,6 +192,10 @@ const Pomodoro = (() => {
       startedAt = now;
       status = 'overflowing';
       zeroCrossedAt = now;
+      // No Live Activity emit on the zero-cross: endsAt has passed, so the
+      // widget's staleDate contract already renders "Done ✓" — and the
+      // activity must survive the between-phases window so the next
+      // start() can update it in place.
       // Push the phase log entry now (with overshootMs: 0); when the user
       // advances via nextPhase we'll back-fill the overshoot value.
       // F6: stamp deviceId + phaseStartedAt for cross-device append-merge dedup.
@@ -190,6 +247,12 @@ const Pomodoro = (() => {
         status = 'done';
         cycleIndex = 0;
         phase = 'work';
+        // Session over — end the lock-screen activity. (Mid-session phase
+        // boundaries deliberately emit nothing; the surviving activity is
+        // updated in place by the next start().)
+        if (_laEnabled()) {
+          Platform.liveActivity.endTimer({ id: 'pomodoro' }).catch(() => {});
+        }
         return;
       }
       phase = 'work';
@@ -211,6 +274,16 @@ const Pomodoro = (() => {
       status = 'paused';
     }
     previousPhaseSnapshot = null;
+    // The undo changed both the phase window and the label — reflect it on
+    // the lock screen. update (not start): if no activity survived, this
+    // noops rather than resurrecting one.
+    if (_laEnabled()) {
+      const w = _laWindow();
+      Platform.liveActivity.updateTimer({
+        id: 'pomodoro', label: getPhaseLabel(),
+        startedAt: w.startedAt, endsAt: w.endsAt, isPaused: status === 'paused',
+      }).catch(() => {});
+    }
   }
 
   function restartPhase() {
@@ -230,6 +303,11 @@ const Pomodoro = (() => {
     alarmFired = false;
     zeroCrossedAt = null;
     status = 'idle';
+    // The ticking window this activity represented is gone — end it and
+    // let the next start() request a fresh one.
+    if (_laEnabled()) {
+      Platform.liveActivity.endTimer({ id: 'pomodoro' }).catch(() => {});
+    }
   }
 
   function onPhaseComplete(cb) {
@@ -315,6 +393,9 @@ const Pomodoro = (() => {
         });
         phaseStartedAt = null;
       }
+      // No endTimer here (contrast js/timer.js loadState): a finished PHASE
+      // is not a finished session — the stale "Done ✓" activity stays up so
+      // the boundary is glanceable and the next start() reuses it.
     }
     // 24h overshoot cap to avoid pathological "left it for a week" states.
     if (status === 'overflowing') {
@@ -323,6 +404,11 @@ const Pomodoro = (() => {
       if (elapsed > cap) {
         accumulatedMs = cap;
         startedAt = null;
+        // A day-plus-past-zero session is abandoned, not glanceable —
+        // clean up the orphaned lock-screen activity.
+        if (_laEnabled()) {
+          Platform.liveActivity.endTimer({ id: 'pomodoro' }).catch(() => {});
+        }
       }
     }
   }
@@ -332,7 +418,7 @@ const Pomodoro = (() => {
     adjustRemainingMs,
     getRemainingMs, getElapsedMs, getProgress,
     getOvershootMs, isOvershooting, getZeroCrossedAt,
-    getStatus, getPhase, getCycleIndex, getTotalCycles,
+    getStatus, getPhase, getPhaseLabel, getCycleIndex, getTotalCycles,
     getCurrentPhaseDurationMs, getConfig,
     getSessionStartedAt: () => sessionStartedAt,
     getPhaseLog: () => phaseLog,
