@@ -91,3 +91,242 @@ describe('Flow — F20 unknown-vs-absent (focusDurationMs)', () => {
     assertEqual(Flow.getFocusDurationMs(), FOCUS_120);
   });
 });
+
+describe('Flow — Live Activity emits', () => {
+  // tests/index.html does not load js/platform.js, so `Platform` is
+  // undefined here by default — each case installs a spy global and
+  // restores after. Flow is a SINGLETON: reset() runs BEFORE the spy
+  // installs (so the hygiene reset's own endTimer emit isn't recorded) and
+  // again in finally AFTER the spy restores; focusDurationMs is restored
+  // too, since reset() deliberately leaves config alone.
+  function withLiveActivitySpy(fn) {
+    Flow.reset();
+    const calls = [];
+    const hadPlatform = typeof window.Platform !== 'undefined';
+    const prevPlatform = hadPlatform ? window.Platform : undefined;
+    const prevFlag = localStorage.getItem('live_activities_enabled');
+    localStorage.removeItem('live_activities_enabled'); // absent = enabled
+    const record = (method) => (args) => {
+      calls.push({ method, args });
+      return Promise.resolve({ ok: true });
+    };
+    window.Platform = {
+      liveActivity: {
+        startTimer: record('startTimer'),
+        updateTimer: record('updateTimer'),
+        endTimer: record('endTimer'),
+      },
+    };
+    try {
+      fn(calls);
+    } finally {
+      if (hadPlatform) window.Platform = prevPlatform; else delete window.Platform;
+      if (prevFlag === null) localStorage.removeItem('live_activities_enabled');
+      else localStorage.setItem('live_activities_enabled', prevFlag);
+      Flow.reset();
+      Flow.configure({ focusDurationMs: Flow.PRESETS.FOCUS_90 });
+    }
+  }
+
+  function ofMethod(calls, m) {
+    return calls.filter((c) => c.method === m);
+  }
+  function endsAtUpdates(calls) {
+    return ofMethod(calls, 'updateTimer').filter((c) => c.args.endsAt !== undefined);
+  }
+
+  // Restores a focus phase that crossed zero while no page was alive —
+  // loadState lands it in 'overflowing' without waiting a real 60s.
+  function loadFocusOverflowed() {
+    Flow.loadState({
+      status: 'running', phase: 'focus', focusDurationMs: 60000,
+      startedAt: Date.now() - 90000, accumulatedMs: 0,
+      sessionStartedAt: Date.now() - 90000,
+    });
+  }
+
+  it('start emits a full startTimer payload with mode + Focus label', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      const a = starts[0].args;
+      assertEqual(a.id, 'flow');
+      assertEqual(a.name, 'Flow Block');
+      assertEqual(a.mode, 'flow');
+      assertEqual(a.label, 'Focus');
+      assertEqual(a.isPaused, false);
+      assertClose(a.endsAt - Date.now(), 60000, 1500);
+      assertClose(Date.now() - a.startedAt, 0, 1500);
+    });
+  });
+
+  it('pause emits an isPaused update', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      Flow.pause();
+      const ups = ofMethod(calls, 'updateTimer');
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.id, 'flow');
+      assertEqual(ups[0].args.isPaused, true);
+    });
+  });
+
+  it('resume re-emits startTimer (self-healing; native side update-routes)', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      Flow.pause();
+      calls.length = 0;
+      Flow.resume();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      assertEqual(starts[0].args.label, 'Focus');
+      assertEqual(starts[0].args.isPaused, false);
+    });
+  });
+
+  it('startRecovery updates the activity into a Recovery countdown', () => {
+    withLiveActivitySpy((calls) => {
+      loadFocusOverflowed();
+      calls.length = 0;
+      Flow.startRecovery();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      assertEqual(starts[0].args.label, 'Recovery');
+      assertEqual(starts[0].args.isPaused, false);
+      assertClose(starts[0].args.endsAt - Date.now(), 15 * 60000, 1500);
+    });
+  });
+
+  it('recovery pause + resume emit like focus pause + resume', () => {
+    withLiveActivitySpy((calls) => {
+      loadFocusOverflowed();
+      Flow.startRecovery();
+      calls.length = 0;
+      Flow.pause();
+      assertEqual(Flow.getStatus(), 'recoveryPaused');
+      const ups = ofMethod(calls, 'updateTimer');
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.isPaused, true);
+      calls.length = 0;
+      Flow.resume();
+      const starts = ofMethod(calls, 'startTimer');
+      assertEqual(starts.length, 1);
+      assertEqual(starts[0].args.label, 'Recovery');
+    });
+  });
+
+  it('endFocusEarly pulls endsAt to now (immediate Done state)', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      calls.length = 0;
+      Flow.endFocusEarly();
+      assertEqual(Flow.getStatus(), 'overflowing');
+      const ups = endsAtUpdates(calls);
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.isPaused, false);
+      assertClose(ups[0].args.endsAt - Date.now(), 0, 1500);
+    });
+  });
+
+  it('skipRecovery (session over) emits endTimer', () => {
+    withLiveActivitySpy((calls) => {
+      loadFocusOverflowed();
+      Flow.startRecovery();
+      calls.length = 0;
+      Flow.skipRecovery();
+      assertEqual(Flow.getStatus(), 'done');
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+      assertEqual(ofMethod(calls, 'endTimer')[0].args.id, 'flow');
+    });
+  });
+
+  it('reset emits endTimer', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.start();
+      calls.length = 0;
+      Flow.reset();
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+    });
+  });
+
+  it('adjust while ticking emits updateTimer with the new endsAt', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      calls.length = 0;
+      assert(Flow.adjustRemainingMs(3 * 60 * 1000), 'adjust accepted');
+      const ups = endsAtUpdates(calls);
+      assertEqual(ups.length, 1);
+      assertEqual(ups[0].args.isPaused, false);
+      assertClose(ups[0].args.endsAt - Date.now(), 240000, 1500);
+    });
+  });
+
+  it('adjust while paused does not emit an endsAt update (resume re-emits)', () => {
+    withLiveActivitySpy((calls) => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      Flow.pause();
+      calls.length = 0;
+      assert(Flow.adjustRemainingMs(60000), 'adjust accepted');
+      assertEqual(endsAtUpdates(calls).length, 0);
+    });
+  });
+
+  it('suppresses all emits when live_activities_enabled is "0"', () => {
+    withLiveActivitySpy((calls) => {
+      localStorage.setItem('live_activities_enabled', '0');
+      Flow.start();
+      Flow.pause();
+      Flow.reset();
+      assertEqual(calls.length, 0);
+    });
+  });
+
+  it('loadState finished-while-away is SILENT for both phases', () => {
+    withLiveActivitySpy((calls) => {
+      loadFocusOverflowed();
+      assertEqual(Flow.getStatus(), 'overflowing');
+      assertEqual(calls.length, 0);
+      Flow.reset();
+      calls.length = 0;
+      Flow.loadState({
+        status: 'recovery', phase: 'recovery', focusDurationMs: 60000,
+        startedAt: Date.now() - 16 * 60000, accumulatedMs: 0,
+        sessionStartedAt: Date.now() - 90 * 60000,
+      });
+      assertEqual(Flow.getStatus(), 'recoveryOverflowing');
+      assertEqual(calls.length, 0);
+    });
+  });
+
+  it('loadState past the 24h overshoot cap ends the orphaned activity', () => {
+    withLiveActivitySpy((calls) => {
+      const dayPlus = 25 * 60 * 60 * 1000;
+      Flow.loadState({
+        status: 'overflowing', phase: 'focus', focusDurationMs: 60000,
+        startedAt: Date.now() - dayPlus, accumulatedMs: 60000,
+        alarmFired: true, zeroCrossedAt: Date.now() - dayPlus,
+      });
+      assertEqual(ofMethod(calls, 'endTimer').length, 1);
+    });
+  });
+
+  it('getPhaseLabel tracks the phase', () => {
+    withLiveActivitySpy(() => {
+      Flow.configure({ focusDurationMs: 60000 });
+      Flow.start();
+      assertEqual(Flow.getPhaseLabel(), 'Focus');
+      Flow.loadState({
+        status: 'recovery', phase: 'recovery', focusDurationMs: 60000,
+        startedAt: Date.now() - 60000, accumulatedMs: 0,
+      });
+      assertEqual(Flow.getPhaseLabel(), 'Recovery');
+    });
+  });
+});

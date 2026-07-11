@@ -76,6 +76,42 @@ const Flow = (() => {
     return Math.min(1, getElapsedMs() / dur);
   }
 
+  // ── Live Activity bridge (iOS lock screen / Dynamic Island) ──────────
+  // Same gate as js/timer.js: user flag (default ON when key absent) +
+  // Platform presence. Fire-and-forget — engine state mutation MUST NOT
+  // block on the bridge. One continuous activity (id 'flow') spans the
+  // whole block: focus→recovery updates it in place (the native side
+  // update-routes startTimer when the activity already exists), and phase
+  // zero-crossings emit nothing (the widget's staleDate contract renders
+  // "Done ✓" until the user acts).
+  function _laEnabled() {
+    return localStorage.getItem('live_activities_enabled') !== '0'
+      && typeof Platform !== 'undefined' && !!Platform.liveActivity;
+  }
+
+  // Truthful progress window: startedAt is back-dated by the elapsed already
+  // on the phase clock, so the OS-rendered progress bar survives resumes.
+  // The widget suppresses ProgressView labels, so the window is only ever
+  // read as fill fraction + countdown target.
+  function _laWindow() {
+    const now = Date.now();
+    return { startedAt: now - getElapsedMs(), endsAt: now + getRemainingMs() };
+  }
+
+  function getPhaseLabel() {
+    return phase === 'focus' ? 'Focus' : 'Recovery';
+  }
+
+  function _laStart() {
+    if (!_laEnabled()) return;
+    const w = _laWindow();
+    Platform.liveActivity.startTimer({
+      id: 'flow', name: 'Flow Block', mode: 'flow',
+      label: getPhaseLabel(),
+      startedAt: w.startedAt, endsAt: w.endsAt, isPaused: false,
+    }).catch(() => {});
+  }
+
   function start() {
     if (status !== 'idle' && status !== 'paused') return;
     const now = Date.now();
@@ -83,6 +119,9 @@ const Flow = (() => {
     if (!sessionStartedAt) sessionStartedAt = now;
     status = 'running';
     phase = 'focus';
+    // Fresh start AND resume-from-pause both land here — no duplicate
+    // activity on resume (see the update-routing note above).
+    _laStart();
   }
 
   function pause() {
@@ -90,12 +129,18 @@ const Flow = (() => {
     accumulatedMs += Date.now() - startedAt;
     startedAt = null;
     status = status === 'running' ? 'paused' : 'recoveryPaused';
+    if (_laEnabled()) {
+      Platform.liveActivity.updateTimer({ id: 'flow', isPaused: true }).catch(() => {});
+    }
   }
 
   function resume() {
     if (status !== 'paused' && status !== 'recoveryPaused') return;
     startedAt = Date.now();
     status = status === 'paused' ? 'running' : 'recovery';
+    // startTimer (not update) — self-healing: if a force-quit lost the
+    // activity, this re-requests it instead of noop-updating a ghost.
+    _laStart();
   }
 
   function reset() {
@@ -109,6 +154,9 @@ const Flow = (() => {
     sessionStartedAt = null;
     focusEndedAt = null;
     goal = '';
+    if (_laEnabled()) {
+      Platform.liveActivity.endTimer({ id: 'flow' }).catch(() => {});
+    }
   }
 
   function adjustRemainingMs(deltaMs) {
@@ -121,6 +169,15 @@ const Flow = (() => {
     phaseAdjustmentMs += deltaMs;
     const minAdjustment = 1000 - getBasePhaseDurationMs();
     if (phaseAdjustmentMs < minAdjustment) phaseAdjustmentMs = minAdjustment;
+    // Keep the lock-screen countdown in step (ticking states only — a
+    // paused activity is frozen by design and picks the new remaining up
+    // from the resume re-emit).
+    if ((status === 'running' || status === 'recovery') && _laEnabled()) {
+      const w = _laWindow();
+      Platform.liveActivity.updateTimer({
+        id: 'flow', startedAt: w.startedAt, endsAt: w.endsAt, isPaused: false,
+      }).catch(() => {});
+    }
     return true;
   }
 
@@ -133,6 +190,9 @@ const Flow = (() => {
     zeroCrossedAt = null;
     startedAt = Date.now();
     status = 'recovery';
+    // Updates the surviving (stale "Done ✓") focus activity in place into
+    // the recovery countdown — or re-requests one if it was lost.
+    _laStart();
   }
 
   // End the focus phase early. Captures actual elapsed time into
@@ -155,6 +215,14 @@ const Flow = (() => {
     if (!alarmFired) {
       alarmFired = true;
       if (phaseCallback) phaseCallback('focus');
+    }
+    // The activity was counting down to a now-dead future endsAt — pull
+    // endsAt to now so the widget's staleDate contract flips it to "Done ✓"
+    // immediately. isPaused must clear: a paused activity is never "done".
+    if (_laEnabled()) {
+      Platform.liveActivity.updateTimer({
+        id: 'flow', endsAt: Date.now(), isPaused: false,
+      }).catch(() => {});
     }
   }
 
@@ -179,9 +247,17 @@ const Flow = (() => {
     startedAt = null;
     accumulatedMs = 0;
     phaseAdjustmentMs = 0;
+    // Session over — end the lock-screen activity. (The UI's follow-up
+    // reset() end is a safe noop on the native side.)
+    if (_laEnabled()) {
+      Platform.liveActivity.endTimer({ id: 'flow' }).catch(() => {});
+    }
   }
 
   function checkFinished() {
+    // No Live Activity emits on either zero-cross below: endsAt has passed,
+    // so the widget's staleDate contract already renders "Done ✓" — and the
+    // activity must survive so startRecovery()/resume() can update it.
     if (status === 'running' && getRemainingMs() <= 0) {
       const now = Date.now();
       const carry = startedAt !== null ? now - startedAt : 0;
@@ -304,12 +380,20 @@ const Flow = (() => {
       alarmFired = true;
     }
     // 24h overshoot cap.
+    // (The finished-while-away branches above emit no endTimer — a finished
+    // PHASE is not a finished session; the stale "Done ✓" activity stays up
+    // so the boundary is glanceable and the next transition reuses it.)
     if (isOvershooting()) {
       const cap = getCurrentPhaseDurationMs() + 24 * 60 * 60 * 1000;
       const elapsed = rawElapsedMs();
       if (elapsed > cap) {
         accumulatedMs = cap;
         startedAt = null;
+        // A day-plus-past-zero block is abandoned, not glanceable — clean
+        // up the orphaned lock-screen activity.
+        if (_laEnabled()) {
+          Platform.liveActivity.endTimer({ id: 'flow' }).catch(() => {});
+        }
       }
     }
   }
@@ -322,7 +406,7 @@ const Flow = (() => {
     setGoal, getGoal,
     getRemainingMs, getElapsedMs, getProgress, getFocusElapsedMs,
     getOvershootMs, isOvershooting, getZeroCrossedAt,
-    getStatus, getPhase,
+    getStatus, getPhase, getPhaseLabel,
     getCurrentPhaseDurationMs, getFocusDurationMs, getRecoveryDurationMs,
     getSessionStartedAt, getFocusEndedAt, getConfig,
     getState, loadState,
