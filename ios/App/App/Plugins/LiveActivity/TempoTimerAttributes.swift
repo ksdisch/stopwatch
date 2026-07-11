@@ -31,6 +31,14 @@ struct TempoTimerAttributes: ActivityAttributes {
         // for a static `ProgressView(value:)`. Avoids the snap-back where
         // the live view keeps ticking 0–1s after the user hits Pause.
         var isPaused: Bool
+        // Updatable phase label for multi-phase engines ("Work 2/4",
+        // "Break", "Focus", "Recovery"). Lives in ContentState — NOT the
+        // fixed attributes — because one continuous activity spans a whole
+        // Pomodoro/Flow session and the label changes at each phase
+        // boundary. Optional so payloads from the Timer engine (and
+        // in-flight activities from builds predating this field) decode as
+        // nil and render exactly as before.
+        var label: String?
     }
 
     // Stable id matching Timer.id (e.g. "tm-default"). Used by the plugin
@@ -40,5 +48,11 @@ struct TempoTimerAttributes: ActivityAttributes {
     // User-facing label (e.g. "Tea steep", "Focus break"). Persists for the
     // life of the activity — re-pausing does NOT mutate this.
     var timerName: String
+    // Engine key ("pomodoro" | "flow"; nil = plain timer). Fixed for the
+    // activity's lifetime — an activity never changes engines — and drives
+    // the widget's glyph, tint, and per-mode deep-link. Optional for decode
+    // compat with pre-field activities; unknown values fall back to the
+    // Timer presentation.
+    var mode: String?
 }
 #endif

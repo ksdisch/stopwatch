@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v166-n1-native-listener-parity';
+const CACHE_NAME = 'stopwatch-v167-live-activities-pomo-flow';
 const ASSETS = [
   './',
   './index.html',

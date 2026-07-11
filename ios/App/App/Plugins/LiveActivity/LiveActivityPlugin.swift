@@ -101,6 +101,9 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let timerName = call.getString("name") ?? "Timer"
+        // Optional phase metadata (Pomodoro/Flow): absent for plain timers.
+        let label = call.getString("label")
+        let mode  = call.getString("mode")
         // JS sends epoch-ms (Date.now()); convert to Date.
         let startedAtMs = call.getDouble("startedAt") ?? Double(Date().timeIntervalSince1970 * 1000.0)
         let endsAtMs   = call.getDouble("endsAt")   ?? startedAtMs
@@ -117,7 +120,8 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             let contentState = TempoTimerAttributes.ContentState(
                 startedAt: startedAt,
                 endsAt: endsAt,
-                isPaused: isPaused
+                isPaused: isPaused,
+                label: label
             )
 
             // staleDate = endsAt (16.2+): the app is suspended when a locked-
@@ -143,7 +147,7 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             }
 
             // First start: request a brand-new activity.
-            let attributes = TempoTimerAttributes(timerId: timerId, timerName: timerName)
+            let attributes = TempoTimerAttributes(timerId: timerId, timerName: timerName, mode: mode)
             do {
                 let activity: Activity<TempoTimerAttributes>
                 if #available(iOS 16.2, *) {
@@ -205,11 +209,15 @@ public class LiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
                 return currentState.endsAt
             }()
             let nextIsPaused = call.getBool("isPaused") ?? currentState.isPaused
+            // Merge like the fields above: a payload without `label` keeps
+            // the current one (phase labels only travel on phase changes).
+            let nextLabel = call.getString("label") ?? currentState.label
 
             let nextState = TempoTimerAttributes.ContentState(
                 startedAt: nextStartedAt,
                 endsAt: nextEndsAt,
-                isPaused: nextIsPaused
+                isPaused: nextIsPaused,
+                label: nextLabel
             )
 
             Task {

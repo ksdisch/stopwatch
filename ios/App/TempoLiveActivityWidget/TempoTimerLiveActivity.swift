@@ -35,20 +35,52 @@ private func isDone(_ context: ActivityViewContext<TempoTimerAttributes>) -> Boo
     return context.state.endsAt <= Date()
 }
 
+// Per-engine presentation. One widget serves every engine: the shared
+// attributes carry an optional `mode` ("pomodoro" | "flow"; nil = plain
+// timer) and glyph / tint / deep-link derive from it. Unknown or absent
+// modes MUST fall back to the shipped Timer look so in-flight activities
+// from older builds (which decode mode as nil) render pixel-identical.
+private func modeGlyph(_ mode: String?) -> String {
+    switch mode {
+    case "pomodoro": return "repeat.circle"
+    case "flow":     return "brain.head.profile"
+    default:         return "timer"
+    }
+}
+
+private func modeTint(_ mode: String?) -> Color {
+    switch mode {
+    case "pomodoro": return .red
+    case "flow":     return .indigo
+    default:         return .green
+    }
+}
+
+// Deep-link target per engine. The route keys are TIMERS_MODES entries in
+// js/tempo-nav.js — the generic tempo://<host>/<path> → #/<host>/<path>
+// mapping needs no JS-side changes for these.
+private func modeURL(_ mode: String?) -> URL? {
+    switch mode {
+    case "pomodoro": return URL(string: "tempo://timers/pomodoro")
+    case "flow":     return URL(string: "tempo://timers/flow")
+    default:         return URL(string: "tempo://timers/countdown")
+    }
+}
+
 @available(iOS 16.1, *)
 struct TempoTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TempoTimerAttributes.self) { context in
             // Lock-screen / banner view.
             TempoTimerLockScreenView(context: context)
-                .widgetURL(URL(string: "tempo://timers/countdown"))
+                .widgetURL(modeURL(context.attributes.mode))
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded — pulls down when long-pressed (or when the
                 // activity wants to surface for visibility events).
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "timer")
-                        .foregroundColor(.green)
+                    Image(systemName: modeGlyph(context.attributes.mode))
+                        .foregroundColor(modeTint(context.attributes.mode))
                         .imageScale(.medium)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -71,17 +103,26 @@ struct TempoTimerLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.timerName)
-                        .font(.headline)
-                        .lineLimit(1)
+                    VStack(spacing: 2) {
+                        Text(context.attributes.timerName)
+                            .font(.headline)
+                            .lineLimit(1)
+                        if let label = context.state.label, !label.isEmpty {
+                            Text(label)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    TempoTimerProgressBar(state: context.state)
+                    TempoTimerProgressBar(state: context.state,
+                                          tint: modeTint(context.attributes.mode))
                         .padding(.horizontal, 6)
                 }
             } compactLeading: {
-                Image(systemName: "timer")
-                    .foregroundColor(.green)
+                Image(systemName: modeGlyph(context.attributes.mode))
+                    .foregroundColor(modeTint(context.attributes.mode))
                     .imageScale(.small)
             } compactTrailing: {
                 if isDone(context) {
@@ -113,11 +154,11 @@ struct TempoTimerLiveActivity: Widget {
                     Text(timerInterval: Date()...context.state.endsAt,
                          countsDown: true)
                         .font(.caption2.monospacedDigit())
-                        .foregroundColor(.green)
+                        .foregroundColor(modeTint(context.attributes.mode))
                 }
             }
-            .widgetURL(URL(string: "tempo://timers/countdown"))
-            .keylineTint(.green)
+            .widgetURL(modeURL(context.attributes.mode))
+            .keylineTint(modeTint(context.attributes.mode))
         }
     }
 }
@@ -130,15 +171,22 @@ struct TempoTimerLockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Top row: glyph + name (leading), PAUSED badge (trailing).
+            // Top row: glyph + name + phase label (leading), PAUSED badge
+            // (trailing).
             HStack(spacing: 8) {
-                Image(systemName: "timer")
-                    .foregroundColor(.green)
+                Image(systemName: modeGlyph(context.attributes.mode))
+                    .foregroundColor(modeTint(context.attributes.mode))
                     .imageScale(.medium)
                 Text(context.attributes.timerName)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)
+                if let label = context.state.label, !label.isEmpty {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
                 Spacer()
                 if context.state.isPaused {
                     Text("PAUSED")
@@ -184,7 +232,8 @@ struct TempoTimerLockScreenView: View {
             }
 
             // Bottom: progress bar.
-            TempoTimerProgressBar(state: context.state)
+            TempoTimerProgressBar(state: context.state,
+                                  tint: modeTint(context.attributes.mode))
         }
         .padding()
         .activityBackgroundTint(Color.black.opacity(0.4))
@@ -211,6 +260,7 @@ struct TempoTimerLockScreenView: View {
 @available(iOS 16.1, *)
 struct TempoTimerProgressBar: View {
     let state: TempoTimerAttributes.ContentState
+    let tint: Color
 
     var body: some View {
         if state.isPaused {
@@ -218,7 +268,7 @@ struct TempoTimerProgressBar: View {
             // freezes there.
             ProgressView(value: pausedFraction())
                 .progressViewStyle(.linear)
-                .tint(.green)
+                .tint(tint)
         } else {
             // Live bar — Apple drives the fill at OS cadence based on the
             // interval, no JS push needed. Both labels are suppressed: the
@@ -230,7 +280,7 @@ struct TempoTimerProgressBar: View {
                          label: { EmptyView() },
                          currentValueLabel: { EmptyView() })
                 .progressViewStyle(.linear)
-                .tint(.green)
+                .tint(tint)
         }
     }
 

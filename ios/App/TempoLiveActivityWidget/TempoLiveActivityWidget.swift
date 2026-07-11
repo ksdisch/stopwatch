@@ -13,10 +13,13 @@ import WidgetKit
 @main
 struct TempoLiveActivityWidget: WidgetBundle {
     var body: some Widget {
-        // Single activity in MVP — Stopwatch / Pomodoro / Flow / Interval /
-        // Cooking layouts are deferred to follow-up PRs. Each will add a
-        // new ActivityAttributes struct + a sibling `TempoXxxLiveActivity`
-        // here, then ship as its own Widget body item in this bundle.
+        // One shared activity type serves every countdown-shaped engine
+        // (Timer, Pomodoro, Flow) via TempoTimerAttributes' optional
+        // `mode`/`label` fields — NOT one ActivityAttributes struct per
+        // engine, because the plugin's lifecycle paths (endAll, registry
+        // re-adoption) are typed on a single Activity<T>. Count-up engines
+        // (Stopwatch) will need a genuinely different ContentState and can
+        // add a sibling widget here when they ship.
         if #available(iOS 16.1, *) {
             TempoTimerLiveActivity()
         }
