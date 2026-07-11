@@ -118,13 +118,14 @@ tests/index.html doesn't load tempo-nav).
 ## Sequenced steps
 
 1. ~~Blast-radius deep dive~~ ✅
-2. Plan doc + branch ← this commit
-3. `js/pomodoro.js` emits + `tests/pomodoro.test.js`
-4. `js/flow.js` emits + `tests/flow.test.js`
-5. Swift: attributes/plugin/widget deltas; xcodebuild
-6. `js/tempo-nav.js` re-arm sweep extension
-7. Suites + sim validation
-8. Docs (CLAUDE.md + BACKLOG #4 + SESSION-LOG) + cache bump + PR — **no merge**
+2. ~~Plan doc + branch~~ ✅ `a033e74`
+3. ~~`js/pomodoro.js` emits + `tests/pomodoro.test.js`~~ ✅ `675ac43` — suite PASS (1346)
+4. ~~`js/flow.js` emits + `tests/flow.test.js`~~ ✅ `288f569` — suite PASS (1360)
+5. Swift: attributes/plugin/widget deltas ✅ (edits in); xcodebuild pending
+6. ~~`js/tempo-nav.js` re-arm sweep extension~~ ✅ `83870af`
+6b. ~~Discovered fix: applyAppMode re-arms pomodoro/flow overflow states~~ ✅ `11368f8` (UI suite 12/12 after)
+7. Suites ✅ (engine 1360, UI 12) + sim validation pending
+8. Docs (CLAUDE.md + BACKLOG #4 + SESSION-LOG) + cache bump (done, v167 in `675ac43`) + PR — **no merge**
 
 ## Risks
 
