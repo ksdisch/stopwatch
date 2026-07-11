@@ -121,11 +121,11 @@ tests/index.html doesn't load tempo-nav).
 2. ~~Plan doc + branch~~ ✅ `a033e74`
 3. ~~`js/pomodoro.js` emits + `tests/pomodoro.test.js`~~ ✅ `675ac43` — suite PASS (1346)
 4. ~~`js/flow.js` emits + `tests/flow.test.js`~~ ✅ `288f569` — suite PASS (1360)
-5. Swift: attributes/plugin/widget deltas ✅ (edits in); xcodebuild pending
+5. ~~Swift: attributes/plugin/widget deltas~~ ✅ `401f207` — xcodebuild BUILD SUCCEEDED ×2
 6. ~~`js/tempo-nav.js` re-arm sweep extension~~ ✅ `83870af`
-6b. ~~Discovered fix: applyAppMode re-arms pomodoro/flow overflow states~~ ✅ `11368f8` (UI suite 12/12 after)
-7. Suites ✅ (engine 1360, UI 12) + sim validation pending
-8. Docs (CLAUDE.md + BACKLOG #4 + SESSION-LOG) + cache bump (done, v167 in `675ac43`) + PR — **no merge**
+6b. ~~Discovered fix: applyAppMode re-arms pomodoro/flow overflow states~~ ✅ `11368f8` + 4 UI specs `d383aeb`
+7. ~~Suites + sim validation~~ ✅ engine PASS (1360), UI 16/16, sim evidence chain (deep-links, red pomodoro island + live countdown, zero-cross → green DONE survival, fresh-process orphan end via registry re-adoption, indigo flow island)
+8. ~~Docs + cache bump (v167) + PR~~ ✅ **PR #211** — merge awaits Kyle
 
 ## Risks
 
