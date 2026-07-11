@@ -338,11 +338,17 @@ function applyAppMode() {
     }
   } else if (isPomodoro) {
     updatePomodoroUI();
-    if (Pomodoro.getStatus() === 'running') startPomodoroRenderLoop();
+    // Overflow states must re-arm too (their loops tick through overshoot):
+    // a Live Activity's "Done ✓" tap deep-links in exactly at a phase
+    // boundary, which is an overflowing state — without this the count-up
+    // paints once and freezes (the #203 bug class, timer got the fix).
+    const pst = Pomodoro.getStatus();
+    if (pst === 'running' || pst === 'overflowing') startPomodoroRenderLoop();
   } else if (isFlow) {
     updateFlowUI();
     const st = Flow.getStatus();
-    if (st === 'running' || st === 'recovery') startFlowRenderLoop();
+    if (st === 'running' || st === 'recovery'
+        || st === 'overflowing' || st === 'recoveryOverflowing') startFlowRenderLoop();
   } else if (isInterval) {
     updateIntervalUI();
     if (Interval.getStatus() === 'running') startIntervalRenderLoop();
