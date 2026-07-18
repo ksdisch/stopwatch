@@ -353,7 +353,7 @@ implementer reports it needed.
 
 Repo-local commands (`/<name>`), skills, and agents vendored into `.claude/` so they work in
 cloud/web sessions and for collaborators. **💻 = local-only** (needs a browser MCP / local dev
-server; won't work in a cloud/web session).
+server, local TTS/voice, or the local `nlm` CLI / NotebookLM MCP; won't work in a cloud/web session).
 
 **Commands** (`.claude/commands/`):
 - `/begin` — open a session: orient on branch/commits/open PRs, recap the last `/wrap` log, route into `.claude/session-start.md`.
@@ -369,11 +369,34 @@ server; won't work in a cloud/web session).
 - `/run-tests [scope]` — **repo-specific.** Suite execution + interpretation: `npm test`, the headless-flake adjudication rule, rules + council variants. Never edits to get green.
 - `/ship-pr [scope]` — **repo-specific.** DoD pre-flight, pre-runs the 3 guard checks, branch/commit conventions, push + `gh pr create`, CI expectations, merge etiquette (worktree `--delete-branch` quirk). Stops before merge.
 - `/add-panel <key + question>` — **repo-specific.** Scaffold a Rhythm Insights panel: registry contract (pure build/render via injected deps), `order` pick, 4-point wiring, clock-pinned tests.
+- `/brainstorm` — multi-mode structured brainstorm (Moonshot default) → `docs/ideas/` vision docs + backlog stubs.
+- `/claudify-repo` — vendor global commands/skills into this repo and/or brainstorm repo-specific automations.
+- `/prompt-optimize` — one-shot prompt rewrite: workflow archetype + model + effort + ready-to-paste prompt. Advisory only.
+- `/reframe-orchestrator` — reframe `.claude/orchestrator.md` into a mode-independent invariants & gates doc.
+- `/mock-sql-demo` — text self-play mock SQL interview (interviewer + ideal candidate), then a debrief.
+- 💻 `/boot_server` — detect how the project is served, start the dev server, open it in Chrome.
+- 💻 `/catchup` — mid-session audio catch-up as an MP3 (local TTS); keeps working after.
+- 💻 `/envsetup` — open `.env` + the credential's generation page in Chrome, key stub pre-added.
+- 💻 `/mock-sql-audio` — full simulated SQL mock interview as an MP3 (local two-voice TTS).
+- 💻 `/mock-sql-interview` — live voice mock SQL interview (local voice mode).
+- 💻 `/smoke-test` — manual smoke test setup: opens pages in Chrome, do-this-see-that checklist under `docs/smoke/`.
 
 **Skills** (`.claude/skills/`, auto-trigger or invoke explicitly):
 - `artifacts-audit` — audit which engineering artifacts (READMEs, ADRs, runbooks, ERDs…) the repo should have; writes `docs/artifacts-plan.md`. Plans only, no source edits.
 - `artifacts-generate` — generate artifacts from a prior `docs/artifacts-plan.md` (one-at-a-time or batch). Companion to `artifacts-audit`.
 - 💻 `match-the-mock` — auto-triggering visual loop (paste a mock / Figma link): implement → screenshot → compare → iterate. Needs a browser MCP + local dev server.
+- `bug-hunt` — proactive bug hunt: fan out finder agents, adversarially verify findings, ranked triage list.
+- `kickoff` — deep discovery interview → approved kickoff brief + phased plan → scaffold a new project + GitHub repo.
+- `mini` — kick off a new mini project under `~/Projects/mini/` (short interview + scaffold).
+- `project-guide` — comprehensive point-in-time guide to the project (architecture, history, interview lens); dated file.
+- `research-paper` — end-of-project research paper + presenter pack from recorded results; opens a PR, never merges.
+- `seed-hunt` — end-of-project seed hunt: verify closure, harvest lessons, sweep arXiv, decision brief.
+- `ship-and-route` — land outstanding git work behind a review gate, walk findings, route the next move.
+- 💻 `narrate` — turn a short brief into a single-voice MP3 narration (local Kokoro TTS).
+- 💻 `audio-series` / `video-series` — episodic NotebookLM audio/video series for an existing notebook (need `nlm`/NotebookLM MCP).
+- 💻 `interview-prep` — init/maintain a NotebookLM interview-prep notebook (needs `nlm`/NotebookLM MCP).
+- 💻 `nlm-skill` — expert guide for the NotebookLM CLI (`nlm`) and MCP server.
+- 💻 `notebook-assist` / `notebook-init` / `notebook-merge` — manage / create / merge NotebookLM notebooks (need `nlm`/NotebookLM MCP).
 
 **Subagents** (`.claude/agents/`) — repo-specific, beyond the 5-subagent sync-PR pipeline:
 - `sync-invariant-reviewer` — read-only reviewer of a branch diff for the three cross-cutting invariants the pipeline doesn't mechanically gate: synced-store `schema.stamp()` coverage, reuse-over-reimplementation (`Platform.haptic`/`Platform.notify`/`escapeHtml`/`Utils.formatMs`), and new-module 4-file wiring. Reports findings; never edits.
