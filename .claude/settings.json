@@ -1,4 +1,28 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(node --check *)",
+      "Bash(curl -s https://ksdisch.github.io/stopwatch/*)",
+      "Bash(npm run test:ui)",
+      "Bash(npm run test:rules)",
+      "Bash(npm --prefix council test)",
+      "Bash(npm run check:assets)",
+      "Bash(npm run check:sw-bump)",
+      "Bash(npm run check:load-order)",
+      "mcp__firebase__firestore_get_document",
+      "mcp__firebase__firestore_list_documents",
+      "mcp__firebase__firestore_query_collection",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_close",
+      "mcp__kapture__screenshot",
+      "mcp__kapture__console_logs",
+      "mcp__kapture__list_tabs",
+      "mcp__kapture__dom"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
