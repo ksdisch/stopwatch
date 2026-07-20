@@ -198,8 +198,8 @@ preserves the original chronological numbering.
 | 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Timer MVP SHIPPED + device-validated 2026-07-10** (PRs #201/#203/#204/#205 + closeout, cache v165) — 8/9 smoke checks confirmed on iPhone 17 Pro Max: lock-screen render, Dynamic Island compact+expanded, tap→deep-link, pause/resume/reset, finish→"Done ✓" stale-state + dismiss-on-open, force-quit persistence (ActivityKit registry re-adoption), ±3 min adjust endsAt sync. Device smoke drove 3 fix rounds (route alias, render-loop re-arm, loadState end-emit, dead-activity `isLive` filter, ProgressView auto-label). OPEN (backlogged): settings-toggle OFF→ON re-arm of an in-flight countdown — passes on simulator, unconfirmed on device; runbook in `docs/BACKLOG.md` #4 detail. **Pomodoro+Flow expansion built + sim-validated 2026-07-10 (PR #211** — shared activity type + optional label/mode fields, one continuous activity per session, "Done ✓" survives phase boundaries; device confirm pending**)**; Stopwatch/Interval/Cooking follow-ups remain. |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
 | 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
-| 7 | Voice control (Web Speech API) | Low | Medium | #3 | **Unshipped** |
-| 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
+| 7 | Voice control (Web Speech API) | Low | Medium | #3 | **Parked 2026-07-19** — low ROI, dormant since the stopwatch era; see `docs/BACKLOG.md` § Parked / Retired |
+| 8 | Group/team timing | Low | High | #5 | **Parked 2026-07-19** — needs a backend the PWA deliberately lacks; see `docs/BACKLOG.md` § Parked / Retired |
 | 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102); mid-block add (PR #173) |
 | 10 | Todoist follow-up B — Pomo inline-rename + `updateTask` | Low | Low | #10-B | Shipped (PR #103) |
 | 11 | Sleep log bedtime/wake-time schema extension | Medium | Low | #12 | Shipped 2026-06-01 |
@@ -212,7 +212,7 @@ preserves the original chronological numbering.
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 | 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
-| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 **built** 2026-07-08 (branch `feat/p5-life-building-finances`) — `finances` 8th synced store + council `life_building` synthesizer + Life Building hub (`#/life-building`) w/ monthly capture form. PR + merge + first prod council run pending. |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 **LIVE** (PR #198 merged 2026-07-08) — `finances` 8th synced store + council `life_building` synthesizer + Life Building hub (`#/life-building`) w/ monthly capture form; council green nightly through 2026-07-19. Close-out = Kyle's July numbers via the capture form → next nightly council run → verify the hub renders real data (hygiene 2026-07-19, Arc A ①). |
 
 ## Remaining Tech Debt
 

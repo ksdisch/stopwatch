@@ -2759,3 +2759,38 @@ Merged **PR #200** first (council alert-preload — load the push-alert creds be
 <this commit>  feat(sync): native real-time listener parity — subscribe via addCollectionSnapshotListener (N-1, backlog #3)
 <follow-up>    docs(sync-impl): move N-1 to shipped in PLAN.md (after the PR number exists)
 ```
+
+## 2026-07-11 — Pomodoro + Flow Live Activities (backlog #4 follow-up, PR #211) — *backfilled 2026-07-19*
+
+### What We Built
+
+*(Backfilled during the 2026-07-19 backlog hygiene run — this session predated it and never logged; reconstructed from PR #211 + the BACKLOG #4 detail.)* Extended the device-validated Timer Live Activity to the deep-work modes. One shared `TempoTimerAttributes` gained optional `ContentState.label` (updatable phase label: Work 2/4 / Break / Long break / Focus / Recovery) + `attributes.mode` (fixed engine key → widget glyph/tint/deep-link) — a single activity type keeps `endAll` + registry re-adoption complete, and nil fields render pixel-identical to the shipped Timer look. **One continuous activity per engine session** (ids `pomodoro`/`flow`): phase transitions update in place (no end+request race at boundaries) and phase zero-crossings emit nothing — the staleDate contract renders "Done ✓" across the between-phases window, because a finished PHASE is not a finished session. Emits live in `js/pomodoro.js`/`js/flow.js` (+28 engine tests → suite 1360); `applyAppMode` re-arms pomodoro/flow render loops in overflow states (the #203 freeze class); the toggle-ON re-arm sweep covers the singletons; 4 UI specs. Sim-validated on iPhone 17 Pro via the no-host-grants chain (deep-links route; red pomodoro island w/ live countdown; zero-cross survival → green DONE; fresh-process orphan reset via registry re-adoption; indigo flow island). Squash `dd3e8cd`, cache v167, live payload curl-confirmed.
+
+### Suggested Next Steps
+
+- Device-owner checks (needs `npm run ios:open` rebuild): expanded-island label chip, lock-screen large view, tap-through, pause badge, hardware toggle re-arm.
+- Remaining engines: Stopwatch (count-up ContentState variant), Interval, Cooking.
+
+### Commits
+
+```
+dd3e8cd  feat: Pomodoro + Flow Live Activities — lock screen + Dynamic Island for the deep-work modes (backlog #4 follow-up) (#211)
+```
+
+## 2026-07-19 — Backlog hygiene: corpus groomed, Parked/Retired established, Arc A picked (docs-only)
+
+### What We Built
+
+First `/backlog-hygiene` run. Inventoried the full corpus (feature table, Tooling & DX table, 2026-06-05 candidate menu, tech debt, hunt register, Life-OS roadmap) and verified every item against HEAD before ranking. Headline verdicts: **Finances row was 11 days stale in both tables** (said "build pending" while #198 has been live since 2026-07-08 with the council green nightly through today); backlog #3's shipped detail was misfiled under "Unshipped"; `main` is **still unprotected** (`gh api` 404); CLAUDE.md is at **48.6k chars** (past its own 40k re-trim trigger); candidate-menu rows for the Intelligence Engine and Tempo Presence are superseded (council synthesis / shipped Live Activities); BFRB "Slice B" is half-shipped (`js/bfrb-risk.js` + stress nudge — remainder is the post-countdown debrief); 57 local / 13 remote stale branches. Applied the approved edits: truth-ups, a new **§ Parked / Retired** in `docs/BACKLOG.md` (parks #7 voice control + #8 group timing + the device-confirm queue + branch cleanup; retires `/new-synced-store` + the two superseded candidates), this backfill, and a dated status line on `docs/artifacts-plan.md`. Decision brief saved to `docs/backlog-hygiene/2026-07-19.md`. **Arc picked (short arc, balanced, no iPhone-in-hand or sync-internals work): ① Finances close-out (Kyle's July numbers → nightly council → verify), ② guardrails trio (branch protection + permission allowlist + `/trim-context`), ③ doctor-ready report slice (narrowed from the Weekly Review candidate).**
+
+### Suggested Next Steps
+
+- Kyle: enter July finance numbers at `#/life-building` (~10 min) — unblocks ①.
+- Run Arc A per the starter prompt in `docs/backlog-hygiene/2026-07-19.md`.
+- Schedule the parked device-confirm queue as one ~20-min phone session before it calcifies.
+
+### Commits
+
+```
+<this commit>  docs(backlog): hygiene 2026-07-19 — truth-ups, Parked/Retired, session-log backfill, decision brief
+```
