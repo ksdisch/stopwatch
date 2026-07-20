@@ -62,6 +62,43 @@ const Export = (() => {
     return !!navigator.share;
   }
 
+  // ── Generic text delivery ──
+  // Plain-text twins of the lap-specific helpers above (copyToClipboard /
+  // share / downloadCSV). Callers hand us the final string — no formatting
+  // happens here. First consumer: DoctorReport (js/doctor-report.js).
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Mirrors share(): the canShare() guard means desktop browsers without
+  // navigator.share fall back to the clipboard instead of throwing; a
+  // user-dismissed share sheet resolves false (no clipboard surprise).
+  async function shareText(title, text) {
+    if (canShare()) {
+      try {
+        await navigator.share({ title, text });
+        return true;
+      } catch (e) { return false; }
+    }
+    return copyText(text);
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Full Data Export/Import ──
 
   // Every localStorage key that carries durable state. If it belongs to
@@ -335,6 +372,7 @@ const Export = (() => {
 
   return {
     copyToClipboard, downloadCSV, share, canShare, lapsToText, lapsToCSV,
+    copyText, shareText, downloadText,
     exportAllData, importAllData, buildBackupData, getSettingsKeys,
   };
 })();

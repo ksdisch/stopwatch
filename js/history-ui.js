@@ -72,6 +72,13 @@ function initHistoryPanel() {
     }
   });
 
+  // Doctor Report — standalone panel. Wired lazily so DoctorReport.buildReport
+  // is only called AFTER all deferred scripts have loaded (analytics.js loads
+  // after history-ui.js in index.html — see audit Load-order slot / Risk #1).
+  // Resolves window.DoctorReport at click time; falls back to a Toast if the
+  // engine is absent (e.g. script-load failure).
+  initDoctorReportPanel();
+
   // Log Past Session — standalone panel. initLogPastPanel() owns ALL of the
   // log-past wiring (#log-past-save / #log-past-cancel / open / close). The
   // duplicate save+cancel handlers that USED to live here fired on the SAME
@@ -551,5 +558,98 @@ function initLogPastPanel() {
     // Re-render history if it's open
     const historyPanel = document.getElementById('history-panel');
     if (historyPanel && !historyPanel.classList.contains('hidden')) renderHistory();
+  });
+}
+
+// ── Doctor Report Panel ──
+// Lazy init: DoctorReport is wired via window.DoctorReport at click time
+// because js/doctor-report.js loads AFTER js/history-ui.js in index.html
+// (it depends on analytics.js which is also after history-ui.js). Resolving
+// at click time guarantees all deferred scripts have already executed.
+function initDoctorReportPanel() {
+  const triggerBtn = document.getElementById('history-doctor-report');
+  const panel = document.getElementById('doctor-report-panel');
+  const closeBtn = document.getElementById('doctor-report-close');
+  const textarea = document.getElementById('doctor-report-text');
+  const copyBtn = document.getElementById('doctor-report-copy');
+  const shareBtn = document.getElementById('doctor-report-share');
+  const downloadBtn = document.getElementById('doctor-report-download');
+
+  if (!triggerBtn || !panel || !closeBtn || !textarea || !copyBtn || !shareBtn || !downloadBtn) {
+    return;
+  }
+
+  const actionBtns = [copyBtn, shareBtn, downloadBtn];
+
+  function openPanel() {
+    panel.classList.remove('hidden');
+  }
+
+  function closePanel() {
+    panel.classList.add('hidden');
+  }
+
+  closeBtn.addEventListener('click', closePanel);
+
+  // Escape key dismisses the panel (mirror log-past panel Escape behavior via
+  // the shared openModal/closeModal — but doctor-report uses plain hidden toggle;
+  // add a keydown guard directly on the panel for Escape parity).
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closePanel();
+    }
+  });
+
+  triggerBtn.addEventListener('click', async () => {
+    // Lazy resolution: all deferred scripts have executed by the time the
+    // user can click. DoctorReport is a const IIFE — not on window — so
+    // guard with typeof rather than window.DoctorReport.
+    // eslint-disable-next-line no-undef
+    const engine = (typeof DoctorReport !== 'undefined') ? DoctorReport : null;
+    if (!engine || typeof engine.buildReport !== 'function') {
+      if (typeof Toast !== 'undefined' && typeof Toast.notice === 'function') {
+        Toast.notice('Report engine unavailable');
+      }
+      return;
+    }
+
+    // Disable trigger + action buttons while the async report builds.
+    triggerBtn.disabled = true;
+    actionBtns.forEach(btn => { btn.disabled = true; });
+
+    try {
+      const report = await engine.buildReport();
+      // Set via .value — NEVER innerHTML; the report may contain user-supplied
+      // text (med names, notes) that must not be interpreted as markup.
+      textarea.value = report;
+      openPanel();
+      textarea.focus();
+    } finally {
+      // Always re-enable, even if buildReport rejected (it's documented as
+      // never-rejecting, but defend here so the UI doesn't get stuck).
+      triggerBtn.disabled = false;
+      actionBtns.forEach(btn => { btn.disabled = false; });
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    const ok = await Export.copyText(textarea.value);
+    if (ok && typeof Toast !== 'undefined' && typeof Toast.notice === 'function') {
+      Toast.notice('Report copied');
+    }
+  });
+
+  shareBtn.addEventListener('click', async () => {
+    await Export.shareText('Tempo health report', textarea.value);
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    // YYYY-MM-DD suffix from the local date at download time.
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    Export.downloadText('tempo-health-report-' + yyyy + '-' + mm + '-' + dd + '.txt', textarea.value);
   });
 }

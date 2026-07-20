@@ -2830,3 +2830,29 @@ lychee, not a dead link (#211/#212 passed) — with the check now required, an o
 #214           chore: read-only permission allowlist (/fewer-permission-prompts)
 <this commit>  docs: trim CLAUDE.md 48.9k→38.1k + guardrails truth-ups (Arc A ②)
 ```
+
+## 2026-07-19 — Arc A ③: doctor-ready report slice (autonomous milestone)
+
+### What We Built
+
+Arc A ③ per `docs/backlog-hygiene/2026-07-19.md`. The doctor-ready export wedge of backlog row 8.5 — the clean unshipped half after the weekly-recap was covered by the Home hub council recap.
+
+New `js/doctor-report.js` engine (~463 lines, 16 `_internals` helpers): pure `buildReport({days, now})` → `Promise<string>` — a paste-friendly, plain-English summary spanning three sections (Medications & Adherence, Sleep, Activity & Focus), read-only over `MedsManager` + `Analytics.getMedAdherence` + `History` (IndexedDB) + `wellness_rest_log`. No write path, no Firebase dependency, no native bridge. Delivery via three new generic text helpers added to `js/export.js` (`copyText` / `shareText` / `downloadText`) that wrap the existing Clipboard / Web Share / `<a download>` plumbing in reusable single-argument functions.
+
+`js/history-ui.js` surfaces the report: a "Doctor Report" trigger button in the History panel header opens a scrollable report panel with Copy / Share / Download buttons that call into the new Export helpers. The pattern matches the existing log-past-session panel approach (toggle visibility, render into a `<div>` inside the panel).
+
+105 clock-pinned engine tests in `tests/doctor-report.test.js` (injected `MedsManager` + `Analytics` + `History` stubs; `Date.now` pinned via `_internals._now`). Suite 1360 → 1466. One tester fix-round was needed: a cross-suite stub-restore leak (the `Analytics` stub was being installed globally and not cleaned up, causing baseline flakiness in unrelated suites — fixed by scoping restore to an `afterEach`). UI wirer connection dropped mid-flight (network issue during the Playwright verification step) but the kapture screenshot evidence was captured before disconnect: report panel renders, Copy/Share/Download buttons visible, zero console errors.
+
+`sw.js` CACHE_NAME bumped `v167-live-activities-pomo-flow` → `v168-doctor-report`. `js/doctor-report.js` added to `ASSETS`.
+
+### Suggested Next Steps
+
+- Kyle: smoke the report on real data at `#/history` — tap "Doctor Report", copy the text, paste into a message to yourself to verify the meds/sleep/activity sections render correctly with your actual data.
+- Possible follow-up: BFRB/mood sections as a second wedge (adds antecedent summary + mood trend to the report). Backlog row 8.5 would fully close.
+- Parked device-confirm queue (Live Activities Pomodoro+Flow device checks) — still one ~20-min phone session.
+
+### Commits
+
+```
+<this commit>  feat: doctor-ready report — portable meds/sleep/activity summary (Arc A ③)
+```

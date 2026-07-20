@@ -131,6 +131,10 @@
   <script src="../js/rhythm-panel-today.js"></script>
   <!-- Export / Import also stubs window.History per-case. -->
   <script src="../js/export.js"></script>
+  <!-- Doctor Report engine: reads History / MedsManager / Analytics /
+       wellness_rest_log; strictly read-only. Loaded after analytics.js +
+       export.js (both dependencies); mirrors runtime load-order slot. -->
+  <script src="../js/doctor-report.js"></script>
   <!-- Audio engine: ambient profile registration test. The IIFE does NOT
        instantiate AudioContext at load time (getCtx() is lazy + only fired
        by playback paths). getAmbientProfiles() is a pure map over a static
@@ -219,6 +223,7 @@
   <script src="chickens-ui.test.js"></script>
   <script src="life-building-ui.test.js"></script>
   <script src="export.test.js"></script>
+  <script src="doctor-report.test.js"></script>
   <script src="backup.test.js"></script>
   <script src="audio.test.js"></script>
   <script src="todoist.test.js"></script>
