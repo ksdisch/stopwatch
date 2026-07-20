@@ -2794,3 +2794,39 @@ First `/backlog-hygiene` run. Inventoried the full corpus (feature table, Toolin
 ```
 <this commit>  docs(backlog): hygiene 2026-07-19 — truth-ups, Parked/Retired, session-log backfill, decision brief
 ```
+
+## 2026-07-19 — Arc A ①+②: finances close-out parked, guardrails trio landed
+
+### What We Built
+
+Arc A per `docs/backlog-hygiene/2026-07-19.md`. **① Finances close-out — parked by Kyle:**
+the read-only Firestore check found the `finances` collection still EMPTY (July numbers never
+entered); the council itself is healthy — tonight's weekly run (23:07Z, producer
+`council/life-building-weekly`) wrote the honest empty-state `life_building` record. Kyle
+parked ① to let the nightly pick his numbers up whenever he enters them; row #22 stays
+un-flipped. **②a Branch protection LIVE on `main`:** all **7** CI checks required (the
+workflow has seven jobs — `ui-tests` was missing from the older six-check list) +
+`enforce_admins`, force-push/deletion blocked, no review requirement, strict off. Direct
+pushes to `main` — the flow-vibrate incident path — are now rejected; repo auto-merge was
+enabled so PRs land with `gh pr merge --auto --squash`. **②b Permission allowlist (PR #214):**
+20 read-only entries in `.claude/settings.json` from a 50-session transcript frequency scan;
+code-exec MCP tools (`browser_evaluate`, `browser_run_code_unsafe`) and `browser_navigate`
+deliberately left prompting. **②c `/trim-context`:** CLAUDE.md 48.9k → 38.1k chars (tooling
+catalog → `docs/reference/claude-tooling.md`; backlog cells, Phase-12 paragraph, file-map,
+doc-index compressed against their existing offload docs) + these BACKLOG truth-ups. Gotcha
+for the record: #213's `markdown-links` failure was a transient GitHub Pages 503 inside
+lychee, not a dead link (#211/#212 passed) — with the check now required, an occasional
+`gh run rerun --failed` is the cost.
+
+### Suggested Next Steps
+
+- Kyle: enter July numbers at `#/life-building` → nightly council picks them up → a fresh session verifies + flips row #22.
+- ③ doctor-ready report slice kicked to its own `/autonomous-milestone` run at session end.
+- Parked device-confirm queue: still one ~20-min phone session.
+
+### Commits
+
+```
+#214           chore: read-only permission allowlist (/fewer-permission-prompts)
+<this commit>  docs: trim CLAUDE.md 48.9k→38.1k + guardrails truth-ups (Arc A ②)
+```
