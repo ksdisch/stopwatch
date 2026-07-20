@@ -2854,5 +2854,5 @@ New `js/doctor-report.js` engine (~463 lines, 16 `_internals` helpers): pure `bu
 ### Commits
 
 ```
-<this commit>  feat: doctor-ready report — portable meds/sleep/activity summary (Arc A ③)
+7868278  feat: doctor-ready report — portable meds/sleep/activity summary (Arc A ③)  (PR #216)
 ```
