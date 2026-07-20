@@ -18,11 +18,11 @@ backlog #15. The remaining ranked candidates are the live menu for the next auto
 
 | Board | Candidate | Verdict | One-line why |
 |------|-----------|---------|--------------|
-| — | **BFRB Closed Loop — Slice B** | Deferred from #16 | Real-time relapse-risk meter + post-countdown debrief; the framing-risky, opt-in half intentionally cut from the shipped Slice A. |
-| 8.5 | **Personal Health Hub — Weekly Review + portable doctor-ready report** | Strong, ship-soon | Cleanest autonomy (pure string-producing functions, no native/Firebase-write path); novel doctor-prep export. Docked for being a 3-feature bundle and reflective rather than forward-looking. |
+| — | **BFRB Closed Loop — Slice B** | Part-shipped — verdict updated 2026-07-19 | The risk half SHIPPED via Life-OS P3 (`js/bfrb-risk.js` — headed "Slice B" — + the stress nudge in `js/global-bfrb.js`); live remainder = the **post-countdown debrief** only. Originally: risk meter + debrief, the framing-risky opt-in half cut from Slice A. |
+| 8.5 | **Personal Health Hub — Weekly Review + portable doctor-ready report** | Strong — narrowed 2026-07-19 | Cleanest autonomy (pure string-producing functions, no native/Firebase-write path); novel doctor-prep export. Docked for being a 3-feature bundle and reflective rather than forward-looking. **Narrowed (hygiene 2026-07-19): the weekly-recap half is since covered by the Home hub's council recap (P1); the clean unshipped wedge is the doctor-ready export — picked as Arc A ③.** |
 | 8.45 | **Med Runway & Adherence Loop** | Strong, split-ship | Highest concrete stakes (controlled-substance refill/dose); pure runway/streak half is a clean win, nudge half is the least self-verifiable piece. |
-| 8.45 | **Personal Health Intelligence Engine** | Right idea, overscoped | Correct long-term consolidation but bundles 5–7 deliverables incl. a 7th synced store + cross-cutting refactor; descope to the pure `insight-engine.js` core. |
-| 6.9 | **Tempo Presence — Live Activities / widgets / Siri** | Defer / split | Overlaps backlog #4 (iOS Live Activities). Four products in a trenchcoat + long Apple-paperwork tail; ship only the web-only depleting-wedge slice standalone. |
+| 8.45 | **Personal Health Intelligence Engine** | **Retired 2026-07-19 — superseded** | Was: correct long-term consolidation but bundles 5–7 deliverables incl. a 7th synced store + cross-cutting refactor. Retired: the consolidation role now lives server-side in the Life-OS council synthesis + the client Tempo Coach loop — see § Parked / Retired. |
+| 6.9 | **Tempo Presence — Live Activities / widgets / Siri** | **Retired 2026-07-19 — superseded by #4** | Was: overlaps backlog #4; four products in a trenchcoat. Retired: the Live Activities core shipped natively via #4 (#201–#211); the unpursued remainder (home-screen widgets, Siri shortcuts, web depleting-wedge) is noted under #4's follow-ups — see § Parked / Retired. |
 | 6.65 | **Tempo Proving Ground — UI test harness + kit** | **Slice 1 shipped 2026-07-07** | `@playwright/test` harness (`tests/ui/`, `npm run test:ui`, CI `ui-tests`) loads the real app under a blocked SW; caught + fixed a live attribute-XSS (`analytics-ui.js:303`) and locked the import boundary. Slice 2 (R9 notification-persistence) shipped 2026-07-08 (#197) — durable `tempo_notify_db` + SW rearm-on-wake. |
 | 6.0 | **HealthKit two-way bridge** | Sequence later | Removes the most-forgotten manual input, but a from-scratch Swift plugin with double-write risk; best paired after the intelligence loop proves out. |
 
@@ -35,11 +35,11 @@ feature table.
 
 | Item | Why / evidence | Effort |
 |---|---|---|
-| Branch-protection rule on `main` requiring the CI checks | CI is `on: pull_request` only — a direct push bypasses every gate and still deploys; that is the documented flow-vibrate incident path (`.github/workflows/ci.yml` header, `playbooks/stale-cache.md`). A GitHub settings change closes it. | Low |
+| Branch-protection rule on `main` requiring the CI checks | CI is `on: pull_request` only — a direct push bypasses every gate and still deploys; that is the documented flow-vibrate incident path (`.github/workflows/ci.yml` header, `playbooks/stale-cache.md`). A GitHub settings change closes it. **Verified still-unprotected 2026-07-19 (`gh api` → 404 "Branch not protected"); queued in Arc A ②.** | Low |
 | Fix the 2 headless sync-engine flakes for real | `scripts/run-tests.mjs` carries a whole-page retry crutch for the `_steadyRunInFlight` latch (PR #125 fixed only the backgrounded-tab variant). Removing the crutch un-blurs CI red. | Medium |
-| `/new-synced-store` command | An 8th synced store would repeat the `mood_events` clone recipe (ADR-0008, PR #145): schema + merge module + SYNCED_STORES + firestore.rules + data-dictionary + tests. Codify it like `/new-engine-module` before it's needed. | Low |
-| Seed `.claude/settings.json` permission allowlist | Read-only loops (`npm test`, `npm run check:*`, `python3 -m http.server`, `git status/diff/log`) each prompt for permission; an allowlist cuts friction for cheap-model sessions. | Low |
-| CLAUDE.md headroom budget | At ~39.4k of the 40k always-loaded limit (2026-06-12). Next relocation candidates when it grows: State Model details → `reference/data-dictionary.md`, per-phase history → `BUILD-HISTORY.md`. Re-run `/trim-context` when >39.5k. | Low |
+| `/new-synced-store` command — **Retired 2026-07-19** | Was: codify the `mood_events` clone recipe (ADR-0008, PR #145) like `/new-engine-module`. Retired: the recipe was since executed by hand twice (mood #145, finances #198) and no 9th client store is on the roadmap (P4 federation reads server-side marts) — see § Parked / Retired. | Low |
+| Seed `.claude/settings.json` permission allowlist | Read-only loops (`npm test`, `npm run check:*`, `python3 -m http.server`, `git status/diff/log`) each prompt for permission; an allowlist cuts friction for cheap-model sessions. **Still absent 2026-07-19 (settings.json carries only `hooks`); the `/fewer-permission-prompts` skill now automates it — queued in Arc A ②.** | Low |
+| CLAUDE.md headroom budget | At ~39.4k of the 40k always-loaded limit (2026-06-12). Next relocation candidates when it grows: State Model details → `reference/data-dictionary.md`, per-phase history → `BUILD-HISTORY.md`. Re-run `/trim-context` when >39.5k. **48,602 chars as of 2026-07-19 — past its own trigger; `/trim-context` queued in Arc A ②.** | Low |
 
 ## Summary table
 
@@ -51,8 +51,8 @@ feature table.
 | 4 | iOS Live Activities — lock screen + Dynamic Island | High | High | #9 | **Timer MVP SHIPPED + device-validated 2026-07-10** (8/9 smoke checks, PRs #201/#203/#204/#205); toggle OFF→ON re-arm backlogged — see #4 detail below; **Pomodoro+Flow expansion built + sim-validated 2026-07-10 (PR #211)** — device confirm pending |
 | 5 | Pomodoro phase revert — "Go back" | Medium | Low | #11 | Shipped (PR #104) |
 | 6 | Split-screen timer comparison | Medium | High | #2 | **V1 shipped** (⇔ on instance cards → split Compare view, `js/compare-ui.js`); fuller two-independent-controls vision open — status corrected by 2026-07-07 hunt F6 |
-| 7 | Voice control | Low | Medium | #3 | **Unshipped** |
-| 8 | Group/team timing | Low | High | #5 | **Unshipped** — needs a backend |
+| 7 | Voice control | Low | Medium | #3 | **Parked 2026-07-19** — low ROI, dormant since the stopwatch era; see § Parked / Retired |
+| 8 | Group/team timing | Low | High | #5 | **Parked 2026-07-19** — needs a backend the PWA deliberately lacks; see § Parked / Retired |
 | 9 | Todoist follow-up A — Flow user-task list | High | Medium | #10-A | Shipped (PR #102); mid-block add enhancement (PR #173) |
 | 10 | Todoist follow-up B — Pomo inline-rename + `updateTask` | Low | Low | #10-B | Shipped (PR #103) |
 | 11 | Sleep log bedtime/wake-time schema extension | Medium | Low | #12 | Shipped 2026-06-01 (bundled with #12) |
@@ -65,28 +65,11 @@ feature table.
 | 19 | Mobile follow-up: clock `.mode-dot` toggle (two 8px dots) → bigger tap target | Low | Low–Med | #19 | Shipped 2026-06-30 (PR #182) — partial hit-area bump: transparent `::after` enlarges the tap target to ~16×44px with the visible 8px dots unchanged. Full ≥44px-wide pair (segmented control) intentionally not taken — would redesign the hero timer screen |
 | 20 | NSDR launcher — one-tap Restore card → YouTube + auto-logged mindful session | Medium | Low | #20 | Shipped 2026-07-07 (PR #174) |
 | 21 | Mobile follow-up: iOS focus-zoom on sub-16px inputs trapped the viewport zoomed (Todoist token field) | Medium | Low | #21 | Shipped 2026-07-07 (PR #177) — 16px floor on text controls under `pointer: coarse`; desktop compact sizing kept |
-| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Spec merged 2026-06-30 (PR #183 → `docs/lifeos/`); **build pending — next major milestone** |
+| 22 | Life Building — Finances slice (8th synced store, per-month LWW) | High | High | #22 | Slice 1 **LIVE** (PR #198 merged 2026-07-08) — store + council `life_building` synthesizer + hub w/ capture form; council green nightly through 2026-07-19. Close-out = Kyle's July numbers via the capture form → next nightly run → verify `#/life-building` renders real data (hygiene 2026-07-19, Arc A ①) |
 
 ---
 
 ## Unshipped (forward-looking)
-
-### #3 — Cloud sync: native CAS + listener parity for `@capacitor-firebase/firestore` (Medium / Medium)
-
-**Listener parity SHIPPED 2026-07-10 (PR N-1); native CAS permanently OUT — not
-deferred.** `SyncFirestore.subscribe`'s native branch is now a real
-`addCollectionSnapshotListener` listener (deferred-unsubscribe closure, web-identical
-`{docs,count}` / `{ok:false,error}` callback shapes, per-doc `hasPendingWrites` M2 echo
-guard with fail-open on absent metadata, always-async setup-failure callbacks per the
-M3 registry-ordering contract), closing the real-time gap: iOS gets sub-second
-cross-device propagation instead of the 5-minute defensive poll. Native CAS is
-impossible via this plugin — verified 2026-07-10 at installed 6.3.1 AND upstream 8.3.0:
-no published version exposes a transaction API (`writeBatch` is write-only atomicity,
-not read-then-write CAS) — so `runTransaction`'s native `nativeUnsupported` throw stays
-and merge modules keep defensively skipping the CAS writeback on native (web devices
-converge the cloud; buffer/push `setDoc` paths unaffected). Post-merge device
-verification steps live in the audit's Manual setup section
-(`docs/sync-impl/audits/N-1-AUDIT.md`).
 
 ### #4 — iOS Live Activities: running timers on the lock screen + Dynamic Island (High / High)
 
@@ -124,14 +107,6 @@ Side-by-side two timers. Requires significant layout rework.
 renders a split Compare view of the primary vs one other instance (⇔ button on
 instance cards, `js/cards-ui.js:48`, RAF-driven). What remains of the vision: two
 *independently controlled* running timers side-by-side.
-
-### #7 — Voice control (Low / Medium)
-
-Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset".
-
-### #8 — Group/team timing (Low / High)
-
-WebRTC or shared URL with server sync. Major scope expansion — would need a backend.
 
 ---
 
@@ -197,6 +172,25 @@ tooltip on next refresh, don't auto-remove from active session; (d) rate limit (
 API client, offline-queue drain, idempotent retry. **Auth alternative considered:** OAuth 2.0 —
 rejected because Tempo has no backend to hold the OAuth client secret; personal API token is
 the standard pattern for PWAs against Todoist.
+
+### #3 — Cloud sync: native CAS + listener parity for `@capacitor-firebase/firestore` (Medium / Medium)
+
+*Moved from "Unshipped (forward-looking)" 2026-07-19 (backlog hygiene) — listener parity landed as PR #209; native CAS is proven permanently impossible, so nothing forward-looking remains.*
+
+**Listener parity SHIPPED 2026-07-10 (PR N-1); native CAS permanently OUT — not
+deferred.** `SyncFirestore.subscribe`'s native branch is now a real
+`addCollectionSnapshotListener` listener (deferred-unsubscribe closure, web-identical
+`{docs,count}` / `{ok:false,error}` callback shapes, per-doc `hasPendingWrites` M2 echo
+guard with fail-open on absent metadata, always-async setup-failure callbacks per the
+M3 registry-ordering contract), closing the real-time gap: iOS gets sub-second
+cross-device propagation instead of the 5-minute defensive poll. Native CAS is
+impossible via this plugin — verified 2026-07-10 at installed 6.3.1 AND upstream 8.3.0:
+no published version exposes a transaction API (`writeBatch` is write-only atomicity,
+not read-then-write CAS) — so `runTransaction`'s native `nativeUnsupported` throw stays
+and merge modules keep defensively skipping the CAS writeback on native (web devices
+converge the cloud; buffer/push `setDoc` paths unaffected). Post-merge device
+verification steps live in the audit's Manual setup section
+(`docs/sync-impl/audits/N-1-AUDIT.md`).
 
 ### #5 — Pomodoro phase revert — "Go back" to previous work or break phase (Medium / Low)
 
@@ -363,6 +357,48 @@ merging main. Live-verified at 390px: all commit paths (chips+Done, click-outsid
 populated/empty panel states, no console errors.
 
 ---
+
+## Parked / Retired
+
+Nothing here is deleted — items move in with a dated reason and stay retrievable.
+Table rows elsewhere keep their history in place with a dated annotation pointing here.
+
+### Parked 2026-07-19 — #7 Voice control (Low / Medium)
+
+Web Speech API SpeechRecognition. Commands: "start", "stop", "lap", "reset".
+
+*Parked (backlog hygiene 2026-07-19): Low impact and dormant since the original stopwatch era; no pull from the Life-OS direction. Retrieve if a hands-free use case shows up.*
+
+### Parked 2026-07-19 — #8 Group/team timing (Low / High)
+
+WebRTC or shared URL with server sync. Major scope expansion — would need a backend.
+
+*Parked (backlog hygiene 2026-07-19): needs a backend the PWA deliberately lacks (the council is a local write-only sidecar, not an app server). Structurally out of character; retrieve only alongside an explicit architecture decision.*
+
+### Retired 2026-07-19 — `/new-synced-store` command (Tooling & DX table)
+
+*Retired: the `mood_events` clone recipe it would codify has since been executed by hand twice (mood #145, finances #198) and is documented via ADR-0008 + the merge-module clones; no 9th client synced store is on the roadmap (P4 federation reads server-side marts). Revive only if one gets planned.*
+
+### Retired 2026-07-19 — Candidate "Personal Health Intelligence Engine" (2026-06-05 menu)
+
+*Retired: superseded — the cross-stream consolidation role now lives server-side in the Life-OS council synthesis records, with Tempo Coach as the client-side forward loop. The descoped `insight-engine.js` core no longer has a distinct job.*
+
+### Retired 2026-07-19 — Candidate "Tempo Presence — Live Activities / widgets / Siri" (2026-06-05 menu)
+
+*Retired: superseded by backlog #4 — the Live Activities core shipped natively (#201–#211). The unpursued remainder (home-screen widgets, Siri shortcuts, web depleting-wedge) can be revived as #4 follow-ups if wanted.*
+
+### Parked 2026-07-19 — Device-confirm queue (batch into ONE ~20-min phone session)
+
+Excluded from the current arc (no iPhone-in-hand work this arc — hygiene 2026-07-19). Four checks, batchable:
+
+1. **#211 Pomo/Flow Live Activities device-owner checks** — `npm run ios:open` rebuild first; expanded-island label chip, lock-screen large view, widget tap-through, pause badge, hardware toggle re-arm (see #4 detail above).
+2. **iOS sign-out race verify (R10)** — fix #187 live; Diagnosis recipe in `docs/playbooks/ios-signout.md`; drop the CLAUDE.md debt entry on pass.
+3. **Background ambient audio** — the `UIBackgroundModes=audio` fix from 2026-05-26 has never been device-verified (#1 post-mortem below).
+4. **Check-8 toggle OFF→ON re-arm** — Kyle-deprioritized (he doesn't use the toggle); runbook in #4 detail. Optional / last.
+
+### Parked 2026-07-19 — Stale branch cleanup (Kyle-manual)
+
+57 local / 13 remote branches as of 2026-07-19 (up from the 2026-07-07 hunt's ~12 / ~5). Claude's Bash blocks `git branch -D`, so either Kyle runs the sweep or a supervised session approves per-branch. Keep any open-PR heads.
 
 ## Resolved tech debt (kept as migration-pattern reference)
 

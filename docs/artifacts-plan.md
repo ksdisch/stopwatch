@@ -4,6 +4,7 @@
 > **Created:** 2026-05-30
 > **Repo:** Tempo (a.k.a. `stopwatch`) — `github.com/ksdisch/stopwatch` · live at `https://ksdisch.github.io/stopwatch/`
 > **Method:** 6-agent parallel discovery sweep (docs-freshness · architecture/decisions · data-model · ops/infra · git-activity · test/quality) → profile → audit → plan.
+> **Status update (2026-07-19, backlog hygiene):** largely delivered — the plan's big-ticket artifacts all exist at HEAD (`docs/adr/`, `docs/runbooks/`, `docs/reference/data-dictionary.md`, `docs/diagrams/`, `docs/ARCHITECTURE.md`) via the doc-relocation era. Retained as a historical planning record, not an active to-do list.
 
 ## Confirmed scope decisions (from Phase 2)
 
