@@ -1,0 +1,30 @@
+# .gitleaks.toml — Tempo secret-scan config (used by .github/workflows/secret-scan.yml).
+#
+# Extends gitleaks' FULL default ruleset and allowlists exactly ONE known
+# false positive: the deliberately-public Firebase WEB client config.
+#
+#   js/sync-firebase-config.js holds a Firebase `apiKey` that is a PROJECT
+#   IDENTIFIER, not a credential. Access is enforced by firestore.rules
+#   (per-user UID isolation; request.auth.uid == userId), per that file's own
+#   header and CLAUDE.md ("committed public web config by design ... do not
+#   fix/rotate/hide it"). gitleaks' `gcp-api-key` rule matches the AIzaSy...
+#   pattern, so WITHOUT this allowlist every PR that touches the file would
+#   fail the secret-scan gate on a value that is safe to publish.
+#
+# Everything else is scanned with the complete default rule set. Untracked
+# build products (www/, ios/App/Pods/, ios/App/App/public/, node_modules/)
+# are never committed, so gitleaks-action's git-history scan never sees them.
+#
+# The tracked ios/App/App/GoogleService-Info.plist (the iOS client config) is
+# NOT allowlisted here because gitleaks' default rules do not flag it.
+
+title = "Tempo gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public Firebase web client config (js/sync-firebase-config.js) — non-secret project identifier; access enforced by firestore.rules."
+paths = [
+  '''js/sync-firebase-config\.js''',
+]
