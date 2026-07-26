@@ -645,3 +645,7 @@ Judgment calls in this draft:
 - Tech-stack table lists only the dependencies in `package.json` plus runtime APIs the code actually uses. No aspirational entries.
 - Project History "Decisions & Tradeoffs" focuses on decisions visible across multiple PRs, not single-PR microdecisions.
 - I didn't include a Rhythm pillar walkthrough in Key Flows — the route exists and the placeholder ships, but the engine work (`docs/TEMPO-PLAN.md` §8.10) is unimplemented.
+
+---
+
+📚 **Project wiki:** [PROJECT.md](PROJECT.md) — status, scope, and next actions · [Wiki/_index.md](Wiki/_index.md) — topic pages and history
