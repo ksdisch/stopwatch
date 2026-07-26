@@ -144,7 +144,7 @@ A deliberate quality campaign: a principal-engineer audit, its burndown, a mobil
 - **Landed:** PROJECT.md, HANDOFF.md, Sources.md, Decisions.md, `Wiki/` with the lifeos-status reconciliation page (PR #218)
 
 ### What remains of the approved Life-OS plan — as of 2026-07-26
-- **Fact:** the 2026-06-08 plan (kickoff archive `~/Projects/_kickoffs/tempo-lifeos-discovery/`) is partially built: P0–P3 and the P5 Finances slice shipped; P4 (federate Growth/Career), P6 (unit lifecycle), P7 (feedback loop), and the Relationships remainder of P5 are approved but unbuilt — reconciliation and open questions in [[lifeos-status]].
+- **Fact:** the 2026-06-08 plan (kickoff archive `~/Projects/_kickoffs/tempo-lifeos-discovery/`) is partially built: P0–P3 and the P5 Finances slice shipped; P4 (federate Growth/Career), P6 (unit lifecycle), P7 (feedback loop), and the Relationships remainder of P5 are approved but unbuilt — reconciliation and open questions in [lifeos-status](lifeos-status.md).
 
 ---
 
