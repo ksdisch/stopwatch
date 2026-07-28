@@ -25,12 +25,9 @@ in a cloud/web session).
 - `/claudify-repo` — vendor global commands/skills into this repo and/or brainstorm repo-specific automations.
 - `/prompt-optimize` — one-shot prompt rewrite: workflow archetype + model + effort + ready-to-paste prompt. Advisory only.
 - `/reframe-orchestrator` — reframe `.claude/orchestrator.md` into a mode-independent invariants & gates doc.
-- `/mock-sql-demo` — text self-play mock SQL interview (interviewer + ideal candidate), then a debrief.
 - 💻 `/boot_server` — detect how the project is served, start the dev server, open it in Chrome.
 - 💻 `/catchup` — mid-session audio catch-up as an MP3 (local TTS); keeps working after.
 - 💻 `/envsetup` — open `.env` + the credential's generation page in Chrome, key stub pre-added.
-- 💻 `/mock-sql-audio` — full simulated SQL mock interview as an MP3 (local two-voice TTS).
-- 💻 `/mock-sql-interview` — live voice mock SQL interview (local voice mode).
 - 💻 `/smoke-test` — manual smoke test setup: opens pages in Chrome, do-this-see-that checklist under `docs/smoke/`.
 
 ## Skills (`.claude/skills/`, auto-trigger or invoke explicitly)
