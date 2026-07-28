@@ -3,7 +3,7 @@
 // pending notifications so they survive worker eviction.
 importScripts('./js/bg-notify-store.js');
 
-const CACHE_NAME = 'stopwatch-v167-live-activities-pomo-flow';
+const CACHE_NAME = 'stopwatch-v168-doctor-report';
 const ASSETS = [
   './',
   './index.html',
@@ -63,6 +63,7 @@ const ASSETS = [
   './js/dom-utils.js',
   './js/sequence.js',
   './js/analytics.js',
+  './js/doctor-report.js',
   './js/focus-ui.js',
   './js/sequence-ui.js',
   './js/analytics-ui.js',

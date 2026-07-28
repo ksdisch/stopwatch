@@ -1092,8 +1092,27 @@
       <div class="history-actions">
         <button id="history-export-all" class="offset-link">Backup to file</button>
         <button id="history-import" class="offset-link">Restore from file</button>
+        <button id="history-doctor-report" class="offset-link" type="button" aria-label="Generate doctor report">Doctor report</button>
         <button id="history-clear-all" class="offset-link history-danger">Clear All</button>
         <input type="file" id="history-import-input" accept=".json" class="hidden">
+      </div>
+    </div>
+
+    <!-- Doctor Report panel (standalone overlay, mirrors log-past-panel) -->
+    <div id="doctor-report-panel" class="log-past-panel hidden" aria-modal="true" role="dialog" aria-label="Doctor report">
+      <div class="history-header">
+        <h3>Doctor Report</h3>
+        <button id="doctor-report-close" class="icon-btn" type="button" aria-label="Close doctor report">&times;</button>
+      </div>
+      <div class="log-past-form">
+        <textarea id="doctor-report-text" readonly
+          style="width:100%;box-sizing:border-box;min-height:300px;resize:none;font-family:monospace;font-size:0.85rem;background:var(--btn-bg);color:var(--text-primary);border:1px solid var(--separator);border-radius:8px;padding:12px;line-height:1.5;"
+          aria-label="Report text"></textarea>
+        <div class="history-actions" style="border-top:none;padding:16px 0 0;">
+          <button id="doctor-report-copy" class="offset-link" type="button" aria-label="Copy report to clipboard">Copy</button>
+          <button id="doctor-report-share" class="offset-link" type="button" aria-label="Share report">Share</button>
+          <button id="doctor-report-download" class="offset-link" type="button" aria-label="Download report as text file">Download</button>
+        </div>
       </div>
     </div>
 
@@ -1307,6 +1326,7 @@
   <script src="js/history-ui.js" defer></script>
   <script src="js/sequence.js" defer></script>
   <script src="js/analytics.js" defer></script>
+  <script src="js/doctor-report.js" defer></script>
   <script src="js/focus-ui.js" defer></script>
   <script src="js/sequence-ui.js" defer></script>
   <script src="js/analytics-ui.js" defer></script>

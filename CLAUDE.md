@@ -62,7 +62,7 @@ js/backup.js                    — F12 mandatory local backup. exportLocal() re
 js/audio.js                     — SFX module. Web Audio API synthetic sounds (no files). Multiple profiles.
 js/themes.js                    — Themes module. 6 presets, applies CSS vars to :root.
 js/history.js                   — History module. IndexedDB (db stopwatch_history_db, store sessions). Tags, notes. Migrates legacy localStorage.
-js/export.js                    — Export module. Clipboard, CSV, Web Share, full-data JSON export/import.
+js/export.js                    — Export module. Clipboard, CSV, Web Share, full-data JSON export/import + generic text helpers (copyText/shareText/downloadText).
 js/analog.js                    — Analog clock face. SVG ticks/numbers/hands.
 js/offset-input.js              — "Start with time already elapsed" input UI + presets.
 js/button-fsm.js                — ButtonFsm: pure shared button state machine (M5). get(mode, status) → frozen {left,right} cell specs; ui.js + timer-ui.js derive presentation AND dispatch from it.
@@ -91,6 +91,7 @@ js/cooking-ui.js                — Cooking mode UI: multiple named short timers
 js/sequence.js                  — Sequence engine (linear phase chain, sub-mode of Timer).
 js/sequence-ui.js               — Sequence UI: phase setup, run info.
 js/analytics.js                 — Analytics engine: aggregates history sessions by day/type.
+js/doctor-report.js             — DoctorReport engine: buildReport({days,now}) → Promise<string> paste-friendly doctor-prep summary (meds+adherence / sleep / activity & focus) read-only from MedsManager+Analytics+History+rest_log; delivery via Export copyText/shareText/downloadText.
 js/analytics-ui.js              — Analytics dashboard UI panel.
 js/focus-ui.js                  — Focus / ambient display mode (distraction-free full-screen).
 js/presets.js                   — Quick Presets engine: storage, apply (mode + config), migration from offset presets.
@@ -131,7 +132,7 @@ icons/                          — 192px and 512px PNG icons.
 ### Script Load Order
 Mirrors the `<script>` tags in `index.html` exactly (that order IS the dependency graph; keep this block and `index.html` in lockstep):
 ```
-utils → dom-utils → platform → schema → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-buffer → sync-engine → sync-toast → sync-manual-dedupe → sync-merge-equal → sync-merge-meds → sync-merge-history → sync-merge-rest-log → sync-merge-presets → sync-merge-bfrb → sync-merge-distractions → sync-merge-mood → sync-merge-finances → sync-auth → audio → themes → history → export → backup → analog → offset-input → button-fsm → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → distractions → todoist → todoist-ui → pomodoro-ui → tempo-coach → flow-ui → alert-ui → bg-notify → bg-notify-store → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → recovery-feed → synthesis-feed → finances → home-ui → physicals-ui → chickens-ui → life-building-ui → rhythm-engine → rhythm-insights → rhythm-panel-today → rhythm-panel-meds-sleep → rhythm-panel-recovery-trends → rhythm-panel-focus-minutes → rhythm-panel-bfrb-frequency → rhythm-panel-bfrb-triggers → rhythm-panel-distraction-rollup → rhythm-panel-event-zoom → rhythm-panel-correlations → rhythm-ui → bfrb-events → bfrb-risk → global-bfrb → mood → mood-ui → tempo-nav → app
+utils → dom-utils → platform → schema → stopwatch → timer → instance-manager → pomodoro → flow → interval → persistence → sync-firebase-config → sync-flag → sync-firestore → sync-buffer → sync-engine → sync-toast → sync-manual-dedupe → sync-merge-equal → sync-merge-meds → sync-merge-history → sync-merge-rest-log → sync-merge-presets → sync-merge-bfrb → sync-merge-distractions → sync-merge-mood → sync-merge-finances → sync-auth → audio → themes → history → export → backup → analog → offset-input → button-fsm → ui → cards-ui → compare-ui → timer-ui → bfrb-recovery → distractions → todoist → todoist-ui → pomodoro-ui → tempo-coach → flow-ui → alert-ui → bg-notify → bg-notify-store → interval-ui → cooking-ui → pomodoro-stats → history-ui → sequence → analytics → doctor-report → focus-ui → sequence-ui → analytics-ui → presets → presets-ui → meds → meds-ui → exercise-ui → mindful-ui → wellness-cooking-ui → recovery-ui → recovery-feed → synthesis-feed → finances → home-ui → physicals-ui → chickens-ui → life-building-ui → rhythm-engine → rhythm-insights → rhythm-panel-today → rhythm-panel-meds-sleep → rhythm-panel-recovery-trends → rhythm-panel-focus-minutes → rhythm-panel-bfrb-frequency → rhythm-panel-bfrb-triggers → rhythm-panel-distraction-rollup → rhythm-panel-event-zoom → rhythm-panel-correlations → rhythm-ui → bfrb-events → bfrb-risk → global-bfrb → mood → mood-ui → tempo-nav → app
 ```
 
 ### Key Design Decisions
