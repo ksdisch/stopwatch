@@ -11,24 +11,13 @@ in a cloud/web session).
 - `/begin` — open a session: orient on branch/commits/open PRs, recap the last `/wrap` log, route into `.claude/session-start.md`.
 - `/wrap` — end-of-session wrap-up: recap + why, active-recall quiz, next moves; saves a dated log (pairs with `docs/SESSION-LOG.md`).
 - `/handoff` — generate a self-contained handoff prompt for a fresh session, then stop.
-- `/explore-plan <task>` — explore → plan → confirm before any code; proposes 2–3 ranked approaches and waits for your pick.
 - `/tdd <module + behavior>` — test-first loop: write failing tests, confirm they fail for the right reason, then code until green **without** editing the tests (engine tests run via `npm test`).
-- `/trim-context` — find + fix CLAUDE.md / memory / always-loaded token bloat, then apply the fixes.
 - `/autonomous-milestone [target]` — with a target: plan/build/test/verify end-to-end; with none: triage the backlog into ranked candidates. Uses ultracode multi-agent orchestration (higher token cost).
-- 💻 `/screenshot-iterate <mock + what to build>` — visual loop: implement → screenshot the running app → compare to a mock → iterate. Needs a browser MCP + local dev server.
 - `/new-engine-module <name + desc>` — **repo-specific.** Scaffold a `js/<name>.js` the Tempo way and wire all four touch-points in one shot: `<script>` tag at the correct load-order slot, CLAUDE.md file-map + load-order chain, `sw.js` ASSETS + `CACHE_NAME` bump, and a `tests/<name>.test.js` stub registered in `tests/index.html`.
 - `/fix-bug <symptom + where>` — **repo-specific.** Bug loop: triage vs the known playbooks (stale-SW first), root-cause before edit, regression test, conventions checklist, fresh-context verify, `fix/` branch.
 - `/run-tests [scope]` — **repo-specific.** Suite execution + interpretation: `npm test`, the headless-flake adjudication rule, rules + council variants. Never edits to get green.
 - `/ship-pr [scope]` — **repo-specific.** DoD pre-flight, pre-runs the 3 guard checks, branch/commit conventions, push + `gh pr create`, CI expectations, merge etiquette (worktree `--delete-branch` quirk). Stops before merge.
 - `/add-panel <key + question>` — **repo-specific.** Scaffold a Rhythm Insights panel: registry contract (pure build/render via injected deps), `order` pick, 4-point wiring, clock-pinned tests.
-- `/brainstorm` — multi-mode structured brainstorm (Moonshot default) → `docs/ideas/` vision docs + backlog stubs.
-- `/claudify-repo` — vendor global commands/skills into this repo and/or brainstorm repo-specific automations.
-- `/prompt-optimize` — one-shot prompt rewrite: workflow archetype + model + effort + ready-to-paste prompt. Advisory only.
-- `/reframe-orchestrator` — reframe `.claude/orchestrator.md` into a mode-independent invariants & gates doc.
-- 💻 `/boot_server` — detect how the project is served, start the dev server, open it in Chrome.
-- 💻 `/catchup` — mid-session audio catch-up as an MP3 (local TTS); keeps working after.
-- 💻 `/envsetup` — open `.env` + the credential's generation page in Chrome, key stub pre-added.
-- 💻 `/smoke-test` — manual smoke test setup: opens pages in Chrome, do-this-see-that checklist under `docs/smoke/`.
 
 ## Subagents (`.claude/agents/`) — beyond the 5-subagent sync-PR pipeline
 

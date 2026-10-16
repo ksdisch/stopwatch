@@ -344,8 +344,8 @@ session; the **full annotated catalog** (per-item descriptions, 💻 local-only 
 in [`docs/reference/claude-tooling.md`](docs/reference/claude-tooling.md).
 
 - **Repo-specific commands:** `/begin` `/wrap` `/new-engine-module` `/fix-bug` `/run-tests`
-  `/ship-pr` `/add-panel`, plus the vendored global set (`/handoff`, `/explore-plan`, `/tdd`,
-  `/trim-context`, `/autonomous-milestone`, `/brainstorm`, `/claudify-repo`, …).
+  `/ship-pr` `/add-panel`, plus the vendored global set (`/handoff`, `/tdd`,
+  `/autonomous-milestone`).
 - **Subagents** (`.claude/agents/`): the 5-subagent PR pipeline + `sync-invariant-reviewer`,
   `test-runner`, `app-verifier`, `council-tester` — all read-only reporters.
 - **Hook** (`.claude/settings.json`): `pre-commit-guard` — before any `git commit`, runs the
