@@ -57,7 +57,7 @@ Sections, in this order:
 6. **30-second elevator version** — a single ~4–6 sentence paragraph I
    could speak aloud if asked "what did you work on today?" or "what's that
    project doing right now?" Compressed but specific. Sound spoken, not
-   written. This is the interview-prep deliverable.
+   written.
 
 7. **Active recall** — 3–5 questions an interviewer might ask about today's
    work ("Can you walk me through how X works?" / "Why did you pick A over
